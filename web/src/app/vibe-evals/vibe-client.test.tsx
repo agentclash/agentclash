@@ -2339,6 +2339,8 @@ it("closes the Guide sheet before a run estimate that arrives while it is open b
 it("keeps the Guide open by default from 1280px after the first version and remembers a close across a reload", async () => {
   vi.stubGlobal("matchMedia", vi.fn((query: string) => ({ matches: query === "(min-width: 1280px)", addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   acceptedDraft();
+  // The Guide opens by default only with a conversation in it.
+  session.document.messages = [{ id: "message-one", role: "assistant", content: "I made a first version.", artifact_id: "artifact-one" }];
   session.document.evaluation = { id: session.id, chat_id: "chat", door: "build" };
   respond = async path => path === "/config" ? json({ enabled: true, two_door: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id })) }) : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
   await render();
@@ -2876,13 +2878,18 @@ const visibleH1 = () => [...container.querySelectorAll("h1")].filter(h1 => !h1.c
 for (const door of ["build", "test"] as const) it(`enters the ${door} door with the shared setup`, () => enterDoor(door));
 
 for (const door of ["build", "test"] as const) {
-  it.fails(`shows exactly one h1 on the ${door} start (known defect B3)`, async () => {
+  // B3 (fixed): the project title is the one h1; the door question is an h2.
+  it(`shows exactly one h1 on the ${door} start (B3)`, async () => {
     await enterDoor(door);
     expect(visibleH1()).toHaveLength(1);
+    expect(visibleH1()[0].closest(".vibe-project-header")).not.toBeNull();
+    expect([...container.querySelectorAll("h2")].some(h2 => h2.textContent === (door === "build" ? "What would you like help with?" : "Improve an agent you already have."))).toBe(true);
   });
-  it.fails(`moves focus into the ${door} start after the door click, not to the body (known defect D3)`, async () => {
+  // D3 (fixed): the Build composer, or the project title on Improve, takes focus.
+  it(`moves focus into the ${door} start after the door click, not to the body (D3)`, async () => {
     await enterDoor(door);
     expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(door === "build" ? composer() : container.querySelector(".vibe-project-header h1"));
   });
 }
 
@@ -2906,4 +2913,237 @@ it("never shows two dialogs at once from the entry to the first Build send", asy
   expect(posts()).toHaveLength(1);
   expect(dialogs.most()).toBeLessThanOrEqual(1);
   dialogs.stop();
+});
+
+// PR 1 flow fixes (~/.claude/plans/vibe-evals-redesign.md sections 2 and 7, row 1).
+const twoDoorConfig = () => json({ enabled: true, two_door: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id })) });
+const runID = "a8000000-0000-4000-8000-0000000000a8";
+const params = () => new URL(location.href).searchParams;
+const frame = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+const shown = (selector: string) => [...container.querySelectorAll<HTMLElement>(selector)].filter(node => !node.closest("[hidden]"));
+// A two-door project with three ready tests (artifact-one).
+function readyTests(door: "build" | "test" = "test") {
+  const suite = scenarioAgent(); suite.kind = "test_suite"; suite.accepted = true;
+  session.document = { ...session.document, format_version: 1, test_journey: true, evaluation: { id: session.id, chat_id: session.id, door } };
+  return suite;
+}
+function run(id: string, artifact: string, extra: Partial<Operation> = {}): Operation {
+  return { id, kind: "check", state: "COMPLETED", billing: "SETTLED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, source: { kind: "prompt", label: "Tests", artifact_id: artifact },
+    results: [{ case_key: "case-1", version: artifact, input: { question: "A complete task" }, output: "A wrong reply", verdict: "FAIL", checks: [{ key: "behavior", verdict: "FAIL", evidence: "It ignored the rule." }] }],
+    scorecard: { passed: 0, failed: 1, unknown: 0, total: 1, evaluated: 1, pass_rate: 0, coverage: 1 }, ...extra };
+}
+// The server admits the run; the session snapshot gets it only later (A8).
+function admitRunLater() {
+  respond = async path => {
+    if (path === "/config") return twoDoorConfig();
+    if (path.endsWith("/run-quote")) return json({ id: "quote", cases: 3, calls: 6, max_cost_nano_usd: 0, expires_at: new Date(Date.now() + 600000).toISOString() });
+    if (path.endsWith("/messages")) return json(run(runID, "artifact-one", { state: "RUNNING", scorecard: undefined, results: [] }), 202);
+    return path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  };
+}
+const publish = (operations: Operation[], extra: Partial<Session["document"]> = {}) => act(async () => {
+  session = { ...session, revision: session.revision + 1, event_cursor: session.event_cursor + 1, operations, document: { ...session.document, ...extra } };
+  snapshot(session);
+});
+
+it("opens Results with focus on its heading when a run started on Tests ends, with no unavailable alert while the snapshot catches up (A8)", async () => {
+  readyTests();
+  harness.params = new URLSearchParams(`session=${session.id}&view=tests`);
+  admitRunLater();
+  await render();
+  await click("Run 3 tests"); await click("Start run");
+  expect(params().get("run")).toBe(runID);
+  expect(container.textContent).not.toContain("selected result is unavailable");
+  const entries = history.length;
+  await publish([run(runID, "artifact-one", { state: "RUNNING", scorecard: undefined, results: [] })]);
+  expect(params().get("view")).toBe("tests");
+  await publish([run(runID, "artifact-one")]); await frame();
+  expect(params().get("view")).toBe("results");
+  expect(params().get("run")).toBe(runID);
+  expect(history.length).toBe(entries);
+  expect(document.activeElement?.tagName).toBe("H2");
+  expect(document.activeElement?.closest('[aria-label="Run results"]')).not.toBeNull();
+  expect(container.textContent).not.toContain("selected result is unavailable");
+  expect(posts()).toHaveLength(1);
+});
+
+it("keeps a user who left the run's view where they are and offers See the result", async () => {
+  readyTests();
+  harness.params = new URLSearchParams(`session=${session.id}&view=tests`);
+  admitRunLater();
+  await render();
+  await click("Run 3 tests"); await click("Start run");
+  await publish([run(runID, "artifact-one", { state: "RUNNING", scorecard: undefined, results: [] })]);
+  await click("Agent");
+  await publish([run(runID, "artifact-one")]); await frame();
+  expect(params().get("view")).toBe("agent");
+  expect(container.querySelector(".vibe-arrival")?.textContent).toContain("Your run finished.");
+  await click("See the result"); await frame();
+  expect(params().get("view")).toBe("results");
+  expect(params().get("run")).toBe(runID);
+  expect(container.querySelector(".vibe-arrival")).toBeNull();
+  expect(document.activeElement?.closest('[aria-label="Run results"]')).not.toBeNull();
+});
+
+it("still reports a run that is missing from the project as unavailable (A8)", async () => {
+  readyTests();
+  harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
+  respond = async path => path === "/config" ? twoDoorConfig() : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  expect(params().get("run")).toBeNull();
+  expect(container.textContent).toContain("The selected result is unavailable in this project.");
+});
+
+it("offers See the result as the primary on Tests after these tests ran, and Run again as secondary", async () => {
+  readyTests();
+  harness.params = new URLSearchParams(`session=${session.id}&view=tests`);
+  respond = async path => path === "/config" ? twoDoorConfig() : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  expect(button("Run 3 tests").className).toContain("vibe-button-primary");
+  expect([...container.querySelectorAll("button")].some(b => b.textContent === "See the result")).toBe(false);
+  await publish([run(runID, "artifact-one")]);
+  expect(button("See the result").className).toContain("vibe-button-primary");
+  expect(button("Run again").className).toContain("vibe-button-secondary");
+  expect([...container.querySelectorAll("button")].some(b => b.textContent === "Run 3 tests")).toBe(false);
+  await click("See the result");
+  expect(params().get("view")).toBe("results");
+  expect(params().get("run")).toBe(runID);
+});
+
+it.each([["build", "Apply change and rerun"], ["test", "Improve and rerun"]] as const)("selects Guide's fix on the %s Agent view with the diff open and the rerun next to it, and runs nothing", async (door, rerun) => {
+  readyTests(door);
+  session.operations = [run(runID, "artifact-one")];
+  harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
+  const fixID = "a8000000-0000-4000-8000-0000000000f1";
+  respond = async path => {
+    if (path === "/config") return twoDoorConfig();
+    if (path.endsWith("/run-quote")) return json({ id: "quote", cases: 3, calls: 6, max_cost_nano_usd: 0, expires_at: new Date(Date.now() + 600000).toISOString() });
+    if (path.endsWith("/messages")) return json({ id: fixID, kind: "message", state: "RUNNING", billing: "RESERVED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] }, 202);
+    return path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  };
+  await render();
+  await click("Help me fix this");
+  expect(posts()[0].body).toMatchObject({ kind: "message", purpose: "suggest_change", baseline_id: runID });
+  expect(params().get("view")).toBe("agent");
+  const v1 = session.document.artifacts[0];
+  await publish([...session.operations, { id: fixID, kind: "message", state: "COMPLETED", billing: "SETTLED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] }], {
+    artifacts: [v1, { ...v1, id: "artifact-two", parent_id: v1.id, accepted: false, agent_prompt: "Original policy. Never promise a refund." }],
+    messages: [{ id: "fix-reply", role: "assistant", content: "Here is a focused change.", operation_id: fixID, artifact_id: "artifact-two" }],
+  });
+  expect(params().get("agent")).toBe("artifact-two");
+  expect(params().get("run")).toBeNull();
+  expect(params().get("view")).toBe("agent");
+  expect([...container.querySelectorAll("button")].some(b => b.textContent === "Review latest version")).toBe(false);
+  const change = container.querySelector<HTMLDetailsElement>('[aria-label="Suggested change"] details')!;
+  expect(change.open).toBe(true);
+  expect(change.textContent).toContain("Never promise a refund.");
+  expect(posts()).toHaveLength(1);
+  await click(rerun);
+  expect(requests.find(r => r.path.endsWith("/run-quote"))?.body).toMatchObject({ kind: "retest", baseline_id: runID, artifact_id: "artifact-two" });
+  expect(dialogNames()).toEqual(["Run the same tests again"]);
+  expect(posts()).toHaveLength(1);
+});
+
+it("leaves the pinned result in place when the user moved to Results before the fix arrived", async () => {
+  readyTests("build");
+  session.operations = [run(runID, "artifact-one")];
+  harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
+  const fixID = "a8000000-0000-4000-8000-0000000000f2";
+  respond = async path => path === "/config" ? twoDoorConfig() : path.endsWith("/messages") ? json({ id: fixID, kind: "message", state: "RUNNING", billing: "RESERVED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] }, 202) : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  await click("Help me fix this");
+  await click("Results");
+  const v1 = session.document.artifacts[0];
+  await publish(session.operations, { artifacts: [v1, { ...v1, id: "artifact-two", parent_id: v1.id, agent_prompt: "Original policy. Never promise a refund." }], messages: [{ id: "fix-reply", role: "assistant", content: "Here is a focused change.", operation_id: fixID, artifact_id: "artifact-two" }] });
+  expect(params().get("view")).toBe("results");
+  expect(params().get("run")).toBe(runID);
+  expect(params().get("agent")).not.toBe("artifact-two");
+  expect(button("Review latest version")).toBeTruthy();
+});
+
+it("names the Build send button by its visible text (E2)", async () => {
+  await enterDoor("build");
+  const send = container.querySelector<HTMLButtonElement>("form button[type=submit]")!;
+  expect(send.hasAttribute("aria-label")).toBe(false);
+  expect(send.textContent).toBe("Build and run 3 tests");
+});
+
+it("keeps the name Send message for the icon-only composer (E2)", async () => {
+  await enterDoor("test");
+  expect(container.querySelector("form button[type=submit]")?.getAttribute("aria-label")).toBe("Send message");
+});
+
+it("shows Starting your project while a door makes the project", async () => {
+  harness.params = new URLSearchParams();
+  const created = deferred<Response>();
+  respond = async (path, options) => {
+    if (path === "/config") return twoDoorConfig();
+    if (path === "/sessions" && options.method === "POST") { await created.promise; const id = JSON.parse(String(options.body)).id; session = { ...session, id, document: { ...session.document, format_version: 1, test_journey: true, evaluation: { id, chat_id: id, door: "test" } } }; return json(session, 201); }
+    return path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  };
+  await render();
+  const door = [...container.querySelectorAll<HTMLButtonElement>(".vibe-entry-doors button")].find(b => b.textContent?.includes("Improve an existing agent"))!;
+  await act(async () => door.click());
+  expect(container.textContent).toContain("Starting your project…");
+  expect(container.textContent).not.toContain("Saving your changes…");
+  await act(async () => { created.resolve(new Response()); await new Promise(resolve => setTimeout(resolve, 0)); });
+  expect(container.textContent).not.toContain("Starting your project…");
+  expect(container.textContent).toContain("Improve an agent you already have.");
+});
+
+it("keeps the Build estimate out of the new-project chooser and shows one h1 there", async () => {
+  await enterDoor("build");
+  expect(shown('[aria-label="Build estimate"]')).toHaveLength(1);
+  await click("New project");
+  expect(container.querySelector('[aria-label="New project choices"]')).not.toBeNull();
+  expect(shown('[aria-label="Build estimate"]')).toHaveLength(0);
+  expect(visibleH1().map(h1 => h1.textContent)).toEqual(["What would you like to evaluate?"]);
+});
+
+it("shows a failed run estimate once", async () => {
+  readyTests();
+  harness.params = new URLSearchParams(`session=${session.id}&view=tests`);
+  respond = async path => path === "/config" ? twoDoorConfig() : path.endsWith("/run-quote") ? json({ error: { code: "unavailable", message: "Estimates are paused." } }, 503) : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  await click("Run 3 tests");
+  expect(container.textContent?.split("Estimates are paused.").length).toBe(2);
+  expect(container.textContent).toContain("Estimate failed: Estimates are paused.");
+  expect(dialogNames()).toEqual([]);
+  expect(posts()).toHaveLength(0);
+});
+
+it("keeps an empty Guide closed from 1280px and opens it once it has a conversation", async () => {
+  vi.stubGlobal("matchMedia", vi.fn((query: string) => ({ matches: query === "(min-width: 1280px)", addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+  readyTests();
+  harness.params = new URLSearchParams(`session=${session.id}&view=tests`);
+  respond = async path => path === "/config" ? twoDoorConfig() : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  const guide = () => container.querySelector('[aria-label="Guide utility"]');
+  expect(guide()).toBeNull();
+  expect(button("Guide").getAttribute("aria-pressed")).toBe("false");
+  await publish(session.operations, { messages: [{ id: "reply", role: "assistant", content: "These tests cover your rules.", artifact_id: "artifact-one" }] });
+  expect(guide()).not.toBeNull();
+  expect(posts()).toHaveLength(0);
+});
+
+it("moves focus into each Improve source panel and back to its source button (D3)", async () => {
+  await enterDoor("test");
+  await click("Try my saved instructions");
+  expect(document.activeElement?.id).toBe("vibe-instructions-source");
+  await click("Back to conversation");
+  expect(document.activeElement).toBe(button("Try my saved instructions"));
+  await click("Test replies from my app");
+  expect(document.activeElement?.getAttribute("aria-label")).toBe("Recorded replies");
+  await click("Back");
+  expect(document.activeElement).toBe(button("Test replies from my app"));
+});
+
+it("returns focus to the project title from the chooser when the project has no composer (D3)", async () => {
+  readyTests();
+  respond = async path => path === "/config" ? twoDoorConfig() : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  expect(document.getElementById("vibe-message")).toBeNull();
+  await click("New project");
+  await click("Back to your project"); await frame();
+  expect(document.activeElement).toBe(container.querySelector(".vibe-project-header h1"));
 });

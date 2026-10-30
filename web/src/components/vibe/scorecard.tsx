@@ -153,6 +153,7 @@ export function VibeScorecard({
         <h2
           className="vibe-results-outcome"
           aria-live="polite"
+          tabIndex={-1}
         >
           {testJourney && done && !stopped && score.total > 0 && !regraded
             ? `${score.passed} of ${score.total} tests passed`

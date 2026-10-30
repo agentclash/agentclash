@@ -1,7 +1,9 @@
 // Flow economy of each door path, from the entry to the first test result (M2), with a
-// stateful fake (no API, no model). Budgets equal today's baseline (d2248411): they stop
+// stateful fake (no API, no model). Budgets equal the measured counts: they stop
 // regressions. Each test writes flow-<path>.json (actions, milestones, decisions, writes,
 // dialogs) to its output folder. See ~/.claude/plans/vibe-evals-redesign/verification.md, A, C and D.
+// PR 1: Tests and Results open by themselves when the tests or the result are ready (A7), so
+// no path clicks a tab to see its first result.
 import { expect, test, type Page } from "@playwright/test";
 import { agentReply, description, expectation, fakeVibe, instructions, packFile, transcript, type Fake } from "./entry-fake";
 import { flowMeter, type FlowMeter } from "./flow-meter";
@@ -10,15 +12,19 @@ import { composer, doorButton, doorReady, entryReady, sendButton, sourceButton }
 test.use({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
 test.describe.configure({ timeout: 120_000 });
 
-// unavailable: "The selected result is unavailable in this project." alerts after a run with no error.
-// Known defect A8 (~/.claude/plans/vibe-evals-redesign.md section 8.2): held at today's count per path.
-type Budget = { clicks: number; texts: number; files: number; decisions: number; unavailable: number };
-// Enabled main-zone controls in the first viewport at each decision point, measured today (1440, light).
-const controlBudget: Record<string, number> = { entry: 3, "build start": 7, "improve start": 8, "imported tests": 12, cost: 4 };
+type Budget = { clicks: number; texts: number; files: number; decisions: number };
+// Enabled main-zone controls in the first viewport at each decision point, measured (1440, light).
+// "imported tests" went from 12 to 9 in PR 1: an empty Guide column no longer opens by default.
+const controlBudget: Record<string, number> = { entry: 3, "build start": 7, "improve start": 8, "imported tests": 9, cost: 4 };
 const tab = (page: Page, name: "Agent" | "Tests" | "Results") => page.getByRole("tab", { name, exact: true });
 const runResults = (page: Page) => page.getByRole("article", { name: "Run results" });
 const runDone = (page: Page) => expect(page.locator(".vibe-project-header")).toContainText("Run 1: Completed", { timeout: 30_000 });
 const startRun = (page: Page) => page.getByRole("dialog").getByRole("button", { name: "Start run", exact: true });
+// The result comes to the user: Results opens by itself when the run ends.
+async function resultShown(page: Page) {
+  await expect(tab(page, "Results")).toHaveAttribute("aria-selected", "true");
+  await expect(runResults(page)).toBeVisible();
+}
 
 async function open(page: Page, name: string, options: { keyboardOnly?: boolean } = {}) {
   const fake = await fakeVibe(page);
@@ -51,7 +57,8 @@ async function finish(page: Page, fake: Fake, flow: FlowMeter, budget: Budget) {
     expect(d.mainEnabled, `enabled main controls at "${d.at}"`).toBeLessThanOrEqual(controlBudget[d.at]);
   }
   expect(record.mostDialogs, "dialogs open at the same time").toBeLessThanOrEqual(1);
-  expect(unavailable, "known defect A8: unavailable-result alerts, held at baseline").toBe(budget.unavailable);
+  // A8 (fixed in PR 1): a run with no error shows no "selected result is unavailable" alert.
+  expect(unavailable, "A8: unavailable-result alerts").toBe(0);
   // A5: nothing model-bound before the explicit consent, and one project per door choice.
   expect(record.writesBeforeConsent.filter(w => w.path.endsWith("/messages"))).toEqual([]);
   expect(record.writesBeforeConsent.filter(w => w.path === "/sessions").length).toBeLessThanOrEqual(1);
@@ -59,7 +66,7 @@ async function finish(page: Page, fake: Fake, flow: FlowMeter, budget: Budget) {
   expect(fake.errors).toEqual([]);
 }
 
-test("Build reaches its first test result in 3 clicks and 1 text", async ({ page }) => {
+test("Build reaches its first test result in 2 clicks and 1 text", async ({ page }) => {
   const { fake, flow } = await open(page, "build");
   await flow.decision("entry", [doorButton(page, "build"), doorButton(page, "improve")]);
   await flow.click(doorButton(page, "build"), "Build door");
@@ -71,15 +78,14 @@ test("Build reaches its first test result in 3 clicks and 1 text", async ({ page
   flow.consent();
   await flow.click(sendButton(page), "Build and run 3 tests");
   await runDone(page);
-  await flow.click(tab(page, "Results"), "Results tab");
-  await expect(runResults(page)).toBeVisible();
+  await resultShown(page);
   await flow.mark("M2");
   await firstAnswer(page, flow);
-  await finish(page, fake, flow, { clicks: 3, texts: 1, files: 0, decisions: 2, unavailable: 0 });
+  await finish(page, fake, flow, { clicks: 2, texts: 1, files: 0, decisions: 2 });
 });
 
-test("Improve with saved instructions reaches its first test result in 7 clicks and 1 text", async ({ page }) => {
-  const { fake, flow } = await open(page, "improve-instructions");
+// The saved-instructions path to the first result. The tests and the result open by themselves.
+async function instructionsToResult(page: Page, flow: FlowMeter) {
   await flow.decision("entry", [doorButton(page, "build"), doorButton(page, "improve")]);
   await flow.click(doorButton(page, "improve"), "Improve door");
   await doorReady(page, "improve");
@@ -90,19 +96,54 @@ test("Improve with saved instructions reaches its first test result in 7 clicks 
   flow.consent();
   await flow.click(page.getByRole("button", { name: "Prepare tests" }), "Prepare tests");
   await expect(page.getByText("These are example messages I’ll send to your agent.").first()).toBeVisible({ timeout: 30_000 });
-  await flow.click(tab(page, "Tests"), "Tests tab");
+  await expect(tab(page, "Tests")).toHaveAttribute("aria-selected", "true");
   await flow.click(page.getByRole("button", { name: "Run 3 tests", exact: true }), "Run 3 tests");
   await flow.decision("cost", [startRun(page)]);
   await flow.click(startRun(page), "Start run");
   await runDone(page);
-  await flow.click(tab(page, "Results"), "Results tab");
-  await expect(runResults(page)).toBeVisible();
+  await resultShown(page);
   await flow.mark("M2");
+}
+
+test("Improve with saved instructions reaches its first test result in 5 clicks and 1 text", async ({ page }) => {
+  const { fake, flow } = await open(page, "improve-instructions");
+  await instructionsToResult(page, flow);
   await firstAnswer(page, flow);
-  await finish(page, fake, flow, { clicks: 7, texts: 1, files: 0, decisions: 2, unavailable: 1 });
+  await finish(page, fake, flow, { clicks: 5, texts: 1, files: 0, decisions: 2 });
 });
 
-test("Improve with recorded replies reaches its first test result in 6 clicks and 2 texts", async ({ page }) => {
+// A1f: from the first failed result to the compared result of Guide's fix. The fix is selected
+// by itself and shows with its rerun on the Agent view; the cost dialog stays.
+test("Improve fix loop reaches the compared result in 3 clicks", async ({ page }) => {
+  const { fake, flow } = await open(page, "improve-fix");
+  await instructionsToResult(page, flow);
+  const start = { ...(await flow.mark("M2")) };
+  await flow.click(runResults(page).getByRole("button", { name: "Help me fix this", exact: true }), "Help me fix this");
+  const rerun = page.getByRole("button", { name: "Improve and rerun", exact: true });
+  await expect(rerun).toBeVisible({ timeout: 30_000 });
+  await expect(tab(page, "Agent")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Instruction changes", { exact: true })).toContainText("Decline every return after 30 days.");
+  await expect(page.getByRole("button", { name: "Review latest version", exact: true })).toHaveCount(0);
+  const runs = () => fake.posts.filter(post => post.path.endsWith("/messages") && ["check", "retest"].includes(post.body.kind));
+  // Nothing runs before the cost dialog: only the first run so far.
+  expect(runs()).toHaveLength(1);
+  await flow.click(rerun, "Improve and rerun");
+  await flow.decision("cost", [startRun(page)]);
+  await flow.click(startRun(page), "Start run");
+  await expect(page.locator(".vibe-project-header")).toContainText("Run 2: Completed", { timeout: 30_000 });
+  await resultShown(page);
+  await expect(runResults(page)).toContainText("3 passed · 0 failed");
+  const end = await flow.mark("F1");
+  const record = await flow.save();
+  expect(end.clicks - start.clicks, "A1f: clicks in the fix loop").toBeLessThanOrEqual(3);
+  expect(runs().map(post => [post.body.kind, post.body.artifact_id])).toEqual([["check", "v1"], ["retest", expect.stringMatching(/-fix$/)]]);
+  expect(record.mostDialogs).toBeLessThanOrEqual(1);
+  expect(await page.getByRole("alert").filter({ hasText: "selected result is unavailable" }).count()).toBe(0);
+  expect(fake.unknown).toEqual([]);
+  expect(fake.errors).toEqual([]);
+});
+
+test("Improve with recorded replies reaches its first test result in 5 clicks and 2 texts", async ({ page }) => {
   const { fake, flow } = await open(page, "improve-recorded");
   await flow.decision("entry", [doorButton(page, "build"), doorButton(page, "improve")]);
   await flow.click(doorButton(page, "improve"), "Improve door");
@@ -118,14 +159,13 @@ test("Improve with recorded replies reaches its first test result in 6 clicks an
   flow.consent();
   await flow.click(startRun(page), "Start run");
   await runDone(page);
-  await flow.click(tab(page, "Results"), "Results tab");
-  await expect(runResults(page)).toBeVisible();
+  await resultShown(page);
   await flow.mark("M2");
   // Recorded replies come from the user's app, so this path has no model-written answer (no M1).
-  await finish(page, fake, flow, { clicks: 6, texts: 2, files: 0, decisions: 2, unavailable: 1 });
+  await finish(page, fake, flow, { clicks: 5, texts: 2, files: 0, decisions: 2 });
 });
 
-test("Improve with a test pack import reaches its first test result in 8 clicks, 1 file and 1 text", async ({ page }) => {
+test("Improve with a test pack import reaches its first test result in 7 clicks, 1 file and 1 text", async ({ page }) => {
   const { fake, flow } = await open(page, "improve-import");
   await flow.decision("entry", [doorButton(page, "build"), doorButton(page, "improve")]);
   await flow.click(doorButton(page, "improve"), "Improve door");
@@ -145,11 +185,10 @@ test("Improve with a test pack import reaches its first test result in 8 clicks,
   flow.consent();
   await flow.click(startRun(page), "Start run");
   await runDone(page);
-  await flow.click(tab(page, "Results"), "Results tab");
-  await expect(runResults(page)).toBeVisible();
+  await resultShown(page);
   await flow.mark("M2");
   await firstAnswer(page, flow);
-  await finish(page, fake, flow, { clicks: 8, texts: 1, files: 1, decisions: 3, unavailable: 1 });
+  await finish(page, fake, flow, { clicks: 7, texts: 1, files: 1, decisions: 3 });
 });
 
 // D1: each door reaches its first submission with the keyboard only (the meter rejects pointer actions).

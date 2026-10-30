@@ -13,7 +13,8 @@ export const entryCopy = {
   doorHeadings: { build: "What would you like help with?", improve: "Improve an agent you already have." },
   sources: { instructions: "Try my saved instructions", recorded: "Test replies from my app", import: "Import a test pack" },
   composer: "Message Vibe Evals",
-  send: "Send message",
+  // The Build start send button. Its name is its visible text (E2, WCAG 2.5.3).
+  send: "Build and run 3 tests",
 } as const;
 
 export const entryHeading = (page: Page) => page.getByRole("heading", { name: entryCopy.heading });
@@ -43,6 +44,21 @@ export async function chooseDoor(page: Page, door: Door) {
 /** The start screen of a door is shown. */
 export async function doorReady(page: Page, door: Door, timeout?: number) {
   await expect(doorHeading(page, door)).toBeVisible({ timeout });
+}
+
+/**
+ * Shows a project view. Since PR 1, Results (after a run) and Tests (after the first test
+ * preparation) can open by themselves. When `finished` names a run ("Run 1"), wait until the
+ * page shows that run as ended and the view settles; then click the tab only when it is not selected.
+ */
+export async function showView(page: Page, name: "Agent" | "Tests" | "Results", finished?: string) {
+  if (finished) {
+    await expect(page.locator(".vibe-project-header")).toContainText(new RegExp(`${finished}: (Completed|Failed|Stopped|Partly complete|Expired)`), { timeout: 30_000 });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  }
+  const tab = page.getByRole("tab", { name, exact: true });
+  if (await tab.getAttribute("aria-selected") !== "true") await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
 }
 
 /** Chooses a source on the Improve start screen. For "import", pass the file to choose. */

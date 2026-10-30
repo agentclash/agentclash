@@ -14,6 +14,9 @@ import { VibeButton } from "./vibe-button";
 
 export const exampleAgentDescription = `My agent helps customers with returns. Unopened items can be returned within 30 days. Opened items and purchases older than 30 days aren't eligible. It should ask for missing purchase age or item condition, and never claim it has processed a refund.`;
 
+// The action that tests a changed version against its parent's result.
+export const rerunLabel = (buildJourney: boolean) => buildJourney ? "Apply change and rerun" : "Improve and rerun";
+
 const instructionsHelp =
   "Show me the exact instructions used by the AI agent in my app, and which model it uses. Include its existing rules. Do not rewrite them. I want to test those instructions in Vibe Evals.";
 
@@ -31,6 +34,7 @@ export function TestSuitePanel({
   blocked,
   comparison,
   onRun,
+  onResult,
   onEdit,
   onDirty,
   onSave, onOriginal,
@@ -53,6 +57,8 @@ export function TestSuitePanel({
   blocked: boolean;
   comparison: boolean;
   onRun: () => void;
+  // Set when these tests already ran: the primary opens that result and running again is secondary.
+  onResult?: () => void;
   onEdit: (fields: Record<string, unknown>) => Promise<boolean>;
   onDirty: (dirty: boolean) => void;
   onSave: () => void;
@@ -90,6 +96,7 @@ export function TestSuitePanel({
   const cases = tests;
   const changes = changedCases(tests, draft);
   const ready = !!artifact.agent_prompt.trim();
+  const ran = ready && !!onResult;
   const added = parent ? tests.filter(test => !suiteCases(parent.blueprint).some(old => old.key===test.key)).length : 0;
   const validationBlocked = !!artifact.validation && artifact.validation.status !== "supported";
   if (artifact.unavailable_reason || !cases.length) return <section className="vibe-panel p-4 space-y-3"><h2>Pack kept · advanced editor needed</h2><p className="text-sm vibe-muted">{artifact.unavailable_reason || "These tests need the full pack builder."} No tests were removed or run.</p>{artifact.original&&onOriginal?<VibeButton onClick={onOriginal}>Download original {artifact.original.filename}</VibeButton>:<VibeButton onClick={()=>downloadJSON("pack-definition.json",artifact.blueprint)}>Download definition</VibeButton>}<VibeButton onClick={onSave}>Save and open advanced editor</VibeButton></section>;
@@ -120,16 +127,17 @@ export function TestSuitePanel({
         </div>
         {!agentOpen && !editing && <div className="vibe-tests-actions">
           <div className="flex flex-wrap items-center gap-2">
+            {ran && <VibeButton variant={primary ? "primary" : "secondary"} onClick={onResult}>See the result<ArrowRight /></VibeButton>}
             <VibeButton
-              variant={primary ? "primary" : "secondary"}
+              variant={primary && !ran ? "primary" : "secondary"}
               disabled={busy || blocked || validationBlocked || (inferenceUnavailable && (ready || !preparingOnly))}
               onClick={() => (preparingOnly && !ready ? onSave() : ready ? onRun() : buildJourney && rules.length ? void onEdit({ artifact_id: artifact.id, build_from_policy: true }) : setAgentOpen(true))}
             >
-              {ready
+              {ran ? "Run again" : ready
                 ? pendingPolicy
                   ? "Run previous tests"
                   : comparison
-                  ? buildJourney ? "Apply change and rerun" : "Improve and rerun"
+                  ? rerunLabel(buildJourney)
                   : buildJourney && parent ? "Update and run" : `Run ${cases.length} ${cases.length === 1 ? "test" : "tests"}`
                 : preparingOnly ? "Keep these tests" : buildJourney && rules.length ? "Build from saved rules" : "Add your agent"}
               <ArrowRight />
