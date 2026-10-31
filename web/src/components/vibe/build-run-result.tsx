@@ -99,6 +99,6 @@ export function BuildRunResult({ session, operation, artifact, current, first, b
   </article>;
 }
 
-export function BuildAdmissionError({ message, busy, onRun }: { message: string; busy: boolean; onRun: () => void }) {
-  return <section className="vibe-build-result" aria-label="Build needs a run"><h2>Your agent is saved</h2><p role="alert">{message}</p><VibeButton variant="primary" disabled={busy} onClick={onRun}>Run 3 tests</VibeButton></section>;
+export function BuildAdmissionError({ message, busy, onRun, notice }: { notice?: import("react").ReactNode; message: string; busy: boolean; onRun: () => void }) {
+  return <section className="vibe-build-result" aria-label="Build needs a run"><h2>Your agent is saved</h2><p role="alert">{message}</p><VibeButton variant="primary" disabled={busy} onClick={onRun}>Run 3 tests</VibeButton>{notice}</section>;
 }

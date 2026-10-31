@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { fakeVibe } from "./entry-fake";
 import { defaultModels } from "../../src/lib/vibe";
-import { composer, doorButton, doorHeading, entryHeading, workspacePicker } from "./entry-model";
+import { composer, doorButton, doorHeading, entryHeading, workspacePicker, sendButton } from "./entry-model";
 
 test.describe("before hydration", () => {
   test.use({ javaScriptEnabled: false });
@@ -126,8 +126,9 @@ test("offline retry preserves a restored unsent draft and submits nothing", asyn
   await expect(page.getByRole("alert").filter({ hasText: "Couldn’t connect" })).toHaveCount(0);
   expect(configRequests).toBe(2);
   await expect(draft).toHaveValue("Keep this unsent draft.");
-  // Reconnection may price the unsent draft, but never submits or runs it.
-  await expect.poll(() => quotes.length).toBe(1);
+  // The start screen prices only an explicit send. Reconnection keeps it unsent.
+  await expect(sendButton(page)).toBeEnabled();
+  expect(quotes).toEqual([]);
   expect(writes).toEqual([]);
   expect(errors).toEqual([]);
 });

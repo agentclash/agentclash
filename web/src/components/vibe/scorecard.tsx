@@ -32,7 +32,7 @@ export function VibeScorecard({
   busy,
   testJourney = false,
   buildJourney = false,
-  more,
+  more, actionNotice,
 }: {
   headingLevel?: 1 | 2;
   findingFirst?: boolean;
@@ -53,7 +53,7 @@ export function VibeScorecard({
   busy: boolean;
   testJourney?: boolean;
   buildJourney?: boolean;
-  more?: ReactNode;
+  more?: ReactNode; actionNotice?: ReactNode;
 }) {
   const Heading = headingLevel === 1 ? "h1" : "h2";
   const [filter,setFilter]=useState("all");
@@ -165,6 +165,7 @@ export function VibeScorecard({
     {score.failed > 0 ? <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={() => onImprove()}><Lightbulb aria-hidden="true" />Suggest a fix</VibeButton>
       : onSave && !incomplete && !stopped ? <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onSave}><Bookmark aria-hidden="true" />Keep these tests</VibeButton>
       : <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onRetest}>Run tests again</VibeButton>}
+    {actionNotice}
     {remaining.length > 0 && <details className="vibe-other-results"><summary>{leading ? "Other results" : "Results"} · {remaining.length}</summary>
       {remaining.map(result => <CaseEvidence key={`${operation.id}:${result.case_key}`} summary={result} onAsk={onAskCase ? () => onAskCase(result.case_key) : undefined} concise evidenceVersion={evidenceVersion} load={loadEvidence} onDispute={onDispute} onRegrade={onRegrade} origin={operation.source?.kind} busy={busy} />)}
     </details>}
@@ -283,6 +284,7 @@ export function VibeScorecard({
         </div>
       )}
 
+      {actionNotice}
       {done && testJourney && (
         <div className="flex flex-wrap items-center gap-2">
           {score.failed > 0 && (

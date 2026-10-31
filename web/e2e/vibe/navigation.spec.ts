@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+import { project } from "./entry-fake";
 import { defaultModels, type Session } from "../../src/lib/vibe";
-import { chooseDoor, composer, doorButton, doorReady, entryHeading, improveSource, newProjectChoices, projectStartHeading, sourceButton, otherResults, improveOptions } from "./entry-model";
+import { chooseDoor, composer, doorButton, doorReady, entryHeading, improveSource, newProjectChoices, projectStartHeading, sourceButton, otherResults, improveOptions, startComposer, startScreen, improvePrimary, projectReady } from "./entry-model";
 
 function evaluation(id: string): Session {
   return { id, revision: 1, event_cursor: 1, anonymous: true, operations: [],
@@ -76,10 +77,10 @@ async function serve(page: Page, many = false, prototypes = false) {
       if (path.endsWith("/sessions")) {
         const body = request.postDataJSON();
         posts.push({ path, body });
-        const created = evaluation(body.id);
-        created.document.evaluation!.door = body.door;
+        const created = project(body.id, body.door, body.workspace_id);
+        created.title = body.title;
         sessions.set(created.id, created);
-        return route.fulfill({ headers, json: created });
+        return route.fulfill({ status: 201, headers, json: created });
       }
       if (path.endsWith("/import")) {
         posts.push({ path, body: { file: request.postData() || "" } });
@@ -98,8 +99,8 @@ async function serve(page: Page, many = false, prototypes = false) {
   // The reused development server also waits for AuthKit's initial session check.
   if (prototypes) await expect(page.getByRole("textbox", { name: "Message your agent", exact: true })).toBeVisible({ timeout: 15_000 });
   else {
-    await expect(page.locator(".vibe-project-header h1")).toBeVisible({ timeout: 15_000 });
-    await expect(projectStartHeading(page, "improve")).toBeVisible();
+    await expect(page.locator(".vibe-project-header")).toHaveCount(0);
+    await expect(projectStartHeading(page, "improve")).toBeVisible({ timeout: 15_000 });
     await expect(composer(page)).toBeVisible();
   }
   return { first, second, sessions, posts, errors };
@@ -192,10 +193,10 @@ test("sidebar creation and cancellation preserve the draft and never start a run
   await expect(entryHeading(page)).toBeVisible();
   await page.getByRole("button", { name: "Back to your project" }).click();
   await expect(draft).toHaveValue("Keep this unsent description.");
-  await expect(draft).toBeFocused();
+  await expect(projectStartHeading(page, "improve")).toBeFocused();
   await page.getByRole("button", { name: "New project", exact: true }).click();
   await page.keyboard.press("Escape");
-  await expect(draft).toBeFocused();
+  await expect(projectStartHeading(page, "improve")).toBeFocused();
   expect(control.posts).toHaveLength(0);
   await page.getByRole("button", { name: "New project", exact: true }).click();
   await chooseDoor(page, "improve");
@@ -216,16 +217,16 @@ test("sidebar creation and cancellation preserve the draft and never start a run
 test("navigation preserves active context while another evaluation completes", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   const control = await serve(page);
-  const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
-  await composer.fill("First draft");
+  const draft = composer(page);
+  await draft.fill("First draft");
   await page.locator('[data-evaluation-id="second"]').click();
   await expect(page.locator('[data-evaluation-id="second"]')).toContainText("Running");
   await page.getByRole("button", { name: "New project", exact: true }).click();
   await expect(doorButton(page, "improve")).toBeEnabled();
   await page.getByRole("button", { name: "Back to your project" }).click();
-  await composer.fill("Second draft");
+  await draft.fill("Second draft");
   await page.locator('[data-evaluation-id="first"]').click();
-  await expect(composer).toHaveValue("First draft");
+  await expect(draft).toHaveValue("First draft");
   control.second.operations[0].state = "COMPLETED";
   control.second.document.messages.push({ id: "reply", role: "assistant", content: "Which support policy should I use?", operation_id: "running" });
   control.second.event_cursor!++;
@@ -233,7 +234,7 @@ test("navigation preserves active context while another evaluation completes", a
   await expect(page.getByText("Which support policy should I use?", { exact: true })).toHaveCount(0);
   await page.locator('[data-evaluation-id="second"]').click();
   await expect(page.getByText("Which support policy should I use?", { exact: true })).toBeVisible();
-  await expect(composer).toHaveValue("Second draft");
+  await expect(draft).toHaveValue("Second draft");
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
 });
@@ -256,7 +257,8 @@ test("drawer supports keyboard dismissal, focus return and source selection on s
   await expect(entryHeading(page)).toBeFocused();
   await page.getByRole("button", { name: "Back to your project" }).click();
   await improveSource(page, "instructions");
-  await expect(projectStartHeading(page, "improve")).toBeHidden();
+  await expect(sourceButton(page, "instructions")).toHaveAttribute("aria-checked", "true");
+  await expect(startComposer(page, "improve")).toBeVisible();
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
 });
@@ -267,16 +269,14 @@ test("entry, context label and composer fit mobile, desktop and zoom-sized layou
     await page.setViewportSize({ width, height: width === 640 ? 450 : 900 });
     await expect(projectStartHeading(page, "improve")).toBeVisible();
     await expect(sourceButton(page, "instructions")).toBeVisible();
-    const dock = page.getByTestId("vibe-composer-dock");
-    await expect(dock).toBeVisible();
-    await expect.poll(async () => {
-      const box = await dock.boundingBox();
-      return box ? box.y + box.height - await page.evaluate(() => innerHeight) : Infinity;
-    }).toBeLessThanOrEqual(1);
+    await expect(page.getByTestId("vibe-composer-dock")).toHaveCount(0);
+    await expect(startScreen(page).locator("form")).toBeVisible();
+    await improvePrimary(page, "instructions").scrollIntoViewIfNeeded();
+    await expect(improvePrimary(page, "instructions")).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const input = composer(page);
     await input.fill("A long description ".repeat(120));
-    await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeVisible();
+    await expect(improvePrimary(page, "instructions")).toBeVisible();
     expect((await input.boundingBox())!.height).toBeLessThanOrEqual(240);
     await input.fill("");
   }
@@ -308,8 +308,8 @@ test("plain-language source choices explain test packs and let an empty choice c
 test("a failed import stays in Improve and clears when returning to the chooser", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 740 });
   const control = await serve(page);
-  await page.locator('input[type="file"]').setInputFiles({ name: "broken.json", mimeType: "application/json", buffer: Buffer.from("{") });
-  await expect(page.getByRole("alert").filter({ hasText: "Couldn’t import this file" })).toBeVisible();
+  await improveSource(page, "import", { name: "broken.json", mimeType: "application/json", buffer: Buffer.from("{") });
+  await expect(page.getByRole("alert").filter({ hasText: "Couldn’t confirm the saved input." })).toBeVisible();
   await page.getByRole("button", { name: "Open projects", exact: true }).click();
   const drawer = page.getByRole("dialog", { name: "Your projects", exact: true });
   await expect(drawer).toBeVisible();
@@ -317,7 +317,9 @@ test("a failed import stays in Improve and clears when returning to the chooser"
   await expect(drawer).toBeHidden();
   await expect(entryHeading(page)).toBeFocused();
   await expect(newProjectChoices(page, false)).toBeVisible();
-  await expect(page.getByRole("alert").filter({ hasText: "Couldn’t import this file" })).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: "Couldn’t confirm the saved input." })).toHaveCount(0);
+  await page.getByRole("button", { name: "Back to your project", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Couldn’t confirm the saved input." })).toBeVisible();
   expect(control.posts.map(post => post.path)).toEqual(["/v1/vibe/sessions/first/import"]);
   expect(control.errors).toEqual([]);
 });
@@ -931,6 +933,7 @@ test("Improve import keeps instructions in Tests and requests a price only on Ru
   const fake = await fakeVibe(page);
   await page.goto("/vibe-evals"); await entryReady(page);
   await chooseDoor(page, "improve"); await improveSource(page, "import", packFile);
+  await projectReady(page);
   const tests = page.getByRole("region", { name: "Your tests", exact: true });
   await expect(tests.getByRole("textbox", { name: "Agent instructions", exact: true })).toBeVisible();
   await expect(tests.getByRole("button", { name: "Create an agent", exact: true })).toHaveCount(0);

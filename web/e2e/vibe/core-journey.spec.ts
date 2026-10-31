@@ -1,5 +1,6 @@
-import { resultCopy } from "./entry-model";
+import { resultCopy, entryReady, chooseDoor, describeInChat, guideComposer, sendButton, projectReady, expectProjectNavigation, confirmRun } from "./entry-model";
 import { expect, test } from "@playwright/test";
+import { project, runQuote } from "./entry-fake";
 import type { Artifact, Operation, Session } from "../../src/lib/vibe";
 
 test.use({ video: { mode: "on", size: { width: 1440, height: 960 } } });
@@ -40,6 +41,8 @@ for (const mobile of [false, true]) {
       operations: [],
     };
     const requests: Record<string, unknown>[] = [];
+    let quoteID = "";
+    let quotes = 0;
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
@@ -98,6 +101,10 @@ for (const mobile of [false, true]) {
           defaults: models,
           models: [{ id: models.target, name: "Fixture (free)" }],
         });
+      if (req.method() === "POST" && path.endsWith("/run-quote")) {
+        quoteID = `core-quote-${++quotes}`;
+        return send(runQuote(quoteID, 0));
+      }
       if (path.endsWith("/events"))
         return route.fulfill({
           headers,
@@ -112,8 +119,10 @@ for (const mobile of [false, true]) {
               (c) => c.case_key === new URL(req.url()).searchParams.get("key"),
             ),
         );
+      if (req.method() === "GET" && path.endsWith("/sessions")) return send(state.id ? [snapshot()] : []);
       if (req.method() === "POST" && path.endsWith("/sessions")) {
-        state.id = req.postDataJSON().id;
+        const body = req.postDataJSON();
+        Object.assign(state, project(body.id, body.door, body.workspace_id, models), { title: body.title });
         return send(snapshot(), 201);
       }
       if (req.method() === "PATCH") {
@@ -194,6 +203,7 @@ for (const mobile of [false, true]) {
           );
         }
         expect(["check", "retest"]).toContain(body.kind);
+        expect(body.run_quote_id).toBe(quoteID);
         const artifact = state.document.artifacts.at(-1)!;
         expect(artifact.blueprint).toEqual(blueprint);
         expect(artifact.agent_prompt).not.toBe("");
@@ -250,11 +260,11 @@ for (const mobile of [false, true]) {
       return send(snapshot());
     });
     await page.goto("/vibe-evals");
-    await expect(
-      page.getByRole("heading", { name: "What should your agent do?" }),
-    ).toBeVisible();
+    await entryReady(page);
+    await chooseDoor(page, "improve");
+    await describeInChat(page);
     await expect(page.getByRole("tab")).toHaveCount(0);
-    const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
+    const composer = guideComposer(page);
     await composer.fill(brief);
     await composer.press("Shift+Enter");
     await expect(composer).toHaveValue(brief + "\n");
@@ -264,10 +274,11 @@ for (const mobile of [false, true]) {
     await expect(
       page.getByRole("button", { name: "Add your agent's instructions", exact: true }),
     ).toHaveCount(0);
-    await expect(
-      page.getByRole("status").filter({ hasText: /Sending your message/ }),
-    ).toBeVisible();
+    const sending = sendButton(page, "chat");
+    await expect(sending).toHaveAttribute("aria-busy", "true");
+    await expect(sending).toBeDisabled();
     releasePreparation();
+    await projectReady(page);
     await expect(
       page.getByRole("heading", { name: "3 tests are ready" }),
     ).toBeVisible();
@@ -288,7 +299,8 @@ for (const mobile of [false, true]) {
     await tests.getByRole("button", { name: "Add your agent's instructions" }).click();
     expect(requests).toHaveLength(1);
     await tests.getByRole("button", { name: "Run 3 tests" }).click();
-    await page.getByRole("button", { name: "View latest results", exact: true }).click();
+    await confirmRun(page, "$0.00");
+    await page.getByRole("tab", { name: "Results", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: resultCopy.headline(2, 3) }),
     ).toBeVisible();
@@ -299,35 +311,47 @@ for (const mobile of [false, true]) {
         })
         .first(),
     ).toBeVisible();
+    const more = page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: /^More$/ });
+    await expect(more).toHaveCount(1);
+    await expect(page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: /^Other results · 2$/ })).toBeVisible();
+    await more.click();
+    await page.getByRole("button", { name: "Ask about this result", exact: true }).click();
+    await page.getByRole("button", { name: "Close Guide", exact: true }).click();
     await page.getByRole("button", { name: "Suggest a fix" }).click();
+    await expect(page.getByLabel("Instruction changes")).toBeVisible();
+    await page.getByRole("tab", { name: "Tests", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "Ready to test the fix" }),
     ).toBeVisible();
     expect(state.document.artifacts.at(-1)!.accepted).toBe(false);
-    await page
-      .locator("summary")
-      .filter({ hasText: "Review the instruction change" })
-      .click();
+    await page.getByRole("tab", { name: "Agent", exact: true }).click();
     await expect(
       page.getByLabel("Instruction changes"),
     ).toBeVisible();
+    if (!(await composer.isVisible())) await page.getByRole("button", { name: "Guide", exact: true }).click();
     await composer.fill("let's drink vodka");
     await composer.press("Enter");
     await expect(page.getByText("Taking a break? Your tests will be here when you’re ready.")).toBeVisible();
     expect(state.document.artifacts).toHaveLength(3);
     await expect(page.getByRole("heading", { name: "Ready to test the fix" })).not.toBeVisible();
+    const casual = page.locator('[data-message-id="casual-reply"]');
+    await expect(casual.getByRole("heading", { name: "Ready to test the fix" })).not.toBeVisible();
+    await expect(casual.locator('[data-proposal-id]')).toHaveCount(0);
+    const owner = page.locator('[data-message-id="reply-fixed"]');
+    await expect(owner).toContainText("Review the change, then test it.");
+    await expect(owner).not.toContainText("Taking a break?");
     await composer.scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("casual-chat.png") });
-    await page.locator("summary").filter({ hasText: /^Review the suggested fix$/ }).click();
+    if (await page.getByRole("button", { name: "Close Guide", exact: true }).isVisible()) await page.getByRole("button", { name: "Close Guide", exact: true }).click();
+    await page.getByRole("tab", { name: "Tests", exact: true }).click();
     const proposal = page.getByRole("region", {name:"Your tests",exact:true});
     await expect(proposal).toBeVisible();
     await expect(proposal).toHaveAttribute("data-proposal-id", "fixed");
-    const owner = page.locator('[data-message-id="reply-fixed"]');
-    await expect(owner).not.toContainText("Taking a break?");
-    await page.locator("summary").filter({ hasText: /^Review the instruction change$/ }).click();
+    await page.getByRole("tab", { name: "Agent", exact: true }).click();
     await page.getByLabel("Instruction changes").scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("instruction-diff.png") });
     await page.getByRole("button", { name: "Test this change", exact: true }).click();
+    await confirmRun(page, "$0.00");
     await page.getByRole("tab", { name: "Results", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: resultCopy.headline(3, 3) }),
@@ -353,15 +377,16 @@ for (const mobile of [false, true]) {
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
-    const navigation = await page
-      .getByRole("tablist", { name: "Workspace views" })
-      .boundingBox();
-    const header = await page.locator("header").boundingBox();
-    expect(
-      Math.abs(
-        navigation!.x + navigation!.width / 2 - header!.x - header!.width / 2,
-      ),
-    ).toBeLessThan(2);
+    await expectProjectNavigation(page);
+    const allResults = page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: /^Results · 3$/ });
+    await expect(allResults).toBeVisible();
+    await expect(more).toHaveCount(1);
+    await allResults.click();
+    const firstResult = page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: inputs[0] });
+    await expect(firstResult).toBeVisible();
+    await firstResult.click();
+    // The fixture's reply repeats the expectation, so the text shows under "It replied" and "It should".
+    await expect(page.getByRole("article", { name: "Run results" }).getByText(expected[0], { exact: true }).first()).toBeVisible();
     await page
       .getByRole("button", { name: "Keep these tests", exact: true })
       .click();

@@ -24,7 +24,8 @@ export function ImproveStart(p: {
   const modes = ["instructions", "replies", "pack"] as const;
   const blocked = p.busy || !!p.blockedReason;
   const empty = p.mode === "instructions" ? !p.drafts.instructions.trim() : !p.drafts.conversations.trim() || !p.drafts.rules.trim();
-  const notices = <>{p.blockedReason && <p role="status">{p.blockedReason}</p>}{p.error && <p role="alert">{p.error}</p>}</>;
+  const notices = <>{p.blockedReason && <p id={`${id}-blocked`} role="status">{p.blockedReason}</p>}{p.error && <p id={`${id}-error`} role="alert">{p.error}</p>}</>;
+  const describedBy = [p.blockedReason && `${id}-blocked`, p.error && `${id}-error`].filter(Boolean).join(" ") || undefined;
   const importFile = (chosen?: File) => { if (chosen && !blocked) p.onImportPack(chosen); };
   return <section className="vibe-improve-start vibe-start-page" onKeyDown={event => { if (event.key === "Escape" && !p.busy) p.onBack(); }}>
     <header><VibeButton variant="quiet" className="vibe-improve-link" disabled={p.busy} onClick={p.onBack}>Back</VibeButton></header>
@@ -42,23 +43,23 @@ export function ImproveStart(p: {
     {p.mode === "pack" ? <div className="vibe-improve-drop" role="group" aria-label="Test pack file" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); importFile(event.dataTransfer.files[0]); }}>
       <FileUp aria-hidden="true" /><p>Drop a test pack here</p><p className="vibe-muted">A test pack holds tests. Add your agent’s instructions after import.</p>
       <label className="sr-only" htmlFor={`${id}-file`}>Test pack file</label><input id={`${id}-file`} hidden ref={file} type="file" accept=".json,.yaml,.yml" disabled={blocked} onChange={event => { importFile(event.target.files?.[0]); event.target.value = ""; }} />
-      <VibeButton variant="primary" disabled={blocked} onClick={() => file.current?.click()}>Choose a file</VibeButton>{notices}
+      <VibeButton variant="primary" aria-describedby={describedBy} disabled={blocked} onClick={() => file.current?.click()}>Choose a file</VibeButton>{notices}
     </div> : <form className="vibe-improve-form" onSubmit={event => {
       event.preventDefault(); if (blocked || empty) return;
       if (p.mode === "instructions") p.onWriteTests({ text: p.drafts.instructions, model: p.drafts.model });
       else p.onSaveReplies({ conversations: p.drafts.conversations, rules: p.drafts.rules });
     }}>
       {p.mode === "instructions" ? <>
-        <div><div className="vibe-improve-field-heading"><label htmlFor={`${id}-instructions`}>Agent instructions</label><InstructionsHelp /></div><textarea id={`${id}-instructions`} className="vibe-textarea" rows={4} value={p.drafts.instructions} disabled={p.busy} onChange={event => p.onDraft({ instructions: event.target.value })} placeholder="Paste the instructions your agent uses…" /></div>
+        <div><div className="vibe-improve-field-heading"><label htmlFor={`${id}-instructions`}>Agent instructions</label><InstructionsHelp /></div><textarea id={`${id}-instructions`} className="vibe-textarea" aria-describedby={p.error ? `${id}-error` : undefined} rows={4} value={p.drafts.instructions} disabled={p.busy} onChange={event => p.onDraft({ instructions: event.target.value })} placeholder="Paste the instructions your agent uses…" /></div>
         <VibeButton variant="quiet" className="vibe-improve-link" disabled={p.busy} onClick={() => p.onDraft({ instructions: exampleAgentDescription })}>Use sample instructions</VibeButton>
         <label htmlFor={`${id}-model`}>Which model does your agent use?<select id={`${id}-model`} value={p.drafts.model || ""} disabled={p.busy} onChange={event => p.onDraft({ model: event.target.value })}><option value="">Use the selected model</option>{p.models.map(model => <option key={model.id} value={model.id}>{friendlyModelName(model, true)}</option>)}</select></label>
       </> : <>
         <p className="vibe-muted">Paste full conversations. We grade the saved replies; your app is not called.</p>
-        <label htmlFor={`${id}-conversations`}>Conversations<textarea id={`${id}-conversations`} className="vibe-textarea" rows={6} value={p.drafts.conversations} disabled={p.busy} onChange={event => p.onDraft({ conversations: event.target.value })} placeholder={repliesPlaceholder} /></label>
+        <label htmlFor={`${id}-conversations`}>Conversations<textarea id={`${id}-conversations`} className="vibe-textarea" aria-describedby={p.error ? `${id}-error` : undefined} rows={6} value={p.drafts.conversations} disabled={p.busy} onChange={event => p.onDraft({ conversations: event.target.value })} placeholder={repliesPlaceholder} /></label>
         <ReplyCount text={p.drafts.conversations} />
-        <label htmlFor={`${id}-rules`}>What a good reply must do<textarea id={`${id}-rules`} className="vibe-textarea" rows={3} value={p.drafts.rules} disabled={p.busy} onChange={event => p.onDraft({ rules: event.target.value })} placeholder="One rule per line. For example: Opened items are not eligible for a refund." /></label>
+        <label htmlFor={`${id}-rules`}>What a good reply must do<textarea id={`${id}-rules`} className="vibe-textarea" aria-describedby={p.error ? `${id}-error` : undefined} rows={3} value={p.drafts.rules} disabled={p.busy} onChange={event => p.onDraft({ rules: event.target.value })} placeholder="One rule per line. For example: Opened items are not eligible for a refund." /></label>
       </>}
-      <div className="vibe-improve-submit"><div className="vibe-improve-submit-actions"><VibeButton variant="primary" type="submit" disabled={blocked || empty} loading={p.busy}>{p.mode === "instructions" ? "Write 3 tests" : "Save and check"}</VibeButton></div>
+      <div className="vibe-improve-submit"><div className="vibe-improve-submit-actions"><VibeButton variant="primary" aria-describedby={describedBy} type="submit" disabled={blocked || empty} loading={p.busy}>{p.mode === "instructions" ? "Write 3 tests" : "Save and check"}</VibeButton></div>
         <p className="text-sm vibe-muted">{p.mode === "instructions" ? "Review the tests and run price before you run." : "Save the replies, then review the grading price."}</p>{notices}
       </div>
     </form>}

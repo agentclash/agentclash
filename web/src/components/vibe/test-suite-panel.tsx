@@ -22,7 +22,7 @@ import { useImprovePrice, priceLabel, ImproveRunNotice } from "./improve-run-quo
 export const rerunLabel = (buildJourney: boolean) => buildJourney ? "Apply change and rerun" : "Test this change";
 
 export function TestSuitePanel({
-  mode = "combined", onAgent, onAskCase,
+  mode = "combined", onAgent, onAskCase, editError, runNotice,
   inferenceUnavailable = false,
   selectedCase,
   onSelectCase,
@@ -46,6 +46,7 @@ export function TestSuitePanel({
   checkingChanges = false,
   rules = [],
 }: {
+  editError?: string; runNotice?: import("react").ReactNode;
   mode?: "combined" | "tests"; onAgent?: () => void; onAskCase?: (key: string) => void;
   inferenceUnavailable?: boolean;
   selectedCase?: string;
@@ -166,7 +167,8 @@ export function TestSuitePanel({
           )}
         </div>}
       </div>
-      {!buildJourney && <ImproveRunNotice reason={!agentOpen && !editing ? runBlockedReason : undefined} />}
+      {!agentOpen && !editing && runNotice}
+      {!buildJourney && !editError && <ImproveRunNotice reason={!agentOpen && !editing ? runBlockedReason : undefined} />}
       {added>0 && <p className="text-sm vibe-muted">{testCount(added, "new")} · {testCount(cases.length-added, "existing")}. This run includes all {cases.length}; earlier results are kept separately.</p>}
       {!editing && !agentOpen && <TestMeaning />}
       {artifact.validation && <details className="vibe-test-review" open={validationBlocked}><summary>Test review: {validationBlocked ? "Needs attention" : "Ready"}</summary><ValidationDetails validation={artifact.validation} /></details>}
@@ -215,7 +217,7 @@ export function TestSuitePanel({
                     ? `Test ${i + 1} · message`
                     : "What should happen"}
                   <textarea
-                    className="vibe-textarea mt-1"
+                    aria-describedby={editError ? "vibe-tests-edit-error" : undefined} className="vibe-textarea mt-1"
                     disabled={busy || checkingChanges}
                     value={test[field]}
                     onChange={(e) => {
@@ -252,6 +254,7 @@ export function TestSuitePanel({
             >
               Save test changes
             </VibeButton>
+            {editError && <p id="vibe-tests-edit-error" role="alert">{editError}{price?.credits && <VibeButton variant="quiet" onClick={price.onCredits}>Credits</VibeButton>}</p>}
             <VibeButton
               variant="quiet"
               disabled={busy}
@@ -295,7 +298,7 @@ export function TestSuitePanel({
             {prototypeMode ? "Its job and your rules" : "Agent instructions"}
             <textarea
               aria-label={prototypeMode ? "Its job and your rules" : "Agent instructions"}
-              className="vibe-textarea mt-2 min-h-40"
+              aria-describedby={editError ? "vibe-tests-edit-error" : undefined} className="vibe-textarea mt-2 min-h-40"
               value={instructions}
               onChange={(e) => {
                 setInstructions(e.target.value);
@@ -313,6 +316,7 @@ export function TestSuitePanel({
             >
               {inlineImport ? "Add your agent's instructions" : prototypeMode ? "Create agent" : "Use these instructions"} <ArrowRight />
             </VibeButton>
+            {editError && <p id="vibe-tests-edit-error" role="alert">{editError}{price?.credits && <VibeButton variant="quiet" onClick={price.onCredits}>Credits</VibeButton>}</p>}
             <VibeButton
               variant="quiet"
               disabled={busy}

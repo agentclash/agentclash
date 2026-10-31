@@ -31,8 +31,9 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
     <p id={`${id}-helper`}>A few sentences: what comes in, what a good reply does, any rules.</p>
     {p.trialUsed && <p className="vibe-build-trial-used">Your free build is used. <a href="/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dbuild">Sign in to continue.</a></p>}
     <form className="vibe-build-start-card" onSubmit={event => { event.preventDefault(); send(); }}>
-      <textarea id={`${id}-task`} ref={input} disabled={reading} aria-describedby={`${id}-helper`} className="vibe-textarea" rows={4} value={p.draft} onChange={event => p.onDraft(event.target.value)} onKeyDown={event => sendOnEnter(event, send)} placeholder="Help customers check whether they can return an item." />
-      <div className="vibe-build-example-chips" role="group" aria-label="Example tasks"><span>Try:</span>{examples.map(example => <VibeButton variant="quiet" className="vibe-example-chip" key={example.label} disabled={unavailable} onClick={() => { p.onDraft(example.text); input.current?.focus(); }}>{example.label}</VibeButton>)}<VibeButton variant="quiet" disabled={unavailable} onClick={() => file.current?.click()}><Paperclip aria-hidden="true" />Attach a file</VibeButton></div>
+      <textarea id={`${id}-task`} ref={input} disabled={reading} aria-describedby={`${id}-helper${p.error ? ` ${id}-error` : ""}`} className="vibe-textarea" rows={4} value={p.draft} onChange={event => p.onDraft(event.target.value)} onKeyDown={event => sendOnEnter(event, send)} placeholder="Help customers check whether they can return an item." />
+      <div className="vibe-build-example-chips" role="group" aria-label="Example tasks"><span>Try:</span>{examples.map(example => <VibeButton variant="quiet" className="vibe-example-chip" key={example.label} disabled={unavailable} onClick={() => { p.onDraft(example.text); input.current?.focus(); }}>{example.label}</VibeButton>)}<VibeButton variant="quiet" disabled={unavailable} aria-describedby={fileError ? `${id}-file-error` : undefined} onClick={() => file.current?.click()}><Paperclip aria-hidden="true" />Attach a file</VibeButton></div>
+      {fileError && <p id={`${id}-file-error`} role="alert">{fileError}</p>}
       <div className="vibe-build-start-actions">
         <div className="vibe-build-start-submit">
           <VibeButton type="submit" variant="primary" loading={p.busy || reading} disabled={!!reason || unavailable} aria-describedby={reason ? `${id}-reason` : undefined}>Build and run 3 tests</VibeButton>
@@ -41,7 +42,7 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
       </div>
       {reason && !p.trialUsed && <p id={`${id}-reason`} className="vibe-build-note" role={p.blockedReason ? "status" : undefined}>{reason}</p>}
       {p.trialUsed && <span id={`${id}-reason`} className="sr-only">{reason}</span>}
-      {(p.error || fileError) && <p role="alert">{p.error || fileError}</p>}
+      {p.error && <p id={`${id}-error`} role="alert">{p.error}</p>}
     </form>
     <input ref={file} type="file" hidden accept=".txt,.md,.csv,.json,text/plain,text/markdown,text/csv,application/json" aria-label="Attach a task file" onChange={async event => {
       const selected = event.target.files?.[0]; event.target.value = ""; if (!selected) return;
