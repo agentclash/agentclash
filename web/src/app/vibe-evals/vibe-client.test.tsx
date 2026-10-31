@@ -3076,7 +3076,7 @@ it.each([
   { door: "test" as const, actor: "guest", other: true, archived: false },
   { door: "test" as const, actor: "member", other: false, archived: false },
   { door: "test" as const, actor: "guest", other: false, archived: true },
-])("keeps the deletion receipt until Done and focuses the entry door ($door, $actor, other=$other, archived=$archived)", async ({ door, actor, other, archived }) => {
+].flatMap(scenario => ["Escape", "Close", "Done"].map(dismiss => ({ ...scenario, dismiss }))))("keeps the deletion receipt until $dismiss and focuses the entry door ($door, $actor, other=$other, archived=$archived)", async ({ door, actor, other, archived, dismiss }) => {
   readyTests(door);
   if (actor === "member") { signedInWorkspace(); session.workspace_id = "workspace-one"; }
   if (archived) session.archived_at = "2026-10-30T00:00:00Z";
@@ -3103,10 +3103,13 @@ it.each([
   expect(params().get("session")).toBeNull();
   await render();
   expect(document.querySelector('[role="dialog"]')).toBe(receipt);
-  await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-  expect(document.querySelector('[role="dialog"]')).toBe(receipt);
-  expect(receipt?.querySelector('[data-slot="dialog-close"]')).toBeNull();
-  await click("Done");
+  expect(receipt?.textContent).toContain("Project removed");
+  if (dismiss === "Escape") await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  else if (dismiss === "Close") {
+    const close = receipt?.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]');
+    expect(close).not.toBeNull();
+    await act(async () => close!.click());
+  } else await click("Done");
   await vi.waitFor(() => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(document.getElementById(`vibe-door-${door}`));

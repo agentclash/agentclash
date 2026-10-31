@@ -111,8 +111,8 @@ async function openCase(page: Page, index = 0) {
   return row;
 }
 
-for (const width of [390, 1440]) for (const last of [false, true]) {
-  test(`deletion receipt survives until Done (${width}px, last project: ${last})`, async ({ page }) => {
+for (const width of [390, 1440]) for (const last of [false, true]) for (const dismiss of ["Escape", "Close", "Done"]) {
+  test(`deletion receipt survives until ${dismiss} (${width}px, last project: ${last})`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const control = await serve(page);
     if (last) {
@@ -129,9 +129,9 @@ for (const width of [390, 1440]) for (const last of [false, true]) {
     await expect(receipt).toBeVisible();
     await expect(page).not.toHaveURL(/session=/);
     expect(control.sessions.has("first")).toBe(false);
-    await receipt.press("Escape");
     await expect(receipt).toBeVisible();
-    await receipt.getByRole("button", { name: "Done", exact: true }).click();
+    if (dismiss === "Escape") await receipt.press("Escape");
+    else await receipt.getByRole("button", { name: dismiss, exact: true }).click();
     await expect(receipt).toHaveCount(0);
     await expect(entryHeading(page)).toBeVisible();
     await expect(doorButton(page, "improve")).toBeFocused();

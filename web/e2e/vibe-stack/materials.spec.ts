@@ -93,7 +93,6 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   await page.getByRole("button",{name:"Delete project permanently",exact:true}).click();
   await expect(page.getByRole("heading",{name:"Project removed",exact:true})).toBeVisible();
   const receipt = page.getByRole("dialog",{name:"Project removed",exact:true});
-  await receipt.press("Escape");
   await expect(receipt).toBeVisible();
   await receipt.getByRole("button",{name:"Done",exact:true}).click();
   await expect(receipt).toHaveCount(0);

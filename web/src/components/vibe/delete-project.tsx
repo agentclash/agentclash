@@ -30,8 +30,8 @@ export function DeleteProject({ session, onClose, onDeleted }: { session: Sessio
     } catch (e) { setError(`${(e as Error).message} Retrying this deletion will not affect another project.`); }
     finally { sending.current = false; setBusy(false); }
   }
-  return <Dialog open onOpenChange={open => { if (!open && !busy && !receipt) onClose(); }}>
-    <DialogContent className="vibe-workspace vibe-dialog" showCloseButton={!receipt} finalFocus={() => receipt ? document.getElementById(`vibe-door-${session.document.evaluation?.door || "build"}`) || true : true}>
+  return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }}>
+    <DialogContent className="vibe-workspace vibe-dialog" finalFocus={() => receipt ? document.getElementById(`vibe-door-${session.document.evaluation?.door || "build"}`) || true : true}>
       <DialogTitle className="[overflow-wrap:anywhere]">{receipt ? "Project removed" : `Delete “${projectTitle(session)}” and its data?`}</DialogTitle>
       <DialogDescription>{receipt
         ? "New access and runs are blocked. Stored files and remaining content are being removed."
