@@ -691,7 +691,9 @@ export function useVibeWorkspace() {
     try {
       auth = await token();
       if (!ownsScope(scope)) return;
-      if (!existing) await vibeFetch<Session>("/sessions", auth, { method: "POST", body: JSON.stringify({ id, door, title, ...(workspace ? { workspace_id: workspace } : {}) }) });
+      // An API without project titles rejects the unknown field; only that API omits the build price ceiling.
+      const titled = typeof (config as StartConfig | undefined)?.first_build_ceiling_nano_usd === "number";
+      if (!existing) await vibeFetch<Session>("/sessions", auth, { method: "POST", body: JSON.stringify({ id, door, ...(titled ? { title } : {}), ...(workspace ? { workspace_id: workspace } : {}) }) });
       let next = await vibeFetch<Session>(`/sessions/${id}`, auth);
       createdRevision = next.revision;
       if (!ownsScope(scope)) throw Error("The active account or project changed.");
