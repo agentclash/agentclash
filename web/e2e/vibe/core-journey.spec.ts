@@ -1,6 +1,6 @@
-import { resultCopy, entryReady, chooseDoor, describeInChat, guideComposer, sendButton, projectReady } from "./entry-model";
+import { resultCopy, entryReady, chooseDoor, describeInChat, guideComposer, sendButton, projectReady, confirmRun } from "./entry-model";
 import { expect, test } from "@playwright/test";
-import { project } from "./entry-fake";
+import { project, runQuote } from "./entry-fake";
 import type { Artifact, Operation, Session } from "../../src/lib/vibe";
 
 test.use({ video: { mode: "on", size: { width: 1440, height: 960 } } });
@@ -41,6 +41,8 @@ for (const mobile of [false, true]) {
       operations: [],
     };
     const requests: Record<string, unknown>[] = [];
+    let quoteID = "";
+    let quotes = 0;
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
@@ -99,6 +101,10 @@ for (const mobile of [false, true]) {
           defaults: models,
           models: [{ id: models.target, name: "Fixture (free)" }],
         });
+      if (req.method() === "POST" && path.endsWith("/run-quote")) {
+        quoteID = `core-quote-${++quotes}`;
+        return send(runQuote(quoteID, 0));
+      }
       if (path.endsWith("/events"))
         return route.fulfill({
           headers,
@@ -197,6 +203,7 @@ for (const mobile of [false, true]) {
           );
         }
         expect(["check", "retest"]).toContain(body.kind);
+        expect(body.run_quote_id).toBe(quoteID);
         const artifact = state.document.artifacts.at(-1)!;
         expect(artifact.blueprint).toEqual(blueprint);
         expect(artifact.agent_prompt).not.toBe("");
@@ -292,6 +299,7 @@ for (const mobile of [false, true]) {
     await tests.getByRole("button", { name: "Add your agent's instructions" }).click();
     expect(requests).toHaveLength(1);
     await tests.getByRole("button", { name: "Run 3 tests" }).click();
+    await confirmRun(page, "$0.00");
     await page.getByRole("tab", { name: "Results", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: resultCopy.headline(2, 3) }),
@@ -303,35 +311,45 @@ for (const mobile of [false, true]) {
         })
         .first(),
     ).toBeVisible();
+    const more = page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: /^More$/ });
+    await more.click();
+    await page.getByRole("button", { name: "Ask about this result", exact: true }).click();
+    await page.getByRole("button", { name: "Close Guide", exact: true }).click();
     await page.getByRole("button", { name: "Suggest a fix" }).click();
+    await expect(page.getByLabel("Instruction changes")).toBeVisible();
+    await page.getByRole("tab", { name: "Tests", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "Ready to test the fix" }),
     ).toBeVisible();
     expect(state.document.artifacts.at(-1)!.accepted).toBe(false);
-    await page
-      .locator("summary")
-      .filter({ hasText: "Review the instruction change" })
-      .click();
+    await page.getByRole("tab", { name: "Agent", exact: true }).click();
     await expect(
       page.getByLabel("Instruction changes"),
     ).toBeVisible();
+    if (!(await composer.isVisible())) await page.getByRole("button", { name: "Guide", exact: true }).click();
     await composer.fill("let's drink vodka");
     await composer.press("Enter");
     await expect(page.getByText("Taking a break? Your tests will be here when you’re ready.")).toBeVisible();
     expect(state.document.artifacts).toHaveLength(3);
     await expect(page.getByRole("heading", { name: "Ready to test the fix" })).not.toBeVisible();
+    const casual = page.locator('[data-message-id="casual-reply"]');
+    await expect(casual.getByRole("heading", { name: "Ready to test the fix" })).not.toBeVisible();
+    await expect(casual.locator('[data-proposal-id]')).toHaveCount(0);
+    const owner = page.locator('[data-message-id="reply-fixed"]');
+    await expect(owner).toContainText("Review the change, then test it.");
+    await expect(owner).not.toContainText("Taking a break?");
     await composer.scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("casual-chat.png") });
-    await page.locator("summary").filter({ hasText: /^Review the suggested fix$/ }).click();
+    if (await page.getByRole("button", { name: "Close Guide", exact: true }).isVisible()) await page.getByRole("button", { name: "Close Guide", exact: true }).click();
+    await page.getByRole("tab", { name: "Tests", exact: true }).click();
     const proposal = page.getByRole("region", {name:"Your tests",exact:true});
     await expect(proposal).toBeVisible();
     await expect(proposal).toHaveAttribute("data-proposal-id", "fixed");
-    const owner = page.locator('[data-message-id="reply-fixed"]');
-    await expect(owner).not.toContainText("Taking a break?");
-    await page.locator("summary").filter({ hasText: /^Review the instruction change$/ }).click();
+    await page.getByRole("tab", { name: "Agent", exact: true }).click();
     await page.getByLabel("Instruction changes").scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("instruction-diff.png") });
     await page.getByRole("button", { name: "Test this change", exact: true }).click();
+    await confirmRun(page, "$0.00");
     await page.getByRole("tab", { name: "Results", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: resultCopy.headline(3, 3) }),

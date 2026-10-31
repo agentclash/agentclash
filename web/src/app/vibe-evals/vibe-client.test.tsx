@@ -6,7 +6,7 @@ import { defaultModels, VibeError, type Operation, type Session } from "@/lib/vi
 import { draftMemory } from "@/lib/vibe-build-drafts";
 import { VibeClient } from "./vibe-client";
 import VibePage from "./page";
-import { project } from "../../../e2e/vibe/entry-fake";
+import { project, runQuote } from "../../../e2e/vibe/entry-fake";
 
 const harness = vi.hoisted(() => ({
   params: new URLSearchParams("session=session-one"),
@@ -269,6 +269,24 @@ it.each(["build", "test"] as const)("the browser journey fixture mounts the %s p
   expect(header.querySelector('button[aria-label="Guide"]')).not.toBeNull();
   expect(header.querySelector('button[aria-label="Details"]')).not.toBeNull();
   expect(header.querySelector('[role="tablist"][aria-label="Workspace views"]')).not.toBeNull();
+});
+
+it.each([["journey", 50000000], ["core journey", 0]] as const)("admits the %s fixture quote only after explicit consent", async (_journey, cost) => {
+  readyTests("test"); harness.params.set("view", "tests");
+  const previous = respond;
+  respond = async (path, options) => path === "/config" ? twoDoorConfig()
+    : path.endsWith("/run-quote") ? json(runQuote("journey-quote", cost))
+    : path.endsWith("/messages") ? json({ id: "quoted-run", kind: "check", state: "RUNNING", billing: "RESERVED", models: defaultModels, max_cost_nano_usd: cost, actual_cost_nano_usd: 0, results: [] }, 202)
+    : previous(path, options);
+  await render(); await click("Run 3 tests");
+  expect(dialogNames()).toEqual(["Run these tests"]);
+  expect(document.body.textContent).toContain(`3 tests · up to $${(cost / 1e9).toFixed(2)}`);
+  expect(button("Start run").disabled).toBe(false);
+  expect(posts()).toHaveLength(0);
+  await click("Start run");
+  expect(dialogNames()).toEqual([]);
+  expect(posts()).toHaveLength(1);
+  expect(posts()[0].body).toMatchObject({ kind: "check", artifact_id: "artifact-one", approve_artifact: true, run_quote_id: "journey-quote" });
 });
 
 it.each([["live_app", false], ["sdk_report", false], ["live_app", true], ["sdk_report", true]] as const)("opens the existing signed-in %s flow from the real start mount without writes (legacy: %s)", async (source, legacy) => {

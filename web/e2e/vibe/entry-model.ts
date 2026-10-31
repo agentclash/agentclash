@@ -139,3 +139,13 @@ export async function projectReady(page: Page, withArtifact = true) {
     await expect(header.getByRole("button", { name: "Details", exact: true })).toBeVisible();
   }
 }
+
+export async function confirmRun(page: Page, cost: string) {
+  const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: /^Run (?:these tests|the same tests again)$/ }) });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(`3 tests · up to ${cost}.`);
+  const start = dialog.getByRole("button", { name: "Start run", exact: true });
+  await expect(start).toBeEnabled();
+  await start.click();
+  await expect(dialog).toBeHidden();
+}

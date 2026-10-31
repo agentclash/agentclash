@@ -1,7 +1,7 @@
 import { resultCopy } from "./entry-model";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { fakeVibe, description, project } from "./entry-fake";
-import { buildResult, composer as entryComposer, doorButton, doorReady, entryReady, sendButton, chooseDoor, describeInChat, guideComposer, improvePrimary, startComposer, chatStartHeading, projectReady } from "./entry-model";
+import { fakeVibe, description, project, runQuote } from "./entry-fake";
+import { buildResult, composer as entryComposer, doorButton, doorReady, entryReady, sendButton, chooseDoor, describeInChat, guideComposer, improvePrimary, startComposer, chatStartHeading, projectReady, confirmRun } from "./entry-model";
 import { readFile } from "node:fs/promises";
 import type { Operation, Session } from "../../src/lib/vibe";
 
@@ -61,6 +61,12 @@ async function openInstructions(page: Page) {
   await tests.getByRole("button", { name: "Change agent instructions" }).click();
 }
 
+async function openProjectSettings(page: Page) {
+  await page.getByRole("button", { name: "Details", exact: true }).click();
+  await page.locator('[aria-label="Project details"]').getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Settings and details", exact: true })).toBeVisible();
+}
+
 test("new conversations use the server's free model defaults", async ({
   page,
 }) => {
@@ -115,6 +121,8 @@ async function mockVibe(
   let lostAcknowledgement = false;
   let messages = 0;
   let checks = 0;
+  let quoteID = "";
+  let quotes = 0;
   let trials = 0;
   const session: Session = options.existing ?? {
     id: "",
@@ -192,6 +200,10 @@ async function mockVibe(
       Object.assign(session, project(body.id, body.door, body.workspace_id, models), { title: body.title });
       initial = structuredClone(session);
       return send(session, 201);
+    }
+    if (request.method() === "POST" && path.endsWith("/run-quote")) {
+      quoteID = `journey-quote-${++quotes}`;
+      return send(runQuote(quoteID, 50_000_000));
     }
     if (path.endsWith("/events"))
       return route.fulfill({
@@ -276,6 +288,7 @@ async function mockVibe(
               : "I’ve drafted a support agent and three examples. Review the policy before checking it.\n\n<script>window.__vibePwned=true</script>\n![unsafe image](https://attacker.invalid/track.png)",
           },
         );
+        const parent = body.purpose === "suggest_change" ? session.document.artifacts.find(a => a.id === body.artifact_id) : undefined;
         const draft = options.casual
           ? null
           : {
@@ -356,7 +369,10 @@ async function mockVibe(
               },
               accepted: false,
               source_message_id: body.client_id,
+              ...(parent ? { parent_id: parent.id } : {}),
             };
+        if (draft && parent) draft.agent_prompt = parent.agent_prompt + " Ask for purchase age before applying the 30-day rule.";
+        if (draft) session.document.messages.at(-1)!.artifact_id = draft.id;
         if (draft) session.document.artifacts.push(draft);
         if (messages === 1 && !options.casual)
           session.document.requirements.push({
@@ -409,6 +425,7 @@ async function mockVibe(
         session.operations.push(operation);
         return acknowledge(operation);
       }
+      if (session.document.evaluation) expect(body.run_quote_id).toBe(quoteID);
       const reviewed = session.document.artifacts.find(
         (a) => a.id === body.artifact_id,
       );
@@ -591,7 +608,7 @@ test("describe, review, independently select agent, check, inspect unknowns and 
   // Review an exact saved expectation before selecting the target model.
   await openDetails(page.getByRole("region", { name: "Your tests" }).locator("summary").filter({ hasText: "Refund after 10 days?" }));
   await expect(page.getByText("Explain that it is eligible.")).toBeVisible();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await openProjectSettings(page);
   await page
     .getByRole("combobox", { name: "Agent model", exact: true })
     .selectOption("openai/gpt-4.1");
@@ -600,10 +617,13 @@ test("describe, review, independently select agent, check, inspect unknowns and 
   ).toHaveValue(models.assistant);
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Run 3 tests" }).click();
+  await confirmRun(page, "$0.05");
   await page.getByRole("tab", { name: "Results", exact: true }).click();
   await expect(
     page.getByRole("article", { name: "Run results" }),
-  ).toContainText("1 passed · 0 need attention · 2 unresolved");
+  ).toBeVisible();
+  await openScorecardSection(page, /^More$/);
+  await expect(page.getByRole("article", { name: "Run results" })).toContainText("1 passed · 0 failed · 2 unresolved");
   expect(mock.snapshot().operations[0].models.target).toBe("openai/gpt-4.1");
   expect(mock.snapshot().operations[0].models.evaluator).toBe(models.evaluator);
   await openScorecardSection(page, /^Other results/);
@@ -671,6 +691,7 @@ for (const viewport of [
     await improvePrimary(page, "instructions").click();
     await projectReady(page);
     await page.getByRole("button", { name: "Run 3 tests" }).click();
+    await confirmRun(page, "$0.05");
     await page.getByRole("tab", { name: "Results", exact: true }).click();
     await expect(page.getByRole("tab", { name: "Results" })).toHaveAttribute(
       "aria-selected",
@@ -713,17 +734,19 @@ test("draft editor exposes the full instructions and exports the user's exact re
     .getByRole("button", { name: "Use these instructions", exact: true })
     .click();
   await page.getByRole("tab", { name: "Agent", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Try it yourself", exact: true }),
-  ).toBeEnabled();
+  const trial = page.getByRole("region", { name: "Try your agent", exact: true });
+  await expect(trial).toBeVisible();
+  await expect(trial.getByRole("textbox", { name: "Message your agent" })).toBeEnabled();
+  await trial.getByRole("textbox", { name: "Message your agent" }).fill("Can I return an unopened purchase?");
+  await expect(trial.getByRole("button", { name: "Send to agent", exact: true })).toBeEnabled();
   const effective = "Use supplied refund facts. Ask when the policy is missing.";
   expect(mock.snapshot().document.artifacts.at(-1)?.agent_prompt).toBe(
     effective,
   );
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await openProjectSettings(page);
   const downloadReady = page.waitForEvent("download");
   await page
-    .getByRole("button", { name: "Export agent and tests", exact: true })
+    .getByRole("button", { name: "Export tests and agent instructions", exact: true })
     .click();
   await page.getByRole("button",{name:"Download exact export",exact:true}).click();
   const download = await downloadReady;
@@ -746,6 +769,7 @@ async function createAndCheck(page: Page) {
   await page
     .getByRole("button", { name: /^Run 3 tests(?: · up to \$[0-9.,]+)?$/ })
     .click();
+  await confirmRun(page, "$0.05");
   await page.getByRole("tab", {name:"Results",exact:true}).click();
 }
 
@@ -834,11 +858,12 @@ test("improve and retest keep a fixed comparison, duplicate clicks send once", a
   mock.snapshot().operations[0].scorecard!.passed = 0;
   mock.snapshot().revision++;
   // Suggest a change is the primary action of a failed result, outside any disclosure.
-  const suggest = page.getByRole("button", { name: "Suggest a change", exact: true });
+  const suggest = page.getByRole("button", { name: "Suggest a fix", exact: true });
   await expect(suggest).toHaveClass(/vibe-button-primary/);
   await suggest.click();
   await expect.poll(() => mock.messageCount()).toBe(2);
-  await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Agent", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Instruction changes")).toBeVisible();
   expect(
     mock
       .messageRequests()
@@ -849,11 +874,13 @@ test("improve and retest keep a fixed comparison, duplicate clicks send once", a
     page.getByRole("button", { name: "Run the same tests again", exact: true }),
   ).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Run tests again", exact: true })
+    .getByRole("button", { name: "Test this change", exact: true })
     .click();
+  await confirmRun(page, "$0.05");
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
   await expect(
     page.getByRole("article", { name: "Run results" }),
-  ).toContainText("1 previously failing test now passes");
+  ).toContainText("1 fixed · 0 new failures. Same tests and grading model.");
   expect(mock.checkCount()).toBe(2);
   expect(mock.snapshot().operations[1].baseline_id).toBe("check-1");
   mock.stale();
@@ -873,7 +900,7 @@ test("refresh during a check never reruns; Stop preserves reconciling billing", 
   ).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await openScorecardSection(page, "About this run");
+  await openScorecardSection(page, /^More$/);
   await expect(
     page.getByText("Provider spend is still being reconciled.", {
       exact: true,
@@ -925,12 +952,14 @@ test("unapplied instructions cannot run checks; applying creates a ready-to-try 
   await expect(
     page.getByRole("button", { name: "Run 3 tests" }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Save agent", exact: true }),
-  ).toBeDisabled();
+  await openProjectSettings(page);
+  const settings = page.getByRole("dialog", { name: "Settings and details", exact: true });
+  await expect(settings.getByRole("button", { name: "Keep these tests", exact: true })).toBeDisabled();
+  await settings.getByRole("button", { name: "Close", exact: true }).click();
   expect(mock.checkCount()).toBe(0);
   await page.getByRole("button", { name: "Use these instructions" }).click();
   await page.getByRole("button", { name: "Run 3 tests" }).click();
+  await confirmRun(page, "$0.05");
   await page.getByRole("tab", { name: "Results", exact: true }).click();
   await expect(
     page.getByRole("article", { name: "Run results" }),

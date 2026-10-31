@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "@playwright/test";
-import { defaultModels, type Artifact, type CaseResult, type Operation, type Models, type Session } from "../../src/lib/vibe";
+import { defaultModels, type Artifact, type CaseResult, type Operation, type Models, type RunQuote, type Session } from "../../src/lib/vibe";
 
 export const models = defaultModels;
 export const fakeConfig = {
@@ -61,6 +61,9 @@ const finish = (op: Operation, extra: Partial<Operation> = {}) => Object.assign(
 export function project(id: string, door: "build" | "test", workspace?: string, selectedModels: Models = models): Session {
   return { id, revision: 1, event_cursor: 1, anonymous: !workspace, ...(workspace ? { workspace_id: workspace } : {}), operations: [], updated_at: new Date().toISOString(),
     document: { format_version: 1, models: selectedModels, messages: [], requirements: [], artifacts: [], test_journey: true, evaluation: { id, chat_id: id, door } } };
+}
+export function runQuote(id: string, maxCost = 120_000_000): RunQuote {
+  return { id, cases: 3, calls: 6, max_cost_nano_usd: maxCost, expires_at: new Date(Date.now() + 600_000).toISOString() };
 }
 const bump = (s: Session) => { s.revision++; s.event_cursor = s.revision; s.updated_at = new Date().toISOString(); };
 
@@ -156,7 +159,7 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
       (!body.cycle_id || s.document.build && body.cycle_id !== s.document.build.cycle_id))
       return json({ error: { code: "quote_expired", message: "Use Build and run 3 tests, or Retry your saved request." } }, 409);
     if (p.endsWith("/build-quote")) return json({ id: `build-quote-${posts.length}`, max_calls: 9, cases: 3, max_cost_nano_usd: 250_000_000, request: { content: body.content, models: body.models, ...(body.inputs ? { inputs: body.inputs } : {}), ...(body.adopt_rules ? { adopt_rules: body.adopt_rules } : {}) }, expires_at: new Date(Date.now() + 600_000).toISOString() });
-    if (p.endsWith("/run-quote")) return json({ id: `run-quote-${posts.length}`, max_cost_nano_usd: 120_000_000, cases: 3, calls: 6, expires_at: new Date(Date.now() + 600_000).toISOString() });
+    if (p.endsWith("/run-quote")) return json(runQuote(`run-quote-${posts.length}`));
     if (p.endsWith("/messages")) {
       const limits = options.config?.[options.signedIn ? "signed_in_limits" : "anonymous_limits"] as { max_message_bytes?: number } | undefined;
       const limit = limits?.max_message_bytes || (options.signedIn ? 65536 : 16384);
