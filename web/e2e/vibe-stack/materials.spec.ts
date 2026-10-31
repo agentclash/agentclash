@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { sendButton, showView } from "../vibe/entry-model";
+import { showView, startCopy } from "../vibe/entry-model";
 
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const task = "Summarize meeting notes, including decisions and action owners.";
@@ -43,9 +43,11 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   await page.reload();
   await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready · Task input");
   await page.getByRole("textbox", {name:"Message Vibe Evals",exact:true}).fill(task);
-  // The Build send button is named by its visible text (E2).
-  await expect(sendButton(page)).toBeEnabled();
-  await sendButton(page).click();
+  // The Build send button is named by its visible text (E2). This project already exists,
+  // so the send button is in its composer, not on the start screen that sendButton() reads.
+  const send = page.getByRole("button", { name: startCopy.build.primary, exact: true });
+  await expect(send).toBeEnabled();
+  await send.click();
   await expect.poll(async () => (await saved(page)).session.document.build?.phase, {timeout:90000}).toBe("results");
   // PR 1: the first result opens Results by itself; the agent's output is on Agent.
   await showView(page, "Agent", "Run 1", {opensResults: true});

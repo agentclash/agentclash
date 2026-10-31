@@ -289,7 +289,8 @@ for (const limit of [65536, 32768]) test(`fix9 instructions reserve the test req
   await expect(page.locator(".vibe-project-header")).toHaveCount(0);
   await startComposer(page, "improve").fill(largest);
   await improvePrimary(page, "instructions").click();
-  await expect(page.getByRole("tab", { name: "Tests", exact: true })).toHaveAttribute("aria-selected", "true");
+  // The fake prepares the tests after a delay; a 64 KiB message takes longer on CI machines.
+  await expect(page.getByRole("tab", { name: "Tests", exact: true })).toHaveAttribute("aria-selected", "true", { timeout: 30_000 });
   const messages = fake.posts.filter(post => post.path.endsWith("/messages"));
   expect(messages).toHaveLength(1);
   expect(Buffer.byteLength(messages[0].body.content, "utf8")).toBe(limit);
