@@ -1,7 +1,7 @@
 import { resultCopy } from "./entry-model";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { fakeVibe, description, project, runQuote } from "./entry-fake";
-import { buildResult, composer as entryComposer, doorButton, doorReady, entryReady, sendButton, chooseDoor, describeInChat, guideComposer, improvePrimary, startComposer, chatStartHeading, projectReady, confirmRun } from "./entry-model";
+import { buildResult, composer as entryComposer, doorButton, doorReady, entryReady, sendButton, chooseDoor, describeInChat, guideComposer, improvePrimary, startComposer, chatStartHeading, projectReady, expectProjectNavigation, confirmRun } from "./entry-model";
 import { readFile } from "node:fs/promises";
 import type { Operation, Session } from "../../src/lib/vibe";
 
@@ -13,20 +13,8 @@ const models = {
 const previewRules =
   "Preview capabilities: this is a text-only simulation with no connected tools.\n\n";
 
-async function expectCenteredNavigation(page: Page) {
-  await expect
-    .poll(async () => {
-      const header = await page.locator("header").boundingBox();
-      const navigation = await page
-        .getByRole("tablist", { name: "Workspace views" })
-        .boundingBox();
-      if (!header || !navigation) return Infinity;
-      return Math.abs(
-        navigation.x + navigation.width / 2 - (header.x + header.width / 2),
-      );
-    })
-    .toBeLessThan(2);
-}
+// Concise evidence replaces the fallback title with the saved input after loading.
+const secondResultTitle = /^(?:Test 2|Refund after 50 days\?)/;
 
 async function openDetails(summary: Locator) {
   await expect(summary).toBeVisible();
@@ -622,12 +610,13 @@ test("describe, review, independently select agent, check, inspect unknowns and 
   await expect(
     page.getByRole("article", { name: "Run results" }),
   ).toBeVisible();
+  await expect(page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: /^More$/ })).toHaveCount(1);
   await openScorecardSection(page, /^More$/);
   await expect(page.getByRole("article", { name: "Run results" })).toContainText("1 passed · 0 failed · 2 unresolved");
   expect(mock.snapshot().operations[0].models.target).toBe("openai/gpt-4.1");
   expect(mock.snapshot().operations[0].models.evaluator).toBe(models.evaluator);
-  await openScorecardSection(page, /^Other results/);
-  await openScorecardSection(page, /^Test 2/);
+  await openScorecardSection(page, /^Other results · 2$/);
+  await openScorecardSection(page, secondResultTitle);
   await expect(page.getByText("Target timed out.")).toBeVisible();
   const url = page.url();
   await page.reload();
@@ -676,7 +665,7 @@ for (const viewport of [
   { width: 1440, height: 900 },
   { width: 390, height: 844 },
 ]) {
-  test(`one clear first action and centered results navigation at ${viewport.width}px`, async ({
+  test(`one clear first action and left-aligned results navigation at ${viewport.width}px`, async ({
     page,
   }) => {
     await page.setViewportSize(viewport);
@@ -697,7 +686,7 @@ for (const viewport of [
       "aria-selected",
       "true",
     );
-    await expectCenteredNavigation(page);
+    await expectProjectNavigation(page);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -976,7 +965,7 @@ test("expanded evidence refreshes when a persisted UNKNOWN becomes PASS", async 
 }) => {
   const mock = await mockVibe(page, { paused: true });
   await createAndCheck(page);
-  await openScorecardSection(page, /^Test 2/);
+  await openScorecardSection(page, secondResultTitle);
   await expect(page.getByText("Target timed out.")).toBeVisible();
   const operation = mock.snapshot().operations[0];
   operation.results[1] = {
@@ -1019,7 +1008,7 @@ for (const state of ["RUNNING", "CANCELLED"]) {
     if (state === "CANCELLED") {
       await openScorecardSection(page, /^Other results/);
     }
-    await openScorecardSection(page, /^Test 2/);
+    await openScorecardSection(page, secondResultTitle);
     await expect(page.getByText("Target timed out.")).toBeVisible();
     const revision = session.revision;
     const caseBefore = structuredClone(operation.results[1]);
@@ -1038,7 +1027,7 @@ for (const state of ["RUNNING", "CANCELLED"]) {
     const row = page
       .getByRole("article", { name: "Run results" })
       .locator("summary")
-      .filter({ hasText: "Test 2" })
+      .filter({ hasText: secondResultTitle })
       .locator("..");
     await expect(row).toHaveAttribute("open", "");
     await expect(row.locator(":scope > summary")).toContainText("Could not determine");

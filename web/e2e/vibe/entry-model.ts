@@ -140,6 +140,26 @@ export async function projectReady(page: Page, withArtifact = true) {
   }
 }
 
+export async function expectProjectNavigation(page: Page) {
+  const header = page.locator(".vibe-project-header");
+  const title = header.locator(".vibe-project-identity :is(h1, h2)");
+  const tabs = header.getByRole("tablist", { name: "Workspace views" });
+  await expect.poll(async () => {
+    const heading = await title.boundingBox();
+    const navigation = await tabs.boundingBox();
+    return heading && navigation ? Math.abs(navigation.x - heading.x) : Infinity;
+  }).toBeLessThanOrEqual(2);
+  await expect.poll(async () => {
+    const heading = await title.boundingBox();
+    const navigation = await tabs.boundingBox();
+    return !!heading && !!navigation && navigation.y >= heading.y + heading.height;
+  }).toBe(true);
+  await expect(tabs).toBeInViewport({ ratio: 1 });
+  for (const name of ["Agent", "Tests", "Results"]) {
+    await expect(tabs.getByRole("tab", { name, exact: true })).toBeInViewport({ ratio: 1 });
+  }
+}
+
 export async function confirmRun(page: Page, cost: string) {
   const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: /^Run (?:these tests|the same tests again)$/ }) });
   await expect(dialog).toBeVisible();

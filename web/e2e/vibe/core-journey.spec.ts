@@ -1,4 +1,4 @@
-import { resultCopy, entryReady, chooseDoor, describeInChat, guideComposer, sendButton, projectReady, confirmRun } from "./entry-model";
+import { resultCopy, entryReady, chooseDoor, describeInChat, guideComposer, sendButton, projectReady, expectProjectNavigation, confirmRun } from "./entry-model";
 import { expect, test } from "@playwright/test";
 import { project, runQuote } from "./entry-fake";
 import type { Artifact, Operation, Session } from "../../src/lib/vibe";
@@ -312,6 +312,8 @@ for (const mobile of [false, true]) {
         .first(),
     ).toBeVisible();
     const more = page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: /^More$/ });
+    await expect(more).toHaveCount(1);
+    await expect(page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: /^Other results · 2$/ })).toBeVisible();
     await more.click();
     await page.getByRole("button", { name: "Ask about this result", exact: true }).click();
     await page.getByRole("button", { name: "Close Guide", exact: true }).click();
@@ -375,15 +377,15 @@ for (const mobile of [false, true]) {
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
-    const navigation = await page
-      .getByRole("tablist", { name: "Workspace views" })
-      .boundingBox();
-    const header = await page.locator("header").boundingBox();
-    expect(
-      Math.abs(
-        navigation!.x + navigation!.width / 2 - header!.x - header!.width / 2,
-      ),
-    ).toBeLessThan(2);
+    await expectProjectNavigation(page);
+    const allResults = page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: /^Results · 3$/ });
+    await expect(allResults).toBeVisible();
+    await expect(more).toHaveCount(1);
+    await allResults.click();
+    const firstResult = page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: inputs[0] });
+    await expect(firstResult).toBeVisible();
+    await firstResult.click();
+    await expect(page.getByRole("article", { name: "Run results" }).getByText(expected[0], { exact: true })).toBeVisible();
     await page
       .getByRole("button", { name: "Keep these tests", exact: true })
       .click();
