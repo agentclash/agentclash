@@ -569,7 +569,10 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 onSave={p.onSave} onTougher={p.onTougher} onExport={p.onExport} loadEvidence={p.loadEvidence} />
             </div>}
             {p.view === "tests" ? (suiteContents || <div className="vibe-empty-state"><p>No tests in this version yet. Guide can prepare tests for you to review.</p><VibeButton onClick={() => { p.onNavigate("build"); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true })); }}>Ask Guide for tests</VibeButton></div>) : p.view === "try" ? (
-              buildJourney ? null : p.preview
+              buildJourney ? null : <>
+                <VibeButton variant="quiet" onClick={() => { switchView("build"); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true })); }}>← Back to Vibe Evals</VibeButton>
+                {p.preview}
+              </>
             ) : intake === "instructions" ? (
               <section className="space-y-4">
                 <div>

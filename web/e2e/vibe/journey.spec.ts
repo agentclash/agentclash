@@ -769,17 +769,15 @@ test("Try keeps followups separate from Build and starts fresh on reset", async 
     page.getByRole("log", { name: "Trial conversation", exact: true }),
   ).toContainText("Is it unopened?");
   await composer.fill("It is unopened.");
-  // The two-door trial sits in the Agent view; Guide opens beside it, not on a separate screen.
-  const guide = page.getByRole("button", { name: "Guide", exact: true });
-  if (await guide.getAttribute("aria-pressed") !== "true") await guide.click();
+  // This fixture has no evaluation door, so the legacy trial returns to the Guide conversation.
+  await page.getByRole("button", { name: "← Back to Vibe Evals", exact: true }).click();
   await expect(
     guideComposer(page),
   ).toHaveValue("Unsent changes to my agent");
   await expect(
     page.getByRole("log", { name: "Conversation with Vibe Evals" }),
   ).not.toContainText("Is it unopened?");
-  const tryIt = page.getByRole("button", { name: "Try it yourself", exact: true });
-  if (await tryIt.isVisible()) await tryIt.click();
+  await page.getByRole("button", { name: "Try it yourself", exact: true }).click();
   await expect(composer).toHaveValue("It is unopened.");
   await page
     .getByRole("button", { name: "Send to agent", exact: true })

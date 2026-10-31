@@ -1,4 +1,5 @@
 import { ImproveStart } from "./improve-start";
+import { PrototypeTrial } from "./prototype-trial";
 import { draftMemory } from "@/lib/vibe-build-drafts";
 import React, { act } from "react";
 import { createRoot, hydrateRoot, type Root } from "react-dom/client";
@@ -144,6 +145,30 @@ function button(text: string) {
   expect(found, `Expected button: ${text}`).toBeTruthy();
   return found!;
 }
+
+it("returns from a legacy trial to the Guide draft without mixing trial messages", async () => {
+  const current = session([
+    { id: "guide", role: "assistant", content: "Review your return policy." },
+    { id: "trial", role: "assistant", content: "Is it unopened?", origin: "playground", preview_thread_id: "thread-one" },
+  ]);
+  const artifact = { id: "agent-one", kind: "test_suite" as const, title: "Returns", agent_prompt: "Help with returns.", blueprint: {}, accepted: false };
+  current.document.artifacts = [artifact];
+  const navigate = vi.fn(async (view: EvaluationWorkspaceProps["view"]) => { await render({ view }); });
+  await render({ session: current, artifact, content: "Unsent changes to my agent", onNavigate: navigate,
+    preview: <PrototypeTrial workspace inline={false} busy={false} text="It is unopened." onText={vi.fn()} onSend={vi.fn()} onBack={() => { void navigate("build"); }} onNew={vi.fn()} thread="thread-one" onThread={vi.fn()} history={[]} messages={current.document.messages.filter(message => message.origin === "playground")} />,
+  });
+  await act(async () => button("Try it yourself").click());
+  expect(container.querySelector('[aria-label="Message Vibe Evals"]')).toBeNull();
+  expect(container.querySelector('[aria-label="Trial conversation"]')?.textContent).toContain("Is it unopened?");
+  await act(async () => button("← Back to Vibe Evals").click());
+  expect(navigate).toHaveBeenLastCalledWith("build");
+  expect((container.querySelector('[aria-label="Message Vibe Evals"]') as HTMLTextAreaElement).value).toBe("Unsent changes to my agent");
+  const guide = container.querySelector('[aria-label="Conversation with Vibe Evals"]');
+  expect(guide?.textContent).toContain("Review your return policy.");
+  expect(guide?.textContent).not.toContain("Is it unopened?");
+  await act(async () => button("Try it yourself").click());
+  expect((container.querySelector('[aria-label="Message your agent"]') as HTMLTextAreaElement).value).toBe("It is unopened.");
+});
 
 
 it("clears copied instruction feedback when the selected historical version changes", async () => {
