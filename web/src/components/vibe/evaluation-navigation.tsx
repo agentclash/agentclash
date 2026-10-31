@@ -425,12 +425,19 @@ export function EvaluationNavigation(p: Props) {
       </Sheet>
     </>
   );
-  if (guest && !hasProjects && !filtered && !search) return <div className="vibe-shell vibe-shell-empty"><div className="vibe-main">
+  return <>
+    {deleting && p.onDeleted && (
+      <DeleteProject
+        session={deleting}
+        onClose={() => setDeleting(undefined)}
+        onDeleted={p.onDeleted}
+      />
+    )}
+    {guest && !hasProjects && !filtered && !search ? <div className="vibe-shell vibe-shell-empty"><div className="vibe-main">
     {p.children(null)}
     <CollectionNotice collection="projects" guest status={p.signInReturnPath && p.listStatus === "loading" ? undefined : p.listStatus} retry={p.onRetryList} />
     <header className="vibe-entry-topbar"><div className="vibe-entry-brand"><ClashMark className="size-7" tone="current" /><span>Vibe Evals</span></div><nav aria-label="Entry navigation"><div className="vibe-entry-projects">{toggle}</div><Link href="/docs/vibe-evals">Help</Link><Link href={`/auth/login?returnTo=${encodeURIComponent(p.signInReturnPath || "/vibe-evals")}`}>Sign in</Link></nav></header>
-  </div></div>;
-  return (
+  </div></div> : (
     <div className="vibe-shell" data-collapsed={collapsed}>
       <motion.aside
         className="vibe-sidebar"
@@ -443,14 +450,7 @@ export function EvaluationNavigation(p: Props) {
       >
         <div className="vibe-sidebar-inner">{navigation(false)}</div>
       </motion.aside>
-      {deleting && p.onDeleted && (
-        <DeleteProject
-          session={deleting}
-          onClose={() => setDeleting(undefined)}
-          onDeleted={p.onDeleted}
-        />
-      )}
       <div className="vibe-main">{p.children(toggle)}</div>
     </div>
-  );
+  )}</>;
 }

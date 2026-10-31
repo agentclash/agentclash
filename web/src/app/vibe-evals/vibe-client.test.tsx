@@ -3070,6 +3070,75 @@ function readyTests(door: "build" | "test" = "test") {
   return suite;
 }
 
+it.each([
+  { door: "build" as const, actor: "guest", other: false, archived: false },
+  { door: "test" as const, actor: "guest", other: false, archived: false },
+  { door: "test" as const, actor: "guest", other: true, archived: false },
+  { door: "test" as const, actor: "member", other: false, archived: false },
+  { door: "test" as const, actor: "guest", other: false, archived: true },
+])("keeps the deletion receipt until Done and focuses the entry door ($door, $actor, other=$other, archived=$archived)", async ({ door, actor, other, archived }) => {
+  readyTests(door);
+  if (actor === "member") { signedInWorkspace(); session.workspace_id = "workspace-one"; }
+  if (archived) session.archived_at = "2026-10-30T00:00:00Z";
+  const remaining = { ...session, id: "session-two", title: "Another project", archived_at: undefined };
+  let deleted = false;
+  respond = async (path, options) => {
+    if (path === "/config") return twoDoorConfig();
+    if (options.method === "DELETE") { deleted = true; return json({ status: "deleted" }); }
+    if (path === "/sessions") return json([...(deleted ? [] : [session]), ...(other ? [remaining] : [])]);
+    if (path === "/saved-checks" || path.endsWith("/reports") || path.endsWith("/canonical-results")) return json([]);
+    return json(session);
+  };
+  await render();
+  if (archived) await act(async () => {
+    const filter = container.querySelector<HTMLSelectElement>('[aria-label="Project archive filter"]')!;
+    filter.value = "only"; filter.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await click("Delete this project");
+  await click("Delete project permanently");
+  const receipt = document.querySelector('[role="dialog"]');
+  expect(receipt?.textContent).toContain("Project removed");
+  expect(receipt?.textContent).toContain("Done");
+  expect(container.querySelector(`[data-evaluation-id="${session.id}"]`)).toBeNull();
+  expect(params().get("session")).toBeNull();
+  await render();
+  expect(document.querySelector('[role="dialog"]')).toBe(receipt);
+  await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(document.querySelector('[role="dialog"]')).toBe(receipt);
+  expect(receipt?.querySelector('[data-slot="dialog-close"]')).toBeNull();
+  await click("Done");
+  await vi.waitFor(() => {
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(document.getElementById(`vibe-door-${door}`));
+  });
+  expect(container.querySelector("h1")?.textContent).toBe("What would you like to evaluate?");
+  expect(requests.filter(r => r.method === "DELETE")).toEqual([expect.objectContaining({ path: `/sessions/${session.id}`, query: "?revision=1" })]);
+});
+
+it("keeps an archived library project open and restores its row without leaving the project", async () => {
+  readyTests();
+  respond = async (path, options) => {
+    if (path === "/config") return twoDoorConfig();
+    if (path.endsWith("/metadata")) {
+      const patch = JSON.parse(options.body as string);
+      session = { ...session, revision: session.revision + 1, archived_at: patch.archived ? "2026-10-30T00:00:00Z" : undefined };
+      return json(session);
+    }
+    if (path === "/sessions") return json([session]);
+    if (path === "/saved-checks" || path.endsWith("/reports") || path.endsWith("/canonical-results")) return json([]);
+    return json(session);
+  };
+  await render();
+  await click("Archive project");
+  expect(container.querySelector(`[data-evaluation-id="${session.id}"]`)).toBeNull();
+  expect(params().get("session")).toBe(session.id);
+  expect(container.querySelector(".vibe-project-header h1")).not.toBeNull();
+  await click("Restore project");
+  expect(container.querySelector(`[data-evaluation-id="${session.id}"]`)).not.toBeNull();
+  expect(params().get("session")).toBe(session.id);
+  expect(requests.filter(r => r.method === "PATCH").map(r => r.body)).toEqual([{ revision: 1, archived: true }, { revision: 2, archived: false }]);
+});
+
 it.each(["guest", "member", "viewer", "no workspace", "loading"])("shows SDK import only for a signed-in workspace writer (%s)", async actor => {
   readyTests();
   if (actor !== "guest") signedInWorkspace();

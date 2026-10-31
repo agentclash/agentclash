@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { showView, startCopy } from "../vibe/entry-model";
+import { doorButton, showView, startCopy } from "../vibe/entry-model";
 
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const task = "Summarize meeting notes, including decisions and action owners.";
@@ -92,8 +92,13 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   await expect(page.getByRole("dialog")).toContainText("Separate workspace saves");
   await page.getByRole("button",{name:"Delete project permanently",exact:true}).click();
   await expect(page.getByRole("heading",{name:"Project removed",exact:true})).toBeVisible();
-  await page.getByRole("button",{name:"Done",exact:true}).click();
+  const receipt = page.getByRole("dialog",{name:"Project removed",exact:true});
+  await receipt.press("Escape");
+  await expect(receipt).toBeVisible();
+  await receipt.getByRole("button",{name:"Done",exact:true}).click();
+  await expect(receipt).toHaveCount(0);
   await expect(page.getByRole("button",{name:/Build an agent/})).toBeVisible();
+  await expect(doorButton(page,"build")).toBeFocused();
   expect(errors).toEqual([]);
 });
 

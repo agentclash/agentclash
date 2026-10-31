@@ -49,7 +49,7 @@ async function serve(page: Page, many = false, prototypes = false) {
     const request = route.request(), path = new URL(request.url()).pathname;
     const headers = { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" };
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...headers,
-      "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS" } });
+      "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS" } });
     if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) } });
     if (path.endsWith("/saved-checks")) return route.fulfill({ headers, json: [] });
     if(request.method()==="PATCH"&&path.endsWith("/metadata")){
@@ -60,6 +60,13 @@ async function serve(page: Page, many = false, prototypes = false) {
       if(body.archived!==undefined)state.archived_at=body.archived?new Date().toISOString():undefined;
       state.revision++;state.event_cursor=state.revision;state.updated_at=new Date().toISOString();
       return route.fulfill({headers,json:state});
+    }
+    if (request.method() === "DELETE") {
+      const id = path.split("/sessions/")[1], state = sessions.get(id);
+      if (!state || new URL(request.url()).searchParams.get("revision") !== String(state.revision))
+        return route.fulfill({ status: 409, headers, json: { error: { message: "Reload the project" } } });
+      sessions.delete(id);
+      return route.fulfill({ headers, json: { status: "deleted" } });
     }
     if (request.method() === "POST") {
       if (path.endsWith("/build-quote")) {
@@ -102,6 +109,36 @@ async function openCase(page: Page, index = 0) {
   const row = page.locator(".vibe-result-row").nth(index);
   if (!(await row.evaluate(element => (element as HTMLDetailsElement).open))) await row.locator("summary").click();
   return row;
+}
+
+for (const width of [390, 1440]) for (const last of [false, true]) {
+  test(`deletion receipt survives until Done (${width}px, last project: ${last})`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const control = await serve(page);
+    if (last) {
+      control.sessions.delete("second");
+      if (width < 1024) await page.getByRole("button", { name: "Open projects", exact: true }).click();
+      await page.getByRole("button", { name: "Refresh projects", exact: true }).click();
+      await expect(page.locator('[data-evaluation-id="second"]')).toHaveCount(0);
+    } else if (width < 1024) await page.getByRole("button", { name: "Open projects", exact: true }).click();
+    const navigation = width < 1024 ? page.getByRole("dialog", { name: "Your projects", exact: true }) : page.getByRole("complementary", { name: "Projects sidebar", exact: true });
+    await navigation.locator(".vibe-project-actions summary").click();
+    await navigation.getByRole("button", { name: "Delete this project", exact: true }).click();
+    await page.getByRole("button", { name: "Delete project permanently", exact: true }).click();
+    const receipt = page.getByRole("dialog", { name: "Project removed", exact: true });
+    await expect(receipt).toBeVisible();
+    await expect(page).not.toHaveURL(/session=/);
+    expect(control.sessions.has("first")).toBe(false);
+    await receipt.press("Escape");
+    await expect(receipt).toBeVisible();
+    await receipt.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(receipt).toHaveCount(0);
+    await expect(entryHeading(page)).toBeVisible();
+    await expect(doorButton(page, "improve")).toBeFocused();
+    expect(control.sessions.has("second")).toBe(!last);
+    expect(control.posts).toEqual([]);
+    expect(control.errors).toEqual([]);
+  });
 }
 
 test("a stored trial in B survives opening A, switching, editing and refreshing", async ({ page }) => {
@@ -869,8 +906,12 @@ test("library search rename archive and sidebar preference preserve full touch a
  const row=page.locator('[data-evaluation-id="older-29"]');await expect(row).toContainText(title);
  await row.focus();expect(await row.locator('.vibe-project-full-title').evaluate(node=>node.scrollHeight<=node.clientHeight+1)).toBe(true);
  await page.getByRole("button",{name:"Archive project",exact:true}).click();await expect(row).toHaveCount(0);
+ await expect(page.locator(".vibe-project-header h1")).toHaveText(title);
+ await expect(page).toHaveURL(/session=older-29/);
  await page.getByLabel("Project archive filter").selectOption("only");await expect(row).toHaveCount(1);
  await page.getByRole("button",{name:"Restore project",exact:true}).click();await expect(row).toHaveCount(0);
+ await expect(page.locator(".vibe-project-header h1")).toHaveText(title);
+ await expect(page).toHaveURL(/session=older-29/);
  await page.getByLabel("Project archive filter").selectOption("exclude");await expect(row).toHaveCount(1);
  await page.getByRole("button",{name:"Collapse sidebar",exact:true}).click();await page.reload();await expect(page.getByRole("button",{name:"Expand sidebar",exact:true})).toBeVisible();
  await page.setViewportSize({width:390,height:844});
