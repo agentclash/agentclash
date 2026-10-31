@@ -596,7 +596,7 @@ test("describe, review, independently select agent, check, inspect unknowns and 
   ).toHaveValue(models.assistant);
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Run 3 tests" }).click();
-  await page.getByRole("button", {name:"View latest results",exact:true}).click();
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
   await expect(
     page.getByRole("article", { name: "Run results" }),
   ).toContainText("1 passed · 0 need attention · 2 unresolved");
@@ -665,7 +665,7 @@ for (const viewport of [
     expect(mock.messageCount()).toBe(0);
     await improvePrimary(page, "instructions").click();
     await page.getByRole("button", { name: "Run 3 tests" }).click();
-  await page.getByRole("button", {name:"View latest results",exact:true}).click();
+    await page.getByRole("tab", { name: "Results", exact: true }).click();
     await expect(page.getByRole("tab", { name: "Results" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -705,6 +705,7 @@ test("draft editor exposes the full instructions and exports the user's exact re
   await page
     .getByRole("button", { name: "Use these instructions", exact: true })
     .click();
+  await page.getByRole("tab", { name: "Agent", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Try it yourself", exact: true }),
   ).toBeEnabled();
@@ -748,6 +749,8 @@ test("Try keeps followups separate from Build and starts fresh on reset", async 
   await guideComposer(page)
     .fill("Build a return-policy assistant.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "3 tests are ready", exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Agent", exact: true }).click();
   // The reply resets the composer, so type the next draft after it arrives.
   await expect(
     page.getByRole("button", { name: "Try it yourself", exact: true }),
@@ -913,7 +916,7 @@ test("unapplied instructions cannot run checks; applying creates a ready-to-try 
   expect(mock.checkCount()).toBe(0);
   await page.getByRole("button", { name: "Use these instructions" }).click();
   await page.getByRole("button", { name: "Run 3 tests" }).click();
-  await page.getByRole("button", {name:"View latest results",exact:true}).click();
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
   await expect(
     page.getByRole("article", { name: "Run results" }),
   ).toBeVisible();

@@ -289,7 +289,7 @@ for (const mobile of [false, true]) {
     await tests.getByRole("button", { name: "Add your agent's instructions" }).click();
     expect(requests).toHaveLength(1);
     await tests.getByRole("button", { name: "Run 3 tests" }).click();
-    await page.getByRole("button", { name: "View latest results", exact: true }).click();
+    await page.getByRole("tab", { name: "Results", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: resultCopy.headline(2, 3) }),
     ).toBeVisible();

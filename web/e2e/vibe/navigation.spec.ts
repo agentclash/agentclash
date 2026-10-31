@@ -317,6 +317,8 @@ test("a failed import stays in Improve and clears when returning to the chooser"
   await expect(entryHeading(page)).toBeFocused();
   await expect(newProjectChoices(page, false)).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: "Couldn’t confirm the saved input." })).toHaveCount(0);
+  await page.getByRole("button", { name: "Back to your project", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Couldn’t confirm the saved input." })).toBeVisible();
   expect(control.posts.map(post => post.path)).toEqual(["/v1/vibe/sessions/first/import"]);
   expect(control.errors).toEqual([]);
 });

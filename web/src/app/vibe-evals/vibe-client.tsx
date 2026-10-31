@@ -303,7 +303,7 @@ return (
             )}</>}
         notice={
           <>
-            {!saveOpen && error && (feedbackTarget === "project" || /selected result is unavailable/.test(error) || !artifact && view !== "build") && <p role="alert">{error}</p>}
+            {!newEvaluation && !saveOpen && error && (feedbackTarget === "project" || /selected result is unavailable/.test(error) || !artifact && view !== "build") && <p role="alert">{error}</p>}
             {config && !inferenceAvailable && !choosingEntry && <p role="status">{unavailableReason}</p>}
             {!choosingEntry && !config && !configError && <p className="vibe-connection-status" role="status">Connecting…</p>}
             {!choosingEntry && configError && (

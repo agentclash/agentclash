@@ -4614,6 +4614,25 @@ it.each(["replies", "pack"] as const)("fix4 keeps the same %s project and input 
 });
 
 
+it("scopes an uncertain import warning to its project while choosing a new project", async () => {
+  session.document.evaluation = { id: session.id, chat_id: session.id, door: "test" };
+  const previous = respond;
+  respond = async (path, options) => path.endsWith("/import")
+    ? json({ error: { code: "request_failed", message: "Parser unavailable" } }, 503)
+    : previous(path, options);
+  await render(); await click("Test pack");
+  const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+  await act(async () => { Object.defineProperty(input, "files", { value: [new File(["{"], "broken.json")] }); input.dispatchEvent(new Event("change", { bubbles: true })); });
+  const warning = "Couldn’t confirm the saved input. Reload this project to check before trying again.";
+  expect(container.textContent).toContain(warning);
+  await click("Open projects"); await click("New project");
+  expect(container.querySelector('[aria-label="New project choices"]')).not.toBeNull();
+  expect(container.textContent).not.toContain(warning);
+  await click("Back to your project");
+  expect(container.textContent).toContain(warning);
+  expect(requests.filter(request => request.method !== "GET").map(request => request.path)).toEqual([`/sessions/${session.id}/import`]);
+});
+
 it.each(["malformed", "oversized"] as const)("fix8 cleans up a %s Settings import from the signed-in Improve start", async kind => {
   signedInWorkspace();
   await enterDoor("test");
