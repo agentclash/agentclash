@@ -5,7 +5,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { Session } from "../../src/lib/vibe";
 import { description, fakeVibe, instructions, models, project } from "./entry-fake";
-import { chooseDoor, composer, doorButton, doorReady, entryHeading, entryReady, sendButton, sourceButton } from "./entry-model";
+import { chooseDoor, composer, doorButton, doorReady, entryHeading, entryReady, sendButton, sourceButton, doorHeading, startScreen, startComposer, buildOptions, startCopy, otherResults, resultsMore } from "./entry-model";
 
 type Scheme = "light" | "dark";
 const schemes = ["light", "dark"] as const;
@@ -75,12 +75,15 @@ async function toResults(page: Page) {
   await expect(sendButton(page)).toBeEnabled({ timeout: 20_000 });
   await sendButton(page).click();
   await expect(page.locator(".vibe-project-header")).toContainText("Run 1: Completed", { timeout: 30_000 });
-  await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Results", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("article", { name: "Run results" })).toBeVisible();
+  const outcome = page.locator(".vibe-project-main h1.vibe-results-outcome");
+  await expect(outcome).toBeFocused();
+  expect(await outcome.evaluate(element => document.activeElement === element)).toBe(true);
   return fake;
 }
 
-test("the entry and both door starts: the display serif question, 3:1 control boundaries, a flat composer and dock", async ({ page }) => {
+test("the entry and both door starts: display serif questions, 3:1 control boundaries, flat inputs and no start dock", async ({ page }) => {
   const fake = await fakeVibe(page);
   await page.goto("/vibe-evals");
   await entryReady(page, 30_000);
@@ -95,21 +98,37 @@ test("the entry and both door starts: the display serif question, 3:1 control bo
   }
   await chooseDoor(page, "build");
   await doorReady(page, "build");
-  await composer(page).blur();
-  const box = page.locator(".vibe-composer").filter({ has: composer(page) });
-  const dock = page.locator(".vibe-composer-dock").filter({ has: composer(page) });
+  const box = page.locator(".vibe-build-start-card");
+  await expect(buildOptions(page)).toBeVisible();
   for (const scheme of schemes) for (const contrast of ["no-preference", "more"] as const) {
     await settle(page, scheme, { contrast });
-    expect(await boundary(box), `${scheme} composer`).toBeGreaterThanOrEqual(3);
-    // Elevation 1: a hairline or a border, no shadow; the dock has no fade and no upward shadow.
+    const title = doorHeading(page, "build"), input = startComposer(page, "build");
+    await expect(title, scheme).toHaveCSS("font-family", /Instrument[ _]Serif/);
+    await expect(title, scheme).toHaveCSS("font-weight", "400");
+    expect(parseFloat(await css(title, "font-size")), scheme).toBeGreaterThanOrEqual(32);
+    await expect(box, scheme).toHaveCSS("border-top-width", "0px");
+    await expect(box, scheme).toHaveCSS("padding-left", "0px");
+    expect(await boundary(input), `${scheme} Build input`).toBeGreaterThanOrEqual(3);
     await expect(box, scheme).toHaveCSS("box-shadow", "none");
-    await expect(dock, scheme).toHaveCSS("box-shadow", "none");
-    await expect(dock, scheme).toHaveCSS("background-image", "none");
-    await expect(dock, scheme).toHaveCSS("background-color", canvas[scheme]);
-    await composerFocus(page, box, composer(page), `${scheme} ${contrast} entry composer`);
-    const secondary = page.locator(".vibe-button-secondary").filter({ visible: true });
-    expect(await secondary.count(), scheme).toBeGreaterThan(0);
-    for (const button of await secondary.all()) expect(await boundary(button), `${scheme} ${await button.textContent()}`).toBeGreaterThanOrEqual(3);
+    await expect(box, scheme).toHaveCSS("background-image", "none");
+    await expect(page.locator(".vibe-composer-dock")).toHaveCount(0);
+    await input.focus(); await page.keyboard.press("Shift+Tab"); await page.keyboard.press("Tab");
+    await expect(input).toBeFocused();
+    await expect.poll(() => input.evaluate(element => element.matches(":focus-visible"))).toBe(true);
+    await expect(input, scheme).toHaveCSS("outline-style", "solid");
+    await expect(input, scheme).toHaveCSS("outline-width", "2px");
+    expect(await css(input, "outline-color"), scheme).not.toBe(await css(input, "border-top-color"));
+    expect(await boundary(input, "outline"), `${scheme} Build focus ring`).toBeGreaterThanOrEqual(3);
+    await input.blur(); await expect(input).toHaveCSS("outline-style", "none");
+    const chips = startScreen(page).getByRole("group", { name: "Example tasks" }).locator(".vibe-example-chip");
+    await expect(chips).toHaveCount(2);
+    for (const chip of await chips.all()) {
+      await expect(chip).toHaveCSS("border-radius", "999px");
+      expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+    const positions = await chips.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().y));
+    expect(positions[0]).toBe(positions[1]);
+    await expect(page.locator(".vibe-build-price")).toHaveCSS("font-family", /Geist/);
   }
   await page.goto("/vibe-evals");
   await entryReady(page, 30_000);
@@ -117,7 +136,28 @@ test("the entry and both door starts: the display serif question, 3:1 control bo
   await doorReady(page, "improve");
   for (const scheme of schemes) for (const contrast of ["no-preference", "more"] as const) {
     await settle(page, scheme, { contrast });
-    for (const source of ["instructions", "recorded", "import"] as const) expect(await boundary(sourceButton(page, source)), `${scheme} ${source} source`).toBeGreaterThanOrEqual(3);
+    const title = doorHeading(page, "improve");
+    await expect(title, scheme).toHaveCSS("font-family", /Instrument[ _]Serif/);
+    await expect(title, scheme).toHaveCSS("font-weight", "400");
+    expect(parseFloat(await css(title, "font-size")), scheme).toBeGreaterThanOrEqual(32);
+    await title.focus();
+    expect(await title.evaluate(element => document.activeElement === element)).toBe(true);
+    await expect(title).toHaveCSS("outline-style", "none");
+    await page.keyboard.press("Tab");
+    const radio = startScreen(page).getByRole("radio", { checked: true });
+    await expect(radio).toBeFocused();
+    await expect(radio).toHaveCSS("outline-style", "solid");
+    expect(await boundary(radio, "outline"), `${scheme} Improve keyboard ring`).toBeGreaterThanOrEqual(3);
+    await expect(page.locator(".vibe-composer-dock")).toHaveCount(0);
+    for (const source of ["instructions", "recorded", "import"] as const) {
+      await sourceButton(page, source).click();
+      for (const radio of await startScreen(page).getByRole("radio").all()) expect(await boundary(radio), `${scheme} ${source} segment`).toBeGreaterThanOrEqual(3);
+      const surface = startScreen(page).locator(source === "import" ? ".vibe-improve-drop" : ".vibe-improve-form");
+      await expect(surface, scheme).toHaveCSS("box-shadow", "none");
+      await expect(surface, scheme).toHaveCSS("background-image", "none");
+      if (source === "import") expect(await boundary(surface), `${scheme} pack drop zone`).toBeGreaterThanOrEqual(3);
+      for (const control of await startScreen(page).locator("textarea, select").filter({ visible: true }).all()) expect(await boundary(control), `${scheme} ${source} input`).toBeGreaterThanOrEqual(3);
+    }
   }
   expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
 });
@@ -138,13 +178,17 @@ test("the Guide composer has a distinct 3:1 keyboard focus ring in every appeara
 
 test("results: an ink primary, clay and sage status with a glyph and a word, and the serif title and outcome", async ({ page }) => {
   const fake = await toResults(page);
-  const results = page.getByRole("article", { name: "Run results" });
-  await results.getByText(/^Other results ·/).click();
-  const issue = results.locator("summary").filter({ hasText: "Issue found" }).first();
-  const passed = results.locator("summary").filter({ hasText: "Passed" }).first();
+  const results = page.getByRole("tabpanel", { name: "Results", exact: true });
+  await otherResults(page).click();
+  const issue = results.locator(".vibe-build-result summary").filter({ hasText: "Issue found" }).first();
+  const passed = results.locator(".vibe-build-result summary").filter({ hasText: "Passed" }).first();
   await expect(passed).toBeVisible();
-  const title = page.locator(".vibe-project-identity h1");
-  const outcome = page.locator(".vibe-results-outcome");
+  const title = page.locator(".vibe-project-identity :is(h1, h2)");
+  const outcome = results.locator(".vibe-results-outcome").first();
+  await expect(page.locator("h1:visible")).toHaveCount(1);
+  await expect(outcome).toHaveJSProperty("tagName", "H1");
+  await results.getByText("All 3 test results", { exact: true }).click();
+  await resultsMore(page).click();
   for (const scheme of schemes) {
     await settle(page, scheme);
     const primary = page.locator(".vibe-button-primary").filter({ visible: true });
@@ -308,4 +352,90 @@ test.describe("before hydration", () => {
     await expect(fallback).toHaveCSS("background-color", canvas[scheme]);
     expect((await fallback.boundingBox())!.height).toBeGreaterThanOrEqual(960);
   });
+});
+
+test("review polish: shared start hierarchy, chip rows and vertical steps, aligned quiet controls and styled disclosures at 1440 and 390", async ({ page }) => {
+  const fake = await fakeVibe(page);
+  for (const width of [1440, 390]) for (const scheme of schemes) {
+    await page.setViewportSize({ width, height: 960 });
+    await page.goto("/vibe-evals");
+    await entryReady(page, 30_000);
+    await settle(page, scheme);
+    const steps = page.locator(".vibe-door-steps > li");
+    const rects = await steps.evaluateAll(elements => elements.map(element => { const rect = element.getBoundingClientRect(); return { x: rect.x, y: rect.y }; }));
+    expect(rects).toHaveLength(3);
+    expect(new Set(rects.map(rect => rect.x)).size).toBe(1);
+    expect(rects[0].y).toBeLessThan(rects[1].y); expect(rects[1].y).toBeLessThan(rects[2].y);
+    for (const door of ["build", "improve"] as const) {
+      await chooseDoor(page, door); await doorReady(page, door);
+      const dataUse = startScreen(page).getByRole("link", { name: "Data use and retention (new tab)", exact: true });
+      await page.mouse.move(0, 0);
+      await expect(dataUse).toBeVisible();
+      await expect(dataUse).toHaveAccessibleName("Data use and retention (new tab)");
+      await expect(dataUse).toHaveAttribute("href", "/docs/vibe-evals/data-use");
+      await expect(dataUse).toHaveCSS("text-decoration-line", "underline");
+      const title = doorHeading(page, door);
+      await expect(title).toHaveClass("vibe-start-title");
+      await expect(title).toHaveCSS("font-family", /Instrument[ _]Serif/);
+      await expect(title).toHaveCSS("font-size", width === 390 ? "32px" : "42.88px");
+      if (door === "improve") {
+        const options = startScreen(page).locator(".vibe-improve-other > summary");
+        const disclosure = options.locator("..");
+        await expect(options).toHaveCSS("list-style-type", "none");
+        const before = () => options.evaluate(element => getComputedStyle(element, "::before").transform);
+        const closed = await before();
+        await options.click();
+        await expect(disclosure).toHaveJSProperty("open", true);
+        await expect.poll(before).not.toBe(closed);
+        await expect.poll(() => options.evaluate(element => getComputedStyle(element, "::before").transitionDuration)).toBe("0s");
+      } else {
+        await expect(startScreen(page).locator("details")).toHaveCount(0);
+        await expect(buildOptions(page)).toBeVisible();
+        const primary = sendButton(page), input = startComposer(page, "build");
+        const task = (await input.boundingBox())!, action = (await primary.boundingBox())!;
+        expect(Math.abs(action.x - task.x)).toBeLessThanOrEqual(1);
+        expect(action.y).toBeGreaterThan((await startScreen(page).locator(".vibe-build-example-chips").boundingBox())!.y);
+        await expect(primary).toHaveAccessibleDescription("Describe the task in a sentence or two.");
+        await expect(startScreen(page).getByRole("button", { name: startCopy.build.switchDoor, exact: true })).toBeVisible();
+      }
+      const quiet = startScreen(page).locator(".vibe-button-quiet:not(.vibe-example-chip)").filter({ visible: true });
+      for (const button of await quiet.all()) {
+        await page.mouse.move(0, 0);
+        await expect(button).toHaveCSS("padding-left", "0px");
+        await expect(button).toHaveCSS("text-decoration-line", "none");
+        expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+        await button.hover();
+        await expect(button).toHaveCSS("text-decoration-line", "underline");
+      }
+      if (door === "build") {
+        const chips = startScreen(page).locator(".vibe-example-chip");
+        const ys = await chips.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().y));
+        expect(ys[0]).toBe(ys[1]);
+        expect(await chips.evaluateAll(elements => elements.every(element => element.getBoundingClientRect().right <= innerWidth))).toBe(true);
+      } else {
+        const labels = startScreen(page).locator("label:not(.sr-only)");
+        for (const label of await labels.all()) { await expect(label).toHaveCSS("font-weight", "600"); await expect(label).toHaveCSS("font-size", "14px"); }
+        expect(await startScreen(page).locator("option").allTextContents()).not.toEqual(expect.arrayContaining([models.target]));
+      }
+      await startScreen(page).getByRole("button", { name: "Back", exact: true }).click();
+      await entryReady(page);
+    }
+  }
+  expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
+});
+
+test("the Build result keeps 32px before the trial and one visible data-use notice as Guide opens and closes", async ({ page }) => {
+  const fake = await toResults(page);
+  const trial = page.getByRole("region", { name: "Try your agent", exact: true });
+  const result = page.locator('.vibe-project-main article[aria-label="Run results"]').first();
+  const distance = async () => (await trial.boundingBox())!.y - ((await result.boundingBox())!.y + (await result.boundingBox())!.height);
+  await expect.poll(distance).toBeGreaterThanOrEqual(32);
+  const guide = page.getByRole("button", { name: "Guide", exact: true });
+  if (await guide.getAttribute("aria-pressed") !== "true") await guide.click();
+  await expect(page.locator(".vibe-data-use-notice").filter({ visible: true })).toHaveCount(1);
+  await expect(page.locator(".vibe-guide-data-use")).toBeVisible();
+  await page.getByRole("button", { name: "Close Guide", exact: true }).click();
+  await expect(page.locator(".vibe-data-use-notice").filter({ visible: true })).toHaveCount(1);
+  await expect(trial.locator(".vibe-data-use-notice")).toBeVisible();
+  expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
 });

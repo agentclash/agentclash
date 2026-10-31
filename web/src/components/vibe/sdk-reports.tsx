@@ -13,6 +13,7 @@ export function SDKReports(props: SDKEvidenceContext & {
   revision?: number; models?: Models; inferenceAvailable?: boolean; refresh?: number;
   onPromoted?: (artifact: Artifact) => void; onRegraded?: (operation: Operation) => void;
   onExport?: (report: SDKReport) => void;
+  hideEmptyHistory?: boolean;
 }) {
   const {actorScope,sessionId,workspaceId,token,refresh,access:{canRead,status}} = props;
   const [attempt, setAttempt] = useState(0);
@@ -42,10 +43,13 @@ export function SDKReports(props: SDKEvidenceContext & {
     : !canRead ? "SDK reports are unavailable until access to this workspace is confirmed." : undefined;
   const active = !unavailable && state?.owner === life.owner ? state : undefined;
   const selected = !unavailable && !active?.denied && props.selectedReport?.binding.session_id === sessionId && props.selectedReport.binding.result_ref.kind === "sdk_report" && props.selectedReport.id === props.selectedReport.binding.result_ref.id && props.selectedReport.binding.artifact_id === props.artifactId ? props.selectedReport : undefined;
+  const showHistory = !props.hideEmptyHistory || !!selected || !!active?.reports?.length;
+  if (!showHistory && !active?.error) return null;
   return <section aria-label="SDK reports" className="space-y-4">
     {selected && <SDKReportDetail key={`${props.actorScope}:${props.sessionId}:${selected.id}`} {...props} report={selected} />}
     {active?.error && <p role="alert">{active.error}</p>}
-    <details aria-label="SDK report history" className="space-y-3">
+    {!showHistory && <VibeButton onClick={() => setAttempt(n => n + 1)}>Reload SDK reports</VibeButton>}
+    {showHistory && <details aria-label="SDK report history" className="space-y-3">
       <summary>SDK report history</summary>
       {unavailable ? <p className="text-sm">{unavailable}</p> : <>
         <p>Imported, unverified application execution. Source grades remain separate from hosted runs and reviews.</p>
@@ -57,6 +61,6 @@ export function SDKReports(props: SDKEvidenceContext & {
           <span> · {testCount(report.cases.length)} · {report.source_kind === "agent_result" ? "No imported grade" : "Imported grades"}</span>
         </li>)}</ul>
       </>}
-    </details>
+    </details>}
   </section>;
 }

@@ -41,11 +41,12 @@ test("reviewed tests execute application CI, retain a real regression, and retur
   await post("/__fixture/connector-output", { regressed: false });
   await page.goto("/auth/login?returnTo=%2Fvibe-evals");
   await page.getByRole("button", { name: "Continue with AgentClash" }).click();
-  await page.getByLabel("Workspace for new projects").selectOption(workspace);
+  await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled(); await expect(page.getByLabel("Workspace for new projects")).toHaveCount(0);
   await page.getByRole("button", { name: /Improve an existing agent/ }).click();
   const bundle = await post("/__fixture/connector-bundle", blueprint);
+  await page.getByRole("radio", { name: "Test pack", exact: true }).click();
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "Import a test pack", exact: true }).click();
+  await page.getByRole("button", { name: "Choose a file", exact: true }).click();
   await (await chooser).setFiles({ name: "reviewed-tests.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(bundle)) });
   await expect(page.getByRole("tab", { name: "Tests", exact: true })).toBeVisible();
   const session = new URL(page.url()).searchParams.get("session")!;

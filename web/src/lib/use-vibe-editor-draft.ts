@@ -1,12 +1,14 @@
 "use client";
 import { useState } from "react";
+import { useVibeBrowserReady } from "./use-vibe-browser-ready";
 import { draftMemory, emptyDrafts, persistDrafts, readBuildDrafts, editorDraftKey, readEditorDraft, discardEditorDraft } from "./vibe-build-drafts";
 
 export function useVibeEditorDraft(project: string, artifact: string, editor: string, source: string, initial: string) {
   const key = editorDraftKey(project, artifact, editor);
   const [, render] = useState(0);
   const refresh = () => render(value => value + 1);
-  const row = readEditorDraft(project, artifact, editor);
+  const ready = useVibeBrowserReady();
+  const row = ready ? readEditorDraft(project, artifact, editor) : undefined;
   const value = row?.value ?? initial;
   const conflict = !!row && row.source !== source;
   const setValue = (next: string) => {

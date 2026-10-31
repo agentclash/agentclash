@@ -61,5 +61,5 @@ export function useVibeNavigation() {
   // Canonicalize legacy links and observe Next router changes using the live URL.
   useEffect(() => { writeURL(new URL(window.location.href)); }, [query, writeURL]);
   const legacyView: LegacyVibePane = selection.section === "trial" && selection.view === "agent" ? "try" : selection.view === "results" ? "checks" : selection.view === "tests" ? "tests" : "build";
-  return { ...selection, legacyView, update, writeURL, selectSession };
+  return { ...selection, search: search ? `?${new URLSearchParams(search)}` : "", start: new URLSearchParams(search).get("start"), legacyView, update, writeURL, selectSession };
 }

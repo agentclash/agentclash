@@ -1,7 +1,9 @@
 "use client";
 
+import { friendlyModelName } from "./model-name";
+
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowRight, ChevronRight, Copy, Pencil } from "lucide-react";
+import { ArrowRight, ChevronRight, Pencil } from "lucide-react";
 import { useVibeEditorDraft } from "@/lib/use-vibe-editor-draft";
 import { editorSource } from "@/lib/vibe-build-drafts";
 import { downloadJSON } from "@/lib/vibe-export";
@@ -10,15 +12,14 @@ import { testCount } from "@/lib/vibe-presentation";
 import { suiteCases, changedCases } from "./test-suite-cases";
 import { TestMeaning } from "./conversation-guidance";
 import { ValidationDetails } from "./validation-review";
+import "./improve.css";
 import { VibeButton } from "./vibe-button";
 
-export const exampleAgentDescription = `My agent helps customers with returns. Unopened items can be returned within 30 days. Opened items and purchases older than 30 days aren't eligible. It should ask for missing purchase age or item condition, and never claim it has processed a refund.`;
+export { exampleAgentDescription } from "./improve-inputs";
+import { InstructionsHelp } from "./improve-inputs";
+import { useImprovePrice, priceLabel, ImproveRunNotice } from "./improve-run-quote";
 
-// The action that tests a changed version against its parent's result.
-export const rerunLabel = (buildJourney: boolean) => buildJourney ? "Apply change and rerun" : "Improve and rerun";
-
-const instructionsHelp =
-  "Show me the exact instructions used by the AI agent in my app, and which model it uses. Include its existing rules. Do not rewrite them. I want to test those instructions in Vibe Evals.";
+export const rerunLabel = (buildJourney: boolean) => buildJourney ? "Apply change and rerun" : "Test this change";
 
 export function TestSuitePanel({
   mode = "combined", onAgent, onAskCase,
@@ -74,6 +75,8 @@ export function TestSuitePanel({
 }) {
   const tests = suiteCases(artifact.blueprint);
   const [prototypeMode,setPrototypeMode]=useState(false);
+  const price = useImprovePrice();
+  const inlineImport = !buildJourney && !artifact.agent_prompt.trim();
   const [preparingOnly, setPreparingOnly] = useState(false);
   const [focusedCase, setFocusedCase] = useState<string | undefined>(selectedCase);
   const instructionDraft = useVibeEditorDraft(projectID, artifact.id, "instructions", editorSource({ id: artifact.id, agent_prompt: artifact.agent_prompt }), artifact.agent_prompt);
@@ -86,19 +89,18 @@ export function TestSuitePanel({
     setFocusedCase(selectedCase);
     setEditing(tests.some(test => test.key === selectedCase && test.editable));
   }
-  const [agentOpen, setAgentOpenState] = useState(mode !== "tests" && instructionDraft.dirty);
-  const setAgentOpen = (open: boolean) => { if (open && mode === "tests") onAgent?.(); else setAgentOpenState(open); };
+  const [agentOpen, setAgentOpenState] = useState(!editing && (inlineImport || mode !== "tests" && instructionDraft.dirty));
+  const setAgentOpen = (open: boolean) => { if (open && mode === "tests" && buildJourney) onAgent?.(); else setAgentOpenState(open); };
   const instructions = instructionDraft.value;
   const setInstructions = instructionDraft.setValue;
   const draft = JSON.parse(casesDraft.value) as typeof tests;
   const setDraft = (next: typeof tests | ((old: typeof tests) => typeof tests)) => casesDraft.setValue(JSON.stringify(typeof next === "function" ? next(draft) : next));
   useEffect(() => { onDirty(instructionDraft.dirty || casesDraft.dirty); }, [instructionDraft.dirty, casesDraft.dirty]);
   const restoreFocus = () => requestAnimationFrame(() => editorHeading.current?.focus());
-  const [copied, setCopied] = useState(false);
-  const [copyFailed, setCopyFailed] = useState(false);
   const cases = tests;
   const changes = changedCases(tests, draft);
   const ready = !!artifact.agent_prompt.trim();
+  const runBlockedReason = blocked || instructionDraft.dirty || casesDraft.dirty ? "Save or discard your draft before running." : inferenceUnavailable ? "Model inference is unavailable." : undefined;
   const ran = ready && !!onResult;
   // The editor and the agent form hide the actions, and with them "See the result".
   const resultShown = ran && !agentOpen && !editing && !artifact.unavailable_reason && cases.length > 0;
@@ -134,24 +136,24 @@ export function TestSuitePanel({
         {!agentOpen && !editing && <div className="vibe-tests-actions">
           <div className="flex flex-wrap items-center gap-2">
             {ran && <VibeButton variant={primary ? "primary" : "secondary"} onClick={onResult}>See the result<ArrowRight /></VibeButton>}
-            <VibeButton
+            {!inlineImport && <VibeButton
               variant={primary && !ran ? "primary" : "secondary"}
-              disabled={busy || blocked || validationBlocked || (inferenceUnavailable && (ready || !preparingOnly))}
+              disabled={busy || blocked || validationBlocked || (ready && !!price?.credits) || instructionDraft.dirty || casesDraft.dirty || (inferenceUnavailable && (ready || !preparingOnly))}
               onClick={() => (preparingOnly && !ready ? onSave() : ready ? onRun() : buildJourney && rules.length ? void onEdit({ artifact_id: artifact.id, build_from_policy: true }) : setAgentOpen(true))}
             >
-              {ran ? "Run again" : ready
+              {priceLabel(ran ? "Run again" : ready
                 ? pendingPolicy
                   ? "Run previous tests"
                   : comparison
                   ? rerunLabel(buildJourney)
-                  : buildJourney && parent ? "Update and run" : `Run ${cases.length} ${cases.length === 1 ? "test" : "tests"}`
-                : preparingOnly ? "Keep these tests" : buildJourney && rules.length ? "Build from saved rules" : "Add your agent"}
+                  : buildJourney && parent ? "Update and run" : `Run ${testCount(cases.length)}`
+                : preparingOnly ? "Keep these tests" : buildJourney && rules.length ? "Build from saved rules" : "Add your agent", ready && !buildJourney ? price : undefined)}
               <ArrowRight />
-            </VibeButton>
+            </VibeButton>}
             {tests.some(t => t.editable) && <VibeButton
               variant="quiet"
               disabled={busy}
-              onClick={() => { setFocusedCase(undefined); setEditing(true); onSelectCase?.(); }}
+              onClick={() => { setAgentOpen(false); setFocusedCase(undefined); setEditing(true); onSelectCase?.(); }}
             >
               <Pencil />
               Edit tests
@@ -159,11 +161,12 @@ export function TestSuitePanel({
           </div>
           {ready && (
             <p className="text-sm vibe-muted">
-              Text test here · {modelLabel || "Selected model"}. Your live app is not called.
+              Runs your instructions on {modelLabel ? friendlyModelName({ id: modelLabel }) : "the selected model"}. Your live app is not called.
             </p>
           )}
         </div>}
       </div>
+      {!buildJourney && <ImproveRunNotice reason={!agentOpen && !editing ? runBlockedReason : undefined} />}
       {added>0 && <p className="text-sm vibe-muted">{testCount(added, "new")} · {testCount(cases.length-added, "existing")}. This run includes all {cases.length}; earlier results are kept separately.</p>}
       {!editing && !agentOpen && <TestMeaning />}
       {artifact.validation && <details className="vibe-test-review" open={validationBlocked}><summary>Test review: {validationBlocked ? "Needs attention" : "Ready"}</summary><ValidationDetails validation={artifact.validation} /></details>}
@@ -177,7 +180,7 @@ export function TestSuitePanel({
           </ul>
         </details>
       )}
-      {!agentOpen && !editing && (
+      {!editing && (!agentOpen || inlineImport) && (
         <div className="vibe-panel">
           {cases.map((test, i) => (
             <details className="vibe-result-row" key={test.key}>
@@ -193,7 +196,7 @@ export function TestSuitePanel({
                 <p>{test.expected}</p>
                 {(onAskCase || test.editable) && <div className="mt-3 flex flex-wrap gap-2">
                   {onAskCase && <VibeButton onClick={() => onAskCase(test.key)}>Ask Guide about this test</VibeButton>}
-                  {test.editable && <VibeButton disabled={busy} onClick={() => { setFocusedCase(test.key); setEditing(true); onSelectCase?.(test.key); }}>Edit this expectation</VibeButton>}
+                  {test.editable && <VibeButton disabled={busy} onClick={() => { setAgentOpen(false); setFocusedCase(test.key); setEditing(true); onSelectCase?.(test.key); }}>Edit this expectation</VibeButton>}
                 </div>}
                 {!test.editable && <p className="mt-2 text-sm vibe-muted">To change custom grading rules, edit the original pack and import it again.</p>}
               </div>
@@ -242,7 +245,7 @@ export function TestSuitePanel({
                     case_changes: changes,
                   })
                 ) {
-                  casesDraft.discard(); setEditing(false); onSelectCase?.(); if (document.activeElement === trigger) restoreFocus();
+                  casesDraft.discard(); setEditing(false); if (inlineImport) setAgentOpen(true); onSelectCase?.(); if (document.activeElement === trigger) restoreFocus();
                   onDirty(false);
                 }
               }}
@@ -254,7 +257,7 @@ export function TestSuitePanel({
               disabled={busy}
               onClick={() => {
                 casesDraft.discard();
-                setEditing(false); onSelectCase?.(); restoreFocus();
+                setEditing(false); if (inlineImport) setAgentOpen(true); onSelectCase?.(); restoreFocus();
                 onDirty(false);
               }}
             >
@@ -308,53 +311,28 @@ export function TestSuitePanel({
               type="submit"
               disabled={busy || instructionDraft.conflict || !instructions.trim()}
             >
-              {prototypeMode ? "Create agent" : "Use these instructions"} <ArrowRight />
+              {inlineImport ? "Add your agent's instructions" : prototypeMode ? "Create agent" : "Use these instructions"} <ArrowRight />
             </VibeButton>
             <VibeButton
               variant="quiet"
               disabled={busy}
               onClick={() => {
+                if (inlineImport) { setAgentOpen(false); restoreFocus(); return; }
                 setAgentOpen(false);
                 instructionDraft.discard(); restoreFocus();
                 onDirty(false);
               }}
             >
-              Cancel
+              {inlineImport ? "Keep for later" : "Cancel"}
             </VibeButton>
           </div>
-          <details className="text-sm vibe-muted">
-            <summary className="w-fit cursor-pointer">
-              Where do I find these?
-            </summary>
-            <p className="mt-3">
-              Ask the coding tool you used to build your agent:
-            </p>
-            <p className="vibe-transcript mt-2 rounded-lg border border-[var(--vibe-border)] p-3">
-              {instructionsHelp}
-            </p>
-            <VibeButton
-              variant="quiet"
-              className="mt-2"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(instructionsHelp);
-                  setCopied(true);
-                  setCopyFailed(false);
-                } catch {
-                  setCopyFailed(true);
-                }
-              }}
-            >
-              <Copy />
-              {copied ? "Copied" : "Copy request"}
-            </VibeButton>
-            {copyFailed && <p role="status">Select and copy the text above.</p>}
-          </details>
+          <InstructionsHelp />
         </form>
       )}
+      {!agentOpen && !editing && inlineImport && <div className="flex flex-wrap gap-2"><VibeButton variant={primary ? "primary" : "secondary"} disabled={busy || validationBlocked} onClick={onSave}>Keep these tests</VibeButton><VibeButton variant="quiet" disabled={busy} onClick={() => setAgentOpen(true)}>Add your agent</VibeButton></div>}
       {!agentOpen && !editing && (
         <>
-          {!ready && <div className="text-sm vibe-muted">
+          {!ready && buildJourney && <div className="text-sm vibe-muted">
             {preparingOnly ? <><p>Keep these tests for your team. Add an agent when you’re ready to run them.</p><VibeButton variant="quiet" className="!px-0" disabled={busy} onClick={() => setAgentOpen(true)}>Add an agent later</VibeButton></>
               : <><p>{buildJourney && rules.length ? "Use your saved requirements to create a version you can try. We’ll review these saved expectations before running; no answers are copied into its instructions." : "A test pack supplies tests and expectations. Add an agent to get actual replies."}</p><VibeButton variant="quiet" className="!px-0" disabled={busy} onClick={() => {setPrototypeMode(true);setAgentOpen(true)}}>Create an agent</VibeButton><VibeButton variant="quiet" disabled={busy} onClick={() => setPreparingOnly(true)}>Keep for later</VibeButton></>}
           </div>}
@@ -372,7 +350,7 @@ export function TestSuitePanel({
                   Change agent instructions
                 </VibeButton>
               )}
-              {!(preparingOnly && !ready) && <VibeButton
+              {!inlineImport && !(preparingOnly && !ready) && <VibeButton
                 variant="quiet"
                 onClick={onSave}
                 disabled={busy || blocked || validationBlocked}

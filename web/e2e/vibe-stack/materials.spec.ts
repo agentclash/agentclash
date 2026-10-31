@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { sendButton, showView } from "../vibe/entry-model";
+import { doorButton, showView, startCopy } from "../vibe/entry-model";
 
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const task = "Summarize meeting notes, including decisions and action owners.";
@@ -27,7 +27,9 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   test.skip(kind === "pdf" && !process.env.VIBE_TEST_PDF_RUNTIME, "Real isolated PDF reader required");
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.goto("/vibe-evals");
-  await page.getByRole("button", {name:/Build an agent/}).click();
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "build" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
   await page.getByRole("button", {name:"Add a file or text", exact:true}).click();
   if (kind === "paste") {
     await page.getByRole("tab", {name:"Paste text"}).click();
@@ -41,9 +43,11 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   await page.reload();
   await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready · Task input");
   await page.getByRole("textbox", {name:"Message Vibe Evals",exact:true}).fill(task);
-  // The Build send button is named by its visible text (E2).
-  await expect(sendButton(page)).toBeEnabled();
-  await sendButton(page).click();
+  // The Build send button is named by its visible text (E2). This project already exists,
+  // so the send button is in its composer, not on the start screen that sendButton() reads.
+  const send = page.getByRole("button", { name: startCopy.build.primary, exact: true });
+  await expect(send).toBeEnabled();
+  await send.click();
   await expect.poll(async () => (await saved(page)).session.document.build?.phase, {timeout:90000}).toBe("results");
   // PR 1: the first result opens Results by itself; the agent's output is on Agent.
   await showView(page, "Agent", "Run 1", {opensResults: true});
@@ -88,14 +92,20 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   await expect(page.getByRole("dialog")).toContainText("Separate workspace saves");
   await page.getByRole("button",{name:"Delete project permanently",exact:true}).click();
   await expect(page.getByRole("heading",{name:"Project removed",exact:true})).toBeVisible();
-  await page.getByRole("button",{name:"Done",exact:true}).click();
+  const receipt = page.getByRole("dialog",{name:"Project removed",exact:true});
+  await expect(receipt).toBeVisible();
+  await receipt.getByRole("button",{name:"Done",exact:true}).click();
+  await expect(receipt).toHaveCount(0);
   await expect(page.getByRole("button",{name:/Build an agent/})).toBeVisible();
+  await expect(doorButton(page,"build")).toBeFocused();
   expect(errors).toEqual([]);
 });
 
 test("bad PDF offers paste without creating an agent or silently shortening input",async({page})=>{
   test.skip(!process.env.VIBE_TEST_PDF_RUNTIME,"Real reader required");
-  await page.goto("/vibe-evals");await page.getByRole("button",{name:/Build an agent/}).click();
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "build" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
   await page.getByRole("button",{name:"Add a file or text",exact:true}).click();
   await page.getByLabel("Choose one PDF").setInputFiles({name:"broken.pdf",mimeType:"application/pdf",buffer:Buffer.from("%PDF-broken")});
   await expect(page.getByRole("alert").filter({hasText:"Paste its text instead"})).toBeVisible();

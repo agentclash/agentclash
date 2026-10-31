@@ -8,6 +8,7 @@ import { GradeReviews } from "./grade-reviews";
 import { ResultComparison } from "./result-comparison";
 import { compareResultEvidence } from "@/lib/vibe-result-evidence";
 import { VibeScorecard } from "./scorecard";
+import { CaseEvidence } from "./case-evidence";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -213,11 +214,11 @@ it("makes fixing, rerunning and keeping tests direct actions for the core journe
   };
   await render(op, undefined, true, true);
   expect(container.querySelector("h2")!.textContent).toBe(
-    "1 of 2 tests passed",
+    "Your agent passed 1 of 2 tests",
   );
   expect(container.textContent).not.toContain("Test new replies");
   expect(container.textContent).not.toContain("bring back its new replies");
-  await click("Help me fix this");
+  await click("Suggest a fix");
   expect(improve).toHaveBeenCalledOnce();
   await click("Run tests again");
   expect(retest).toHaveBeenCalledOnce();
@@ -242,21 +243,17 @@ it("leads with one reply and keeps complete evidence behind a single accessible 
   expect(container.querySelector("h2")!.textContent).toBe("1 test failed");
   expect(leading.querySelector("details")!.open).toBe(true);
   expect(leading.textContent).toContain(failure.checks[0].evidence);
-  const visibleQuotes = [...leading.querySelectorAll("blockquote")].filter(
-    (quote) => !quote.closest("[hidden]"),
-  );
-  expect(visibleQuotes).toHaveLength(1);
-  expect(visibleQuotes[0].textContent).toContain(
-    "How many days ago did you buy it?",
-  );
-  expect(visibleQuotes[0].textContent).toContain("App reply");
-  expect(button("See evidence").getAttribute("aria-expanded")).toBe("false");
+  const visibleReplies = [...leading.querySelectorAll(".vibe-example-reply")].filter(reply => !reply.closest("[hidden]"));
+  expect(visibleReplies).toHaveLength(1);
+  expect(visibleReplies[0].textContent).toContain("How many days ago did you buy it?");
+  expect(visibleReplies[0].previousElementSibling?.textContent).toBe("It replied");
+  expect(button("Show full conversation").getAttribute("aria-expanded")).toBe("false");
   const fullEvidence = document.getElementById(
-    button("See evidence").getAttribute("aria-controls")!,
+    button("Show full conversation").getAttribute("aria-controls")!,
   )!;
   expect(fullEvidence.hidden).toBe(true);
   expect(fullEvidence.textContent).toContain("I bought it 10 days ago.");
-  expect(fullEvidence.textContent).toContain("Ask only for missing details.");
+  expect(leading.querySelector(".vibe-example-evidence > div:nth-child(3)")?.textContent).toContain("Ask only for missing details.");
   expect(fullEvidence.textContent).toContain("Full conversation · 4 messages");
   // One check that is the finding: the finding above is its only copy.
   expect(fullEvidence.textContent).not.toContain("All expectations");
@@ -274,8 +271,8 @@ it("leads with one reply and keeps complete evidence behind a single accessible 
     );
     expect(details?.open).toBe(false);
   }
-  await click("See evidence");
-  expect(button("Hide evidence").getAttribute("aria-expanded")).toBe("true");
+  await click("Show full conversation");
+  expect(button("Hide full conversation").getAttribute("aria-expanded")).toBe("true");
   expect(fullEvidence.hidden).toBe(false);
   await click("Change expected result");
   expect(dispute).toHaveBeenCalledWith(
@@ -296,13 +293,13 @@ it("keeps a long reply complete in evidence and the fix prompt while showing a l
   };
   await render(operation([long]));
   const quote = container.querySelector(
-    '[aria-label="Leading finding"] blockquote',
+    '[aria-label="Leading finding"] .vibe-example-reply .vibe-evidence-excerpt',
   )!;
-  expect(quote.textContent).toContain("App reply · preview; full reply below");
+  expect(quote.textContent).toContain("(excerpt)");
   expect(quote.textContent).not.toContain("The exact final sentence.");
-  await click("See evidence");
+  await click("Show full conversation");
   const fullEvidence = document.getElementById(
-    button("Hide evidence").getAttribute("aria-controls")!,
+    button("Hide full conversation").getAttribute("aria-controls")!,
   )!;
   expect(fullEvidence.hidden).toBe(false);
   expect(fullEvidence.textContent).toContain(fullReply);
@@ -347,7 +344,7 @@ it("includes every cited message in the evidence disclosure", async () => {
     ],
   };
   await render(operation([allCited]));
-  await click("See evidence");
+  await click("Show full conversation");
   const supporting = container.querySelector(
     '[aria-label="Supporting messages"]',
   )!;
@@ -749,8 +746,160 @@ it.each(["new ASCII", "new multibyte", "persisted invalid"])("corrects an overli
 it("opens Guide for the chosen case even when its evidence cannot load", async () => {
   const ask = vi.fn();
   await act(async () => root.render(<VibeScorecard operation={redacted(operation([failure]))} loadEvidence={async () => { throw Error("Saved evidence offline"); }} onImprove={improve} onRetest={retest} onAskCase={ask} busy={false} />));
+  expect(button("Ask Guide about this test").closest(".vibe-evidence-actions")).not.toBeNull();
   await click("Ask Guide about this test");
   expect(ask).toHaveBeenCalledExactlyOnceWith("memory");
   expect(retest).not.toHaveBeenCalled();
   expect(improve).not.toHaveBeenCalled();
+});
+
+it("puts the Improve finding and Suggest a fix before a single More disclosure", async () => {
+  await render(operation([passing, failure]), undefined, true, true);
+  const fix = button("Suggest a fix"); expect(fix).toBeDefined(); expect(fix.closest("details")).toBeNull();
+  expect([...container.querySelectorAll(".vibe-button-primary")].map(b => b.textContent?.trim())).toEqual(["Suggest a fix"]);
+  expect(button("Run tests again").closest("details")?.querySelector("summary")?.textContent).toBe("More");
+  expect(container.textContent).toContain("Grading model:");
+  expect(container.querySelector('[aria-label="Leading finding"]')).not.toBeNull();
+  await click("Suggest a fix"); expect(improve).toHaveBeenCalledOnce();
+});
+
+it.each(["prompt", "provided_conversations"] as const)("shows the shared input, reply, expected behavior and finding order for %s Improve results", async kind => {
+  const result = { ...failure, input: kind === "prompt" ? "May I return this?" : { conversation: "Conversation 1" }, output: kind === "prompt" ? "How many days ago did you buy it?" : "" };
+  const op = operation([result]); op.source!.kind = kind;
+  await render(op, undefined, true, true);
+  const leading = container.querySelector('[aria-label="Leading finding"]')!;
+  const labels = [...leading.querySelectorAll("p")].filter(p => ["We gave it", "It replied", "It should", "What needs attention"].includes(p.textContent!.trim()));
+  expect(labels.map(p => p.textContent!.trim())).toEqual(["We gave it", "It replied", "It should", "What needs attention"]);
+  expect(labels[0].parentElement!.textContent).toContain(kind === "prompt" ? "May I return this?" : "I bought it 10 days ago.");
+  if (kind === "provided_conversations") {
+    expect(labels[0].parentElement!.textContent).toContain("It is unopened.");
+    expect(labels[0].parentElement!.textContent).not.toContain('"conversation"');
+    expect(labels[0].parentElement!.textContent).not.toContain("Conversation 1");
+    expect(labels[0].parentElement!.querySelectorAll('.vibe-recorded-bubble[data-role="user"]')).toHaveLength(2);
+  }
+  expect(labels[1].parentElement!.textContent).toContain("How many days ago did you buy it?");
+  expect(labels[2].parentElement!.textContent).toContain("Ask only for missing details.");
+  expect(labels[3].parentElement!.textContent).toContain(failure.checks[0].evidence);
+  expect(labels.every(label => !label.closest("[hidden]"))).toBe(true);
+  expect(button("Show full conversation").getAttribute("aria-expanded")).toBe("false");
+  await click("Show full conversation");
+  expect(document.getElementById(button("Hide full conversation").getAttribute("aria-controls")!)!.hidden).toBe(false);
+});
+
+it("uses the same expected behavior label and order in the compact Build evidence", async () => {
+  await act(async () => root.render(<CaseEvidence summary={failure} load={async () => failure} concise compactPreview defaultOpen />));
+  const labels = [...container.querySelectorAll("p")].map(p => p.textContent!.trim()).filter(text => ["We gave it", "It replied", "It should", "What needs attention"].includes(text));
+  expect(labels).toEqual(["We gave it", "It replied", "It should", "What needs attention"]);
+  expect(container.textContent).toContain("Ask only for missing details.");
+});
+
+it("keeps the actual expected rule when a leading Improve grade is disputed", async () => {
+  await render(operation([failure]), undefined, true, true);
+  const more = [...container.querySelectorAll("details")].find(detail => detail.querySelector(":scope > summary")?.textContent === "More")!;
+  await act(async () => more.querySelector<HTMLButtonElement>("summary")!.click());
+  const row = container.querySelector<HTMLDetailsElement>('[aria-label="Leading finding"] .vibe-result-row')!;
+  await act(async () => { row.open = true; row.dispatchEvent(new Event("toggle")); });
+  await click("Change expected result");
+  expect(dispute).toHaveBeenCalledWith("Ask only for missing details.", failure);
+});
+
+it("shows other results separately from More with a passed glyph and word in the Improve journey", async () => {
+  await render(operation([passing, failure]), undefined, true, true);
+  const other = container.querySelector(".vibe-other-results")!;
+  expect(other?.querySelector("summary")?.textContent).toBe("Other results · 1");
+  expect(other.closest("details")?.parentElement?.closest("details")).toBeNull();
+  expect(other.querySelector(".vibe-verdict-word")?.textContent).toBe("Passed");
+  expect(other.querySelector("svg.vibe-verdict-pass")).not.toBeNull();
+  expect(other.querySelector(".vibe-result-row")?.hasAttribute("open")).toBe(false);
+  expect(button("Suggest a fix").querySelector("svg")).not.toBeNull();
+});
+
+it.each([
+  { failed: false, label: "Results · 3", rows: 3 },
+  { failed: true, label: "Other results · 2", rows: 2 },
+])("labels Improve results according to whether a finding leads ($label)", async ({ failed, label, rows }) => {
+  const results = [passing, { ...passing, case_key: "second" }, { ...(failed ? failure : passing), case_key: "third" }];
+  await render(operation(results), undefined, true, true);
+  const list = container.querySelector(".vibe-other-results")!;
+  expect(list.querySelector(":scope > summary")?.textContent).toBe(label);
+  expect(list.querySelectorAll(".vibe-result-row")).toHaveLength(rows);
+  expect(container.querySelectorAll('[aria-label="Leading finding"]')).toHaveLength(failed ? 1 : 0);
+});
+
+it.each([0, 2, 3])("U12/U13 Improve uses the shared outcome and fix label (%s passed)", async passed => {
+  const results = Array.from({ length: 3 }, (_, index) => ({ ...(index < passed ? passing : failure), case_key: `case-${index}` }));
+  await render(operation(results), undefined, true, true);
+  expect(container.querySelector(".vibe-results-outcome")?.textContent).toBe(passed === 3 ? "Your agent passed all 3 tests" : `Your agent passed ${passed} of 3 tests`);
+  if (passed < 3) expect(button("Suggest a fix").querySelector("svg")).not.toBeNull();
+});
+
+
+it.each(["prompt", "provided_conversations"] as const)("exposes one stable More hook for %s Improve result actions", async kind => {
+  const op = operation([failure, passing]); op.source!.kind = kind;
+  await render(op, undefined, true, true);
+  const more = container.querySelectorAll("details.vibe-results-more");
+  expect(more).toHaveLength(1);
+  expect(more[0].querySelector(":scope > summary")?.textContent).toBe("More");
+  expect(button("Run tests again").closest("details")).toBe(more[0]);
+  expect(button("Suggest a fix").closest("details")).toBeNull();
+  expect(more[0].contains(container.querySelector(".vibe-other-results"))).toBe(false);
+});
+
+it.each([false, true])("does not display a recorded conversation marker when customer messages are unavailable (assistant replies: %s)", async assistantOnly => {
+  const result = { ...failure, title: "", input: { conversation: "Conversation 1" }, messages: assistantOnly ? failure.messages!.filter(message => message.role === "assistant") : undefined };
+  await render(operation([result]), undefined, false, true);
+  const input = container.querySelector(".vibe-example-evidence > div")!;
+  expect(input.textContent).toContain("No customer message was recorded.");
+  expect(container.textContent).not.toContain('"conversation"');
+});
+
+it.each([[0, "Your agent passed 0 of 1 test"], [1, "Your agent passed all 1 test"]])("uses singular in the Improve headline when %i of one test passed", async (passed, headline) => {
+  await render(operation([passed ? passing : failure]), undefined, false, true);
+  expect(container.querySelector(".vibe-results-outcome")?.textContent).toBe(headline);
+});
+
+it("P5: puts the Improve primary between the leading finding and Other results", async () => {
+  await render(operation([failure, passing]), undefined, true, true);
+  const finding = container.querySelector('[aria-label="Leading finding"]')!;
+  const primary = button("Suggest a fix");
+  expect(finding.nextElementSibling).toBe(primary);
+  expect(primary.nextElementSibling).toBe(container.querySelector(".vibe-other-results"));
+  expect(container.querySelector('[aria-label="Individual results"]')?.contains(container.querySelector(".vibe-other-results"))).toBe(true);
+});
+it("P5: Ask Guide shares the bottom evidence action row", async () => {
+  const ask = vi.fn();
+  await act(async () => root.render(<CaseEvidence summary={failure} load={async () => failure} concise defaultOpen onAsk={ask} onDispute={dispute} />));
+  const action = button("Show full conversation").parentElement!;
+  const guide = button("Ask Guide about this test");
+  expect(guide.parentElement).toBe(action);
+  expect(action.contains(button("Change expected result"))).toBe(true);
+  expect(container.querySelector(".vibe-result-row > div > button")?.textContent).not.toBe("Ask Guide about this test");
+  await act(async () => guide.click()); expect(ask).toHaveBeenCalledOnce();
+});
+
+it("P5: keeps Ask Guide mounted and focused when delayed evidence arrives", async () => {
+  let resolve!: (result: CaseResult) => void;
+  const pending = new Promise<CaseResult>(done => { resolve = done; });
+  await act(async () => root.render(<CaseEvidence summary={failure} load={() => pending} concise defaultOpen onAsk={vi.fn()} onDispute={dispute} />));
+  const guide = button("Ask Guide about this test");
+  guide.focus(); expect(document.activeElement).toBe(guide);
+  await act(async () => resolve(failure));
+  expect(button("Ask Guide about this test")).toBe(guide);
+  expect(document.activeElement).toBe(guide);
+  expect(guide.parentElement).toBe(button("Show full conversation").parentElement);
+});
+
+
+it.each([false, true])("fix8 uses one evidence layout for passed and failed rows (compact: %s)", async compact => {
+  const ask = vi.fn();
+  await act(async () => root.render(<>{[passing, failure].map(result => <CaseEvidence key={result.case_key} summary={result} load={async () => result} defaultOpen compactPreview={compact} onAsk={ask} onDispute={dispute} onRegrade={retest} origin="provided_conversations" />)}</>));
+  const rows = [...container.querySelectorAll(".vibe-result-row")];
+  expect(rows).toHaveLength(2);
+  for (const [index, row] of rows.entries()) {
+    const labels = [...row.querySelectorAll("p")].map(node => node.textContent!.trim()).filter(text => ["We gave it", "It replied", "It should", "Why it passed", "What needs attention"].includes(text));
+    expect(labels).toEqual(["We gave it", "It replied", "It should", index === 0 ? "Why it passed" : "What needs attention"]);
+    expect(row.querySelector(".vibe-example-reply")?.textContent).toContain(index === 0 ? "It is outside the 30-day return window." : "How many days ago did you buy it?");
+  }
+  const actions = ["Ask Guide about this test", "Show full conversation", "Change expected result", "Grade the same replies again"];
+  for (const row of rows) expect([...row.querySelectorAll(".vibe-evidence-actions button")].map(node => node.textContent!.trim())).toEqual(actions);
 });

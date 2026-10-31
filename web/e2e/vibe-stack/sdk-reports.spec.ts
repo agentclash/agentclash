@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { deferInstructionsAndKeepTests } from "./keep-tests";
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT || "55441"}`;
 const workspace = "a8000000-0000-4000-8000-000000000003";
 const blueprint = {
@@ -13,17 +14,19 @@ async function evidence(page:Page,id:string){const value=await (await page.reque
 test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrade and reviewed promotion",async({page})=>{
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
  await page.goto("/auth/login?returnTo=%2Fvibe-evals");await page.getByRole("button",{name:"Continue with AgentClash"}).click();
- await expect(page.getByLabel("Workspace for new projects")).toBeVisible();await page.getByLabel("Workspace for new projects").selectOption(workspace);
+ await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled(); await expect(page.getByLabel("Workspace for new projects")).toHaveCount(0);
  await page.getByRole("button",{name:/Improve an existing agent/}).click();
- const importTests=page.getByRole("button",{name:"Import a test pack",exact:true});await expect(importTests).toBeEnabled();
+ await page.getByRole("radio",{name:"Test pack",exact:true}).click();
+ const importTests=page.getByRole("button",{name:"Choose a file",exact:true});await expect(importTests).toBeEnabled();
  const chooseTests=page.waitForEvent("filechooser");await importTests.click();await (await chooseTests).setFiles({name:"sdk-tests.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(blueprint))});
  await expect(page.getByRole("tab",{name:"Tests",exact:true})).toBeVisible();
  const id=new URL(page.url()).searchParams.get("session")!;
  await expect.poll(async()=>((await evidence(page,id)).session.document.artifacts || []).length).toBe(1);
- const initial=await evidence(page,id);const artifact=initial.session.document.artifacts[0];expect(initial.session.operations).toHaveLength(0);
+ const initial=await evidence(page,id);const artifact=initial.session.document.artifacts[0];expect(initial.session.operations).toHaveLength(0);expect(initial.session.workspace_id).toBe(workspace);
  await page.getByRole("tab",{name:"Results",exact:true}).click();
- await page.getByLabel("SDK report history",{exact:true}).locator("summary").click();
- await expect(page.getByText("No imported reports yet.",{exact:false})).toBeVisible();
+ await expect(page.getByLabel("SDK report history",{exact:true})).toHaveCount(0);
+ await expect(page.getByLabel("Application run history",{exact:true})).toHaveCount(0);
+ await expect(page.locator("summary").filter({hasText:/^Import SDK report$/})).toBeVisible();
  await page.locator("summary").filter({hasText:/^Import SDK report$/}).click();
  const source=" \r\n"+JSON.stringify({schema_version:1,report_id:"python-local-original",generated_at:"2026-10-26T12:00:00Z",runner:{name:"agentclash-evals",version:"1"},summary:{total:1,passed:0,failed:1,skipped:0,errored:0},cases:[{case:{case_id:"local arbitrary id",name:"Retained answer",expected:"Confirm eligibility without claiming that a refund was processed."},status:"failed",metrics:[{key:"uploaded-rule",name:"Uploaded rule",passed:false,score:0.2,reason:"Original uploaded judgment"}],agent_result:{input:"Can I return my unopened item bought 10 days ago?",output:"Your unopened item bought 10 days ago is eligible under the 30-day policy. I cannot process a refund."}}],exit_code:1},null,2)+"\t\n";
  await page.getByRole("region",{name:"Import SDK report",exact:true}).locator('input[type="file"]').setInputFiles({name:"original-sdk.json",mimeType:"application/json",buffer:Buffer.from(source)});
@@ -43,8 +46,7 @@ test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrad
  const retained=archive.evidence.find((item:{reference:{kind:string}})=>item.reference.kind==="sdk_report");expect(Buffer.from(retained.value.content,"base64").toString("utf8")).toBe(source);
  await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).last().click();
  await page.getByRole("tab",{name:"Tests",exact:true}).click();
- const keepLater=page.getByRole("button",{name:"Keep for later",exact:true});if(await keepLater.count())await keepLater.click();
- await page.getByRole("button",{name:"Keep these tests",exact:true}).first().click();
+ await deferInstructionsAndKeepTests(page);
  await expect(page.getByRole("dialog")).toContainText("No baseline selected");
  await page.getByRole("dialog").getByRole("button",{name:/Keep these tests|Save and iterate/}).click();
  const advanced=page.getByRole("link",{name:"Open in full pack builder"});await expect(advanced).toBeVisible();

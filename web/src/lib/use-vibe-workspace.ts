@@ -15,9 +15,10 @@ import { reportBase, type SDKReport } from "./vibe-reports";
 import { useVibeExport } from "./use-vibe-export";
 import {pinVibeReturn} from "./vibe-keep";
 import { useVibeSaving } from "@/lib/use-vibe-saving";
-import { readEditorDraft, discardEditorDraft, type EditorDraft } from "@/lib/vibe-build-drafts";
+import { readEditorDraft, discardEditorDraft, draftMemory, readBuildDrafts, emptyDrafts, persistDrafts, editorDraftKey, editorSource, type EditorDraft } from "@/lib/vibe-build-drafts";
 import { useVibeEditorDraft } from "./use-vibe-editor-draft";
 import { useVibeDrafts } from "@/lib/use-vibe-drafts";
+import { useVibeBrowserReady } from "./use-vibe-browser-ready";
 import { useVibeNavigation, type VibePane } from "@/lib/use-vibe-navigation";
 import { useVibeSession, sessionAccessLost, isSessionAccessError } from "@/lib/use-vibe-session";
 import { WEB_EVENTS } from "@/lib/analytics/events";
@@ -42,9 +43,13 @@ import { evaluationIdentity } from "@/components/vibe/evaluation-navigation";
 
 
 import { recoverRequest } from "./vibe-request-recovery";
-import { editableEvaluation, defaultModels, terminal, retryVibeOperation, VibeError, vibeFetch, type CaseResult, type BuildQuote, type RunQuote, type Models, type Operation, type Session, type VibeConfig, type SavedCheck } from "@/lib/vibe";
+import { editableEvaluation, defaultModels, terminal, retryVibeOperation, VibeError, vibeFetch, type Artifact, type CaseResult, type BuildQuote, type RunQuote, type Models, type Operation, type Session, type VibeConfig, type SavedCheck } from "@/lib/vibe";
 
 
+
+type StartConfig = VibeConfig & { first_build_ceiling_nano_usd?: number; guest_trial?: { initial_build_used: boolean; build_in_progress: boolean } };
+
+export type StartInput = { kind: "chat"; text: string } | { kind: "build"; text: string } | { kind: "instructions"; text: string; model?: string } | { kind: "replies"; conversations: string; rules: string } | { kind: "pack"; file: File };
 
 type RequestScope = { actor: string; sessionID?: string };
 // The work the user started and the view they started it from. When it ends, the
@@ -59,6 +64,7 @@ type PendingSubmission = {
   trialKey?: string;
   retryOperationID?: string;
   uncertain: boolean;
+  startDraft?: { kind: "build" | "instructions" | "chat"; value: string };
   follow?: Follow;
   // The original fix message also owns an explicitly retried request.
   fix?: string;
@@ -72,10 +78,61 @@ type SubmissionRecovery = {
   error: string;
 };
 const recoveryKey = (scope: RequestScope) => JSON.stringify([scope.actor, scope.sessionID]);
+function clearImproveStartDraft(project: string, expected: string, segment: "instructions" | "replies") {
+  const row = readEditorDraft(project, "start", "inputs");
+  if (!row) return;
+  try {
+    const inputs = JSON.parse(row.value), submitted = JSON.parse(expected);
+    const fields = segment === "instructions" ? ["instructions", "model"] : ["conversations", "rules"];
+    if (fields.some(field => inputs[field] !== submitted[field])) return;
+    for (const field of fields) delete inputs[field];
+    const all = draftMemory.get(project) || readBuildDrafts(project) || emptyDrafts();
+    persistDrafts(project, { ...all, editors: { ...all.editors, [editorDraftKey(project, "start", "inputs")]: { ...row, value: JSON.stringify(inputs) } } });
+  } catch { /* Preserve an unreadable start draft. */ }
+}
 
+function clearStartDraft(request: PendingSubmission) {
+  if (!request.startDraft) return;
+  const project = `start:${request.scope.actor}:${request.startDraft.kind === "build" ? "build" : "test"}`;
+  const editor = request.startDraft.kind === "build" ? "brief" : "inputs";
+  const row = readEditorDraft(project, "start", editor);
+  if (request.startDraft.kind === "chat") {
+    if (!row) return;
+    try {
+      const inputs = JSON.parse(row.value);
+      if (inputs.chat !== request.startDraft.value) return;
+      const all = draftMemory.get(project) || readBuildDrafts(project) || emptyDrafts();
+      persistDrafts(project, { ...all, editors: { ...all.editors, [editorDraftKey(project, "start", editor)]: { ...row, value: JSON.stringify({ ...inputs, chat: "" }) } } });
+    } catch { /* Preserve an unreadable start draft. */ }
+    return;
+  }
+  if (request.startDraft.kind === "instructions") clearImproveStartDraft(project, request.startDraft.value, "instructions");
+  else if (row?.value === request.startDraft.value) discardEditorDraft(project, "start", editor, row);
+}
+
+
+
+function emptyStartDraft(row: EditorDraft | undefined, editor: "brief" | "inputs") {
+  if (!row || !row.value.trim()) return true;
+  if (editor === "brief") return false;
+  try {
+    const inputs = JSON.parse(row.value);
+    return inputs && typeof inputs === "object" && !Array.isArray(inputs) && Object.entries(inputs).every(([key, value]) => key === "mode" || value === undefined || value === "");
+  } catch { return false; }
+}
+
+function carryInstructionDraft(project: string, from: Artifact | undefined, to: Artifact | undefined, submitted?: EditorDraft) {
+  if (!from || !to || !submitted || from.id === to.id || from.agent_prompt !== to.agent_prompt || submitted.value === from.agent_prompt || submitted.source !== editorSource({ id: from.id, agent_prompt: from.agent_prompt })) return;
+  const current = readEditorDraft(project, from.id, "instructions");
+  const target = readEditorDraft(project, to.id, "instructions");
+  if (!current || current.source !== submitted.source || current.value !== submitted.value || target && target.value !== to.agent_prompt) return;
+  const all = draftMemory.get(project) || readBuildDrafts(project) || emptyDrafts();
+  persistDrafts(project, { ...all, editors: { ...all.editors, [editorDraftKey(project, to.id, "instructions")]: { artifact: to.id, source: editorSource({ id: to.id, agent_prompt: to.agent_prompt }), value: submitted.value } } });
+}
 
 export function useVibeWorkspace() {
 
+  const browserReady = useVibeBrowserReady();
   const params = useSearchParams();
   const navigation = useVibeNavigation();
   const requestedSessionID = navigation.session || null;
@@ -105,13 +162,57 @@ export function useVibeWorkspace() {
     if (previous?.session !== identity) setModels(trial ? { ...session.document.models, target: trial.models.target } : session.document.models);
     else if (trial) setModels(current => ({ ...current, target: trial.models.target }));
   }, [session, navigation.thread, authUserID]);
-  const contextChoice = useRef<{ door: "build" | "test"; id: string } | undefined>(undefined);
-  // Choosing the wrong door is reversible until a context has any saved work.
-  // The server intentionally keeps context creation append-only; hide the empty
-  // abandoned child locally instead of deleting history or changing its API.
-  const entryOrigin = useRef<string | undefined>(undefined);
   const discardedContextIDs = useRef(new Set<string>());
-
+  const startDoor = !requestedSessionID && (navigation.start === "build" || navigation.start === "improve") ? navigation.start : undefined;
+  const [, renderStartDrafts] = useState(0);
+  useEffect(() => {
+    if (!authUserID || authLoading) return;
+    let migrated = false;
+    for (const [door, editor] of [["build", "brief"], ["test", "inputs"]] as const) {
+      const guest = `start:guest:${door}`, account = `start:${authUserID}:${door}`;
+      const row = readEditorDraft(guest, "start", editor);
+      if (!row) continue;
+      if (!emptyStartDraft(row, editor)) {
+        const all = draftMemory.get(account) || readBuildDrafts(account) || emptyDrafts();
+        const occupied = !emptyStartDraft(readEditorDraft(account, "start", editor), editor);
+        const target = occupied ? `pending-${editor}:${crypto.randomUUID()}` : editor;
+        persistDrafts(account, { ...all, editors: { ...all.editors, [editorDraftKey(account, "start", target)]: row } });
+      }
+      discardEditorDraft(guest, "start", editor, row);
+      migrated = true;
+    }
+    if (migrated) renderStartDrafts(value => value + 1);
+  }, [authUserID, authLoading]);
+  const startBuildDraft = useVibeEditorDraft(`start:${authUserID || "guest"}:build`, "start", "brief", "", "");
+  const startImproveDraft = useVibeEditorDraft(`start:${authUserID || "guest"}:test`, "start", "inputs", "", "{}");
+  let startInputs: { instructions: string; model?: string; conversations: string; rules: string; chat?: string; mode?: "instructions" | "replies" | "pack" } = { instructions: "", conversations: "", rules: "" };
+  try { startInputs = { ...startInputs, ...JSON.parse(startImproveDraft.value) }; } catch { /* Keep an unreadable draft in storage. */ }
+  const setStartInputs = (patch: Partial<typeof startInputs>) => startImproveDraft.setValue(JSON.stringify({ ...startInputs, ...patch }));
+  const pendingStartProject = `start:${authUserID || "guest"}:${startDoor === "build" ? "build" : "test"}`;
+  const pendingStartPrefix = editorDraftKey(pendingStartProject, "start", startDoor === "build" ? "pending-brief:" : "pending-inputs:");
+  const pendingStartRows = Object.entries(browserReady ? (draftMemory.get(pendingStartProject) || readBuildDrafts(pendingStartProject))?.editors || {} : {}).filter(([key, row]) => key.startsWith(pendingStartPrefix) && row.artifact === "start");
+  const pendingStartDraft = !!authUserID && pendingStartRows.length > 0;
+  function resolvePendingStart(use: boolean) {
+    if (!authUserID || !pendingStartRows.length) return;
+    const [key, row] = pendingStartRows[0];
+    if (use) (startDoor === "build" ? startBuildDraft : startImproveDraft).setValue(row.value);
+    discardEditorDraft(pendingStartProject, "start", key.slice(editorDraftKey(pendingStartProject, "start", "").length), row);
+    renderStartDrafts(value => value + 1);
+  }
+  const hiddenStartDraft = useVibeEditorDraft(`start:${authUserID || "guest"}:hidden`, "start", "projects", "", "[]");
+  let hiddenStarts: string[] = [];
+  try { const stored: unknown = JSON.parse(hiddenStartDraft.value); if (Array.isArray(stored)) hiddenStarts = stored.filter((id): id is string => typeof id === "string"); } catch { /* Optional mirror. */ }
+  for (const id of hiddenStarts) discardedContextIDs.current.add(id);
+  const [startError, setStartError] = useState("");
+  const starting = useRef(false);
+  const previousStart = useRef(startDoor);
+  useEffect(() => {
+    const from = previousStart.current;
+    previousStart.current = startDoor;
+    if (!from || startDoor || requestedSessionID) return;
+    const frame = requestAnimationFrame(() => document.getElementById(`vibe-door-${from === "build" ? "build" : "test"}`)?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [startDoor, requestedSessionID]);
   const [newEvaluation, setNewEvaluation] = useState(false);
   const [savedWorkOpen, setSavedWorkOpen] = useState(false);
   const [buildQuote, setBuildQuote] = useState<BuildQuote>();
@@ -161,7 +262,7 @@ export function useVibeWorkspace() {
   const savedCaseReads = useRef(new Map<string, Promise<CaseResult>>());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [checksDirtyID, setChecksDirtyID] = useState<string | null>(null);
-  const [pendingEdit, setPendingEdit] = useState<{ operationID: string; artifactID: string; draft?: EditorDraft }>();
+  const [pendingEdit, setPendingEdit] = useState<{ operationID: string; artifactID: string; draft?: EditorDraft; instructions?: EditorDraft }>();
   const [dirtyArtifactID, setDirtyArtifactID] = useState<string | null>(null);
 
   const workspaceActor = authUserID || "guest";
@@ -216,7 +317,6 @@ export function useVibeWorkspace() {
   }, [recovery, visibleRecovery]);
   useEffect(() => {
     const request = submission.current;
-    contextChoice.current = undefined;
     setPending(sending.current); setRunPending(sending.current && ["check", "retest"].includes(request ? JSON.parse(request.body).kind : ""));
     setUncertain(!!request?.uncertain); setPendingMessage(recovery.message);
     setPendingAction(sending.current && request?.retryOperationID ? "Retrying your request…" : undefined);
@@ -335,7 +435,7 @@ export function useVibeWorkspace() {
   }
   const runInferenceAvailable = evaluationAvailable(runQuote?.baseline, runQuote?.extra.purpose);
   const dirtyArtifact =
-    !!artifact &&
+    browserReady && !!artifact &&
     (!!readEditorDraft(session!.id,"intake","recorded-request")?.value || dirtyArtifactID === artifact.id || checksDirtyID === artifact.id || !!artifact.conversation_evaluation && (() => {
       const draft = readEditorDraft(session!.id, artifact.id, "recorded-expectations");
       return !!draft && draft.value !== artifact.conversation_evaluation.expectations.map(rule=>rule.statement).join("\n");
@@ -463,9 +563,10 @@ export function useVibeWorkspace() {
   }, [attachedWorkspace]);
 
   useEffect(() => {
+    if (authLoading) return;
     let alive = true;
     setConfigError(false);
-    vibeFetch<VibeConfig>("/config")
+    token().then(auth => vibeFetch<VibeConfig>("/config", auth))
       .then((c) => {
         if (alive) {
           syncClock(c.server_time); setConfig(c);
@@ -478,8 +579,8 @@ export function useVibeWorkspace() {
     return () => {
       alive = false;
     };
-  }, [requestedSessionID, loadAttempt]);
-  async function ensureSession(scope = scopeRef.current, ownsAttempt = () => true) {
+  }, [requestedSessionID, loadAttempt, token, authLoading]);
+  async function ensureSession(scope = scopeRef.current, ownsAttempt = () => true, firstText = content) {
     if (requestedSessionID && session?.id !== requestedSessionID)
       throw new Error(
         "Load this project before sending. No new project was created.",
@@ -492,6 +593,7 @@ export function useVibeWorkspace() {
       method: "POST",
       body: JSON.stringify({
         id,
+        ...(startDoor === "improve" ? { door: "test", title: Array.from(firstText.trim().split(/(?<=[.!?])\s|\n/)[0].replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").trim()).slice(0, 60).join("") } : {}),
         ...(workspace ? { workspace_id: workspace } : {}),
       }),
     });
@@ -523,7 +625,7 @@ export function useVibeWorkspace() {
   }
   const exporter=useVibeExport(workspaceActor,session,token);
   const selectedExportRun=requestedRunID?session?.operations.find(o=>o.id===requestedRunID):session?.operations.findLast(o=>(o.kind==="check"||o.kind==="retest")&&(o.result_scope?.artifact_id||o.source?.artifact_id||o.results[0]?.version)===artifact?.id);
-  const projectReturnPath=session&&artifact?pinVibeReturn(window.location.pathname+window.location.search,session.id,artifact.id,selectedResult ? formatResultSelection(selectedResult.result_ref) : selectedExportRun?.id):undefined;
+  const projectReturnPath=session&&artifact?pinVibeReturn(`/vibe-evals${navigation.search}`,session.id,artifact.id,selectedResult ? formatResultSelection(selectedResult.result_ref) : selectedExportRun?.id):undefined;
   function exportConversation(){if(!artifact)return;setSettingsOpen(false);void exporter.startResult(artifact,selectedResult?.result_ref || (selectedExportRun ? {kind:"vibe_operation",id:selectedExportRun.id} : undefined),"selected",selectedExportRun)}
   function loadSavedCase(id: string, key: string): Promise<CaseResult> {
     const owner = session?.id;
@@ -545,7 +647,8 @@ export function useVibeWorkspace() {
   const trialMaterials = useVibeInputs(sessionID || "", `trial:${artifact?.id || ""}:${threadID}`, token, workspaceActor);
   const materialFingerprint = JSON.stringify(materials.bindings);
   const adoptionFingerprint = JSON.stringify(materials.adoptions);
-  const messageLimit = (session?.anonymous === false ? config?.signed_in_limits : config?.anonymous_limits)?.max_message_bytes || (session?.anonymous === false ? 65536 : 16384);
+  const signedInInput = session ? !session.anonymous : !!authUserID;
+  const messageLimit = (signedInInput ? config?.signed_in_limits : config?.anonymous_limits)?.max_message_bytes || (signedInInput ? 65536 : 16384);
   const messageError = new TextEncoder().encode(content).length > messageLimit ? `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.` : "";
   const buildStart = session?.document.evaluation?.door === "build" && !session.document.build && !session.document.artifacts.length;
   const continuingBuild = (session?.document.build?.phase === "clarifying" || session?.document.build?.phase === "waiting");
@@ -578,33 +681,125 @@ export function useVibeWorkspace() {
     buildEvidence.current = undefined;
 
   }
-  async function chooseDoor(door: "build" | "test") {
+  function chooseDoor(door: "build" | "test") {
+    if (!config || pending || uncertain) return;
+    setStartError(""); setNewEvaluation(false);
+    select();
+    navigation.writeURL(new URL(`/vibe-evals?start=${door === "build" ? "build" : "improve"}${workspace ? `&workspace=${encodeURIComponent(workspace)}` : ""}`, window.location.origin), "push");
+  }
+  function backFromStart() {
+    setStartError("");
+    navigation.writeURL(new URL(`/vibe-evals${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`, window.location.origin), "push");
+  }
+  async function startProject(door: "build" | "test", first: StartInput): Promise<void> {
+    if (starting.current || pending || !config || requestedSessionID) return;
+    if (first.kind !== "pack" && !(first.kind === "replies" ? first.conversations.trim() && first.rules.trim() : first.text.trim())) return;
+    const instructionsPrefix = "Write three tests for these instructions.\n\nAgent instructions to test:\n";
+    const content = first.kind === "pack" || first.kind === "replies" ? "" : first.kind === "instructions" ? instructionsPrefix + first.text : first.text;
+    if (new TextEncoder().encode(content).length > messageLimit) {
+      const prefixBytes = new TextEncoder().encode(instructionsPrefix).length;
+      setStartError(first.kind === "instructions" ? `Agent instructions can use up to ${Math.max(0, messageLimit - prefixBytes).toLocaleString()} UTF-8 bytes. The test request uses ${prefixBytes} of the ${messageLimit.toLocaleString()} byte limit.` : `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.`);
+      return;
+    }
+    if ((first.kind === "build" || first.kind === "instructions" || first.kind === "chat") && !entryAvailable) { setStartError(unavailableReason); return; }
+    if (first.kind === "build" && !authUserID && (config as StartConfig).guest_trial?.initial_build_used) { setStartError("Your free build is used. Sign in to continue."); return; }
+    if (first.kind === "build" && !authUserID && (config as StartConfig).guest_trial?.build_in_progress) { setStartError("Another build is using your free trial. Try again when it finishes."); return; }
+    if (first.kind === "pack" && first.file.size > (authUserID ? 1024 * 1024 : 256 * 1024)) { setStartError("This file exceeds the import size limit."); return; }
     const scope = scopeRef.current;
-    captureVibeAttempt(door, "entry", sessionID);
-    if (!entryAvailable || sending.current || pending || uncertain) return;
-    setPending(true); setPendingAction("Starting your project…");
+    const id = crypto.randomUUID();
+    const clientID = crypto.randomUUID();
+    const rawTitle = first.kind === "pack" ? first.file.name.replace(/\.[^.]+$/, "") : first.kind === "replies" ? "Recorded replies" : first.text.trim().split(/(?<=[.!?])\s|\n/)[0];
+    const title = Array.from(rawTitle.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").trim()).slice(0, 60).join("");
+    const requestModels = { ...models, ...(first.kind === "instructions" && first.model ? { target: first.model } : {}) };
+    starting.current = true; setPending(true); setStartError("");
+    let auth: string | undefined;
+    let admitted = false;
+    let intakeUncertain = false;
+    let firstRequest: PendingSubmission | undefined;
+    let createdRevision: number | undefined;
     try {
-      entryOrigin.current ||= sessionID;
-      if (!contextChoice.current || contextChoice.current.door !== door)
-        contextChoice.current = { door, id: crypto.randomUUID() };
-      const auth = await token();
+      auth = await token();
       if (!ownsScope(scope)) return;
-      const id = contextChoice.current!.id;
-      await vibeFetch<Session>("/sessions", auth, { method: "POST", body: JSON.stringify({ id, door, ...(workspace ? { workspace_id: workspace } : {}) }) });
+      await vibeFetch<Session>("/sessions", auth, { method: "POST", body: JSON.stringify({ id, door, title, ...(workspace ? { workspace_id: workspace } : {}) }) });
+      let next = await vibeFetch<Session>(`/sessions/${id}`, auth);
+      createdRevision = next.revision;
+      if (!ownsScope(scope)) throw Error("The active account or project changed.");
+      if (first.kind === "pack" || first.kind === "replies") {
+        const before = new Set(next.document.artifacts.map(artifact => artifact.id));
+        const beforeEvidence = new Set(next.document.evidence_sets?.map(evidence => evidence.id));
+        const expectations = first.kind === "replies" ? first.rules.split("\n").map(line => line.trim()).filter(Boolean).map((statement, index) => ({ id: `rule-${index + 1}`, statement })) : [];
+        try {
+          if (first.kind === "pack") {
+            next = await vibeFetch<Session>(`/sessions/${id}/import`, auth, { method: "POST", headers: { "Content-Type": first.file.name.endsWith(".json") ? "application/json" : "application/yaml", "If-Match": String(next.revision), "X-File-Name": encodeURIComponent(first.file.name) }, body: new Blob([first.file]) });
+          } else {
+            next = await vibeFetch<Session>(`/sessions/${id}/evidence`, auth, { method: "POST", body: JSON.stringify({ client_id: clientID, revision: next.revision, label: "Recorded replies", content: first.conversations, expectations }) });
+            if (next.evidence_receipt?.client_id !== clientID) throw Error("The saved reply receipt is unavailable. Try again.");
+          }
+        } catch (e) {
+          // Intake may have committed before the response disappeared. Never offer a second project.
+          let reconciled: Session | undefined;
+          try { reconciled = await vibeFetch<Session>(`/sessions/${id}`, auth); } catch { /* Keep ambiguous intake visible for recovery. */ }
+          // Ordinary GET omits the receipt. Intake atomically saves the exact source and linked tests.
+          const committed = first.kind === "replies" ? reconciled?.document.evidence_sets?.some(evidence =>
+            !beforeEvidence.has(evidence.id) && evidence.id === reconciled.document.active_evidence_id && evidence.raw === first.conversations &&
+            reconciled.document.artifacts.some(artifact => !before.has(artifact.id) && artifact.kind === "conversation_evaluation" && artifact.conversation_evaluation?.evidence_set_id === evidence.id && editorSource(artifact.conversation_evaluation.expectations) === editorSource(expectations)))
+            : reconciled?.document.artifacts.some(artifact => !before.has(artifact.id));
+          if (!committed && e instanceof VibeError && (e.admission === "rejected" || e.status !== undefined && e.status >= 400 && e.status < 500)) throw e;
+          admitted = true;
+          if (reconciled) next = reconciled;
+          intakeUncertain = !committed;
+          if (intakeUncertain) recoveries.current.set(recoveryKey({ actor: scope.actor, sessionID: id }), { submission: { current: null }, sending: { current: false }, retry: { current: undefined }, error: "Couldn’t confirm the saved input. Reload this project to check before trying again." });
+        }
+      } else {
+        const quote = first.kind === "build" ? await vibeFetch<BuildQuote>(`/sessions/${id}/build-quote`, auth, { method: "POST", body: JSON.stringify({ content: first.text, models: requestModels }) }) : undefined;
+        if (!ownsScope(scope)) throw Error("The active account or project changed.");
+        const following: Follow = { view: "agent", target: door === "build" ? "results" : "tests", ...(quote ? { cycle: quote.id } : {}) };
+        firstRequest = {
+          scope: { actor: scope.actor, sessionID: id }, sessionID: id,
+          body: JSON.stringify({ client_id: clientID, revision: next.revision, kind: "message", evaluation_first: true, test_journey: true, content, models: requestModels, ...(first.kind === "instructions" ? { instructions: first.text } : {}), ...(quote ? { cycle_id: quote.id } : {}) }),
+          composer: null, composerVersion: 0, uncertain: false, follow: following,
+          startDraft: { kind: first.kind, value: first.kind === "instructions" ? startImproveDraft.value : first.text },
+        };
+        try {
+          const operation = await vibeFetch<Operation>(`/sessions/${id}/messages`, auth, { method: "POST", body: firstRequest.body });
+          admitted = true;
+          next = { ...next, operations: [...next.operations.filter(item => item.id !== operation.id), operation], document: { ...next.document, messages: [...next.document.messages, { id: clientID, role: "user", content, operation_id: operation.id }] } };
+        } catch (e) {
+          if (recoverRequest(firstRequest, e) === "rejected") throw e;
+          // A missing response is not a rejection. Read the receipt before offering an exact replay.
+          admitted = true;
+          try { next = await vibeFetch<Session>(`/sessions/${id}`, auth); } catch { /* Keep the project visible while its receipt is unavailable. */ }
+          const message = next.document.messages.find(item => item.id === clientID && item.role === "user");
+          if (message && next.operations.some(item => item.id === message.operation_id)) firstRequest.uncertain = false;
+          else recoveries.current.set(recoveryKey(firstRequest.scope), { submission: { current: firstRequest }, sending: { current: false }, retry: { current: undefined }, message: { id: clientID, content }, error: (e as Error).message });
+        }
+        follow.current = { sessionID: id, ...following };
+      }
+      admitted = true;
       if (!ownsScope(scope)) return;
-      // Confirm that private-cookie ownership survived before adopting the URL.
-      const agent = await vibeFetch<Session>(`/sessions/${id}`, auth);
-      if (!ownsScope(scope)) return;
-      const draft = canChangeDoor ? content : "";
-      if (canChangeDoor && sessionID) discardedContextIDs.current.add(sessionID);
-      // D3: the new start screen takes focus when it mounts (takeStartFocus).
-      startFocus.current = agent.id;
-      adoptContext(agent);
-      setContent(draft);
-      contextChoice.current = undefined;
-      if (door === "build") captureBuildEvent(WEB_EVENTS.VIBE_BUILD_ENTRY_SELECTED, { session_id: agent.id, entry_source: "two_door" }, agent.id);
-    } catch (e) { if (!ownsScope(scope)) return; captureVibeAttempt(door, "entry", sessionID, e instanceof VibeError ? e.code : "transport_failed"); setError((e as Error).message); }
-    finally { if (ownsScope(scope)) { setPending(false); setPendingAction(undefined); } }
+      const url = new URL(`/vibe-evals?session=${id}${workspace ? `&workspace=${encodeURIComponent(workspace)}` : ""}`, window.location.origin);
+      if (first.kind === "pack" || first.kind === "replies") { url.searchParams.set("view", "tests"); const artifact = next.document.artifacts.at(-1); if (artifact) url.searchParams.set("agent", artifact.id); }
+      startFocus.current = id;
+      navigation.writeURL(url, "push");
+      adoptContext(next);
+      // adoptContext restores remembered views; first intake always lands on its tests.
+      if (first.kind === "pack" || first.kind === "replies") navigation.update({ view: "tests", artifact: next.document.artifacts.at(-1)?.id || null }, "replace");
+      setContexts(old => [next, ...old.filter(row => row.id !== id)]);
+      if (!firstRequest?.uncertain && !intakeUncertain) {
+        if (firstRequest) clearStartDraft(firstRequest);
+        if (first.kind === "replies") clearImproveStartDraft(`start:${scope.actor}:test`, startImproveDraft.value, "replies");
+      }
+    } catch (e) {
+      if (!admitted) {
+        discardedContextIDs.current.add(id);
+        hiddenStartDraft.setValue(JSON.stringify([...new Set([...hiddenStarts, id])]));
+        try {
+          const revision = createdRevision ?? (await vibeFetch<Session>(`/sessions/${id}`, auth)).revision;
+          await vibeFetch(`/sessions/${id}?revision=${revision}`, auth, { method: "DELETE" });
+        } catch { /* Failed starts remain hidden if cleanup is unavailable. */ }
+      }
+      if (ownsScope(scope)) setStartError((e as Error).message);
+    } finally { starting.current = false; if (ownsScope(scope)) setPending(false); }
   }
   const takeStartFocus = (id: string) => { if (startFocus.current !== id) return false; startFocus.current = undefined; return true; };
   async function switchContext(id: string) {
@@ -616,43 +811,14 @@ export function useVibeWorkspace() {
     finally { if (ownsScope(scope)) { setPending(false); } }
   }
   function openNewEvaluation() {
+    if (startDoor) backFromStart();
     setImportError(undefined);
-    if (sessionID) entryOrigin.current = sessionID;
     setNewEvaluation(true);
-  }
-  const canChangeDoor = !!session?.document.evaluation &&
-    session.document.messages.length === 0 &&
-    session.document.artifacts.length === 0 &&
-    session.operations.length === 0 &&
-    !(session.document.evidence_sets?.length) &&
-    !session.document.build &&
-    !pending && !uncertain && !dirtyArtifact;
-  async function changeDoor() {
-    const scope = scopeRef.current;
-    if (!canChangeDoor || !sessionID) return;
-    const origin = entryOrigin.current;
-    if (!origin || origin === sessionID) {
-      setImportError(undefined);
-      setNewEvaluation(true);
-      return;
-    }
-    setPending(true);
-    try {
-      const previous = await vibeFetch<Session>(`/sessions/${origin}`, await token());
-      if (!ownsScope(scope)) return;
-      discardedContextIDs.current.add(sessionID);
-      adoptContext(previous);
-      setNewEvaluation(true);
-    } catch (e) { if (!ownsScope(scope)) return;
-      setError((e as Error).message);
-    } finally { if (ownsScope(scope)) {
-      setPending(false);
-    } }
   }
   function sendMessage(text = content, context?: { viewed_run_id?: string; viewed_case_key?: string; artifact_id?: string }, demoID?: string) {
     if (buildStart && (!quoteMatches || Date.parse(buildQuote!.expires_at) <= Date.now() + serverOffset.current)) return;
     if (materials.blocked && buildStart) return;
-    void submit("message", text, undefined, {
+    return submit("message", text, undefined, {
       ...context,
       ...(demoID ? { demo_id: demoID } : {}),
       ...(buildStart ? { cycle_id: buildQuote!.id } : continuingBuild ? { cycle_id: session!.document.build!.cycle_id } : {}),
@@ -748,7 +914,7 @@ export function useVibeWorkspace() {
     const clientID = extra.client_id || crypto.randomUUID();
     // In a two-door project, follow a run, the first Build run or the first test preparation from the view it starts on.
     const startedFrom = currentPane.current;
-    const followed: Follow | undefined = !session?.document.evaluation ? undefined
+    const followed: Follow | undefined = !session && startDoor === "improve" && kind === "message" ? { view: startedFrom, target: "tests" } : !session?.document.evaluation ? undefined
       : kind === "check" || kind === "retest" ? { view: startedFrom, target: "results" }
       : kind !== "message" ? undefined
       : buildJourney && extra.cycle_id && (buildStart || continuingBuild) && !session.document.artifacts.length ? { view: startedFrom, target: "results", cycle: extra.cycle_id }
@@ -771,7 +937,7 @@ export function useVibeWorkspace() {
     setPending(true);
     setError("");
     try {
-      const v = await ensureSession(scope, ownsAttempt);
+      const v = await ensureSession(scope, ownsAttempt, text);
       if (!ownsAttempt()) return;
       if (!ownsScope(scope)) throw new Error("The active account or project changed.");
       submission.current = {
@@ -781,6 +947,7 @@ export function useVibeWorkspace() {
         composer: kind === "playground" || kind === "message" && !extra.demo_id ? text : null,
         composerVersion,
         trialKey,
+        ...(!session && startDoor === "improve" && kind === "message" ? { startDraft: { kind: "chat" as const, value: text } } : {}),
         follow: followed,
         fix: kind === "message" && extra.purpose === "suggest_change" ? clientID : undefined,
         body: JSON.stringify({
@@ -891,6 +1058,7 @@ export function useVibeWorkspace() {
       }
       if (!ownsRequest()) return;
       submission.current = null;
+      clearStartDraft(request);
       retryUnsentMessage.current = undefined;
       setError("");
       if (!visibleRecovery()) { setPendingMessage(undefined); return; }
@@ -947,6 +1115,16 @@ export function useVibeWorkspace() {
     }
   }
 
+
+  useEffect(() => {
+    const request = submission.current;
+    if (!request?.uncertain || !request.startDraft || !visibleRecovery() || session?.id !== request.sessionID) return;
+    const clientID = JSON.parse(request.body).client_id;
+    const message = session.document.messages.find(item => item.id === clientID && item.role === "user");
+    if (!message || !session.operations.some(item => item.id === message.operation_id)) return;
+    submission.current = null; clearStartDraft(request); setPendingMessage(undefined); setUncertain(false); setError("");
+  }, [session, uncertain, submission, visibleRecovery, setPendingMessage, setError]);
+
   // Reconcile an SSE acknowledgement that can arrive before the POST returns.
   useEffect(() => {
     if (
@@ -979,6 +1157,7 @@ export function useVibeWorkspace() {
     if (!operation) return;
     const artifactID = operation.completion_receipt?.artifact_id;
     if (artifactID && session?.document.artifacts.some(item => item.id === artifactID)) {
+      if (session) carryInstructionDraft(session.id, session.document.artifacts.find(item => item.id === pendingEdit.artifactID), session.document.artifacts.find(item => item.id === artifactID), pendingEdit.instructions);
       if (pendingEdit.draft && session) discardEditorDraft(session.id, pendingEdit.artifactID, "cases", pendingEdit.draft);
       navigation.update({ artifact: artifactID, run: undefined, case: undefined, thread: "" }, "replace");
       if (currentView.current === "tests" && document.activeElement?.closest(`[data-proposal-id="${CSS.escape(pendingEdit.artifactID)}"]`)) requestAnimationFrame(() => document.querySelector<HTMLHeadingElement>(`[data-proposal-id="${CSS.escape(artifactID)}"] h2`)?.focus());
@@ -997,8 +1176,9 @@ export function useVibeWorkspace() {
     navigation.update({ view: target, ...(run ? { run } : {}) }, mode);
     setArrival(undefined);
     requestAnimationFrame(() => {
-      if (document.activeElement?.closest('input, textarea, select, [contenteditable="true"]')) return;
-      document.querySelector<HTMLElement>(target === "results" ? '[aria-label="Run results"] h2' : '[aria-label="Your tests"] h2')?.focus();
+      const field = document.activeElement;
+      if (field?.closest('select, [contenteditable="true"]') || ((field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) && field.value.trim())) return;
+      document.querySelector<HTMLElement>(target === "results" ? '[aria-label="Run results"] .vibe-results-outcome' : '[aria-label="Your tests"] h2')?.focus();
     });
   }
   // The user is typing in the open view: an unsaved edit, or focus in a list, an editable region or a
@@ -1117,6 +1297,13 @@ export function useVibeWorkspace() {
   async function applyChoice(action: ConversationAction) {
     const scope = scopeRef.current;
     if (!session) return;
+    if (action.kind === "answer_question" && buildJourney && continuingBuild && !session.document.artifacts.length) {
+      const question = session.document.conversation_state?.pending_question;
+      if (question?.status === "active" && question.id === action.target_id) {
+        const text = [...question.options.filter(option => action.option_ids.includes(option.id)).map(option => option.label), action.text?.trim()].filter(Boolean).join("\n");
+        return sendMessage(text);
+      }
+    }
     setPending(true);
     try {
       const next = await vibeFetch<Session>(`/sessions/${session.id}/actions`, await token(), {
@@ -1164,6 +1351,8 @@ export function useVibeWorkspace() {
     const scope = scopeRef.current;
     if (!session) return false;
     const submittedDraft = fields.case_changes !== undefined ? readEditorDraft(session.id, String(fields.artifact_id || artifact?.id || ""), "cases") : undefined;
+    const sourceArtifact = session.document.artifacts.find(item => item.id === String(fields.artifact_id || artifact?.id || ""));
+    const submittedInstructions = fields.case_changes !== undefined && sourceArtifact ? readEditorDraft(session.id, sourceArtifact.id, "instructions") : undefined;
     if (!inferenceAvailable && (fields.case_changes !== undefined || fields.build_from_policy === true)) { setError(unavailableReason); return false; }
     setPending(true);
     setError("");
@@ -1180,7 +1369,7 @@ export function useVibeWorkspace() {
       const suiteChange = fields.case_changes !== undefined || fields.criteria !== undefined || fields.evaluation !== undefined;
       const admittedEdit = suiteChange && v.operations.find(operation => !session.operations.some(previous => previous.id === operation.id));
       if (admittedEdit && !admittedEdit.completion_receipt) {
-        setPendingEdit({ operationID: admittedEdit.id, artifactID: String(fields.artifact_id || artifact?.id || ""), draft: submittedDraft });
+        setPendingEdit({ operationID: admittedEdit.id, artifactID: String(fields.artifact_id || artifact?.id || ""), draft: submittedDraft, instructions: submittedInstructions });
         return false;
       }
       if (
@@ -1194,6 +1383,7 @@ export function useVibeWorkspace() {
       ) {
         const next = v.document.artifacts.at(-1);
         if (next) {
+          carryInstructionDraft(session.id, sourceArtifact, next, submittedInstructions);
           setSelectedArtifactID(next.id);
           navigate(currentView.current, next.id, "");
         }
@@ -1233,6 +1423,13 @@ export function useVibeWorkspace() {
   async function upload(uploaded?: File) {
     const scope = scopeRef.current;
     if (!uploaded || busy) return;
+    if (!requestedSessionID) {
+      setSettingsOpen(false);
+      if (startDoor !== "improve") chooseDoor("test");
+      try { await startProject("test", { kind: "pack", file: uploaded }); }
+      finally { if (file.current) file.current.value = ""; }
+      return;
+    }
     setPending(true);
     setImportError(undefined);
     let importSessionID = sessionID;
@@ -1270,6 +1467,12 @@ export function useVibeWorkspace() {
     } }
   }
   const { saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,saveOpen,saveAccess,saveBaseline,saveTarget,savedCheck,workspaces,openSave,closeSave,rememberSave,save } = useVibeSaving({actorScope: authUserID || "guest",selectedResult,account:evidenceAccess,session,artifact,artifacts,content,models,workspace,savedChecks,token,setContent,setModels,setWorkspace,setError,setPending,setSavedChecks,setSelectedArtifactID,reload,writeURL:navigation.writeURL});
+  useEffect(() => {
+    if (requestedSessionID || authLoading || saveAccess !== "ready") return;
+    const restored = params.get("workspace");
+    const next = workspaces.find(item => item.id === restored)?.id || (workspaces.length === 1 ? workspaces[0].id : undefined);
+    if (next && workspace !== next && (!workspace || workspaces.length === 1)) setWorkspace(next);
+  }, [requestedSessionID, authLoading, saveAccess, params, workspaces, workspace, setWorkspace]);
   const activeContext = session?.document.evaluation ? evaluationIdentity(session) : null;
   const setTrialText = (text: string) => {
     const key = trialDraftKey;
@@ -1278,7 +1481,7 @@ export function useVibeWorkspace() {
   };
   // New work uses the prospective account/workspace and approved defaults,
   // independently of the historical project's funding and retired models.
-  const entryAvailable = !!config?.enabled && Object.values(config.defaults).every(id => config.models.some(model => model.id === id)) && config.availability?.[authUserID ? "workspace" : "guest"]?.available === true && (!authUserID || saveAccess === "ready" && workspaces.some(item => item.id === workspace));
+  const entryAvailable = !authLoading && !configError && !!config?.enabled && Object.values(config.defaults).every(id => config.models.some(model => model.id === id)) && config.availability?.[authUserID ? "workspace" : "guest"]?.available === true && (!authUserID || saveAccess === "ready" && workspaces.some(item => item.id === workspace));
   const visibleArrival = arrival && session?.id === arrival.sessionID && !arrivalIsOpen ? { target: arrival.target, open: () => showView(arrival.target, arrival.run) } : undefined;
-    return { arrival: visibleArrival, takeStartFocus, evidenceResult:selectedResult || (pinnedRun?.result_scope&&session?{session_id:session.id,artifact_id:pinnedRun.result_scope.artifact_id,result_ref:{kind:"vibe_operation" as const,id:pinnedRun.id}}:undefined), selectedCanonical,selectedSDKReport,selectedResult,selectedResultLoading,selectedResultError,retrySelectedResult,onSelectResult,onSDKPromoted,onSDKRegraded,evidenceAccess, sdkInferenceAvailable:inferenceReady && !busy && !!config?.models.some(m=>m.id===models.evaluator), projectReturnPath,saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,archiveMode,setArchiveMode,metadata,exporter, recordedUpdate, startRecordedUpdate, closeRecordedUpdate, addRecordedEvidence, entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, runInferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, canChangeDoor, changeDoor, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces };
+    return { browserReady, serverNow, startDoor, startProject, backFromStart, pendingStartDraft, resolvePendingStart, startBuildDraft, startInputs, setStartInputs, startError, arrival: visibleArrival, takeStartFocus, evidenceResult:selectedResult || (pinnedRun?.result_scope&&session?{session_id:session.id,artifact_id:pinnedRun.result_scope.artifact_id,result_ref:{kind:"vibe_operation" as const,id:pinnedRun.id}}:undefined), selectedCanonical,selectedSDKReport,selectedResult,selectedResultLoading,selectedResultError,retrySelectedResult,onSelectResult,onSDKPromoted,onSDKRegraded,evidenceAccess, sdkInferenceAvailable:inferenceReady && !busy && !!config?.models.some(m=>m.id===models.evaluator), projectReturnPath,saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,archiveMode,setArchiveMode,metadata,exporter, recordedUpdate, startRecordedUpdate, closeRecordedUpdate, addRecordedEvidence, entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, runInferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces };
 }

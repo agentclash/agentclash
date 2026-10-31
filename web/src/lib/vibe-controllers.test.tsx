@@ -1,11 +1,13 @@
 import { draftMemory } from "./vibe-build-drafts";
 import React, { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { defaultModels, type Session } from "./vibe";
 import { useVibeDrafts } from "./use-vibe-drafts";
 import { useVibeNavigation } from "./use-vibe-navigation";
 import { useVibeSession } from "./use-vibe-session";
+import { CollectionNotice } from "@/components/vibe/collection-notice";
 
 const network = vi.hoisted(() => ({ get: vi.fn(), bytes: vi.fn(), watch: vi.fn() }));
 vi.mock("./vibe", async original => ({ ...await original<typeof import("./vibe")>(), vibeFetch: network.get, vibeBytes:network.bytes, watchVibe: network.watch }));
@@ -196,4 +198,36 @@ it.each(["sdk_report","run","eval_session"] as const)("freezes a %s return selec
  expect(url.searchParams.get("run")).toBe(`${kind}:${ref.id}`);expect(url.searchParams.get("agent")).toBe(artifact.id);
  expect(url.searchParams.get("case")).toBe("local");expect(url.searchParams.get("thread")).toBe("retained");expect(saving.saveBaseline).toBeUndefined();
  history.replaceState({},"","/vibe-evals?session=A&view=agent");await act(async()=>root.render(<Harness/>));expect(saving.saveReturnPath).toBe(captured);
+});
+
+
+it.each([false, true])("hydrates composer drafts and storage status after mount (blocked: %s)", async blocked => {
+ await act(async () => root.unmount());
+ function Harness() { const drafts = useVibeDrafts("A"); return <><textarea aria-label="Guide draft" value={drafts.content} onChange={event => drafts.setContent(event.target.value)} /><span>{drafts.storageAvailable ? "Saved in this browser" : "Storage unavailable"}</span><span>{drafts.trialBuffers["A:prototype:new:model"]}</span></>; }
+ element.innerHTML = renderToString(<Harness />);
+ if (blocked) {
+  draftMemory.set("A", { version: 2, guide: "Retained guide", trials: {}, editors: {} });
+  vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw Error("blocked"); });
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw Error("blocked"); });
+ } else sessionStorage.setItem("vibe-build-drafts:A", JSON.stringify({ version: 1, guide: "Retained guide", trials: { "A:prototype:new:model": "Retained trial" } }));
+ const errors: unknown[] = [], consoleErrors = vi.spyOn(console, "error").mockImplementation(() => {});
+ await act(async () => { root = hydrateRoot(element, <Harness />, { onRecoverableError: error => errors.push(error) }); });
+ expect(errors).toEqual([]); expect(consoleErrors.mock.calls).toEqual([]);
+ expect(element.querySelector("textarea")?.value).toBe("Retained guide");
+ expect(element.textContent).toContain(blocked ? "Storage unavailable" : "Saved in this browser");
+});
+
+
+it("hydrates a signed-out collection link before adding its browser return path", async () => {
+ await act(async () => root.unmount());
+ const browser = window;
+ vi.stubGlobal("window", undefined);
+ try { element.innerHTML = renderToString(<CollectionNotice status="signed_out" collection="projects" />); }
+ finally { vi.stubGlobal("window", browser); }
+ const serverLink = element.querySelector("a");
+ const errors: unknown[] = [], consoleErrors = vi.spyOn(console, "error").mockImplementation(() => {});
+ await act(async () => { root = hydrateRoot(element, <CollectionNotice status="signed_out" collection="projects" />, { onRecoverableError: error => errors.push(error) }); });
+ expect(errors).toEqual([]); expect(consoleErrors.mock.calls).toEqual([]);
+ expect(element.querySelector("a")).toBe(serverLink);
+ expect(element.querySelector("a")?.getAttribute("href")).toBe("/auth/login?returnTo=%2Fvibe-evals%3Fsession%3DA");
 });

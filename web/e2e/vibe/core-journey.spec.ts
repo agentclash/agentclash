@@ -1,3 +1,4 @@
+import { resultCopy } from "./entry-model";
 import { expect, test } from "@playwright/test";
 import type { Artifact, Operation, Session } from "../../src/lib/vibe";
 
@@ -261,7 +262,7 @@ for (const mobile of [false, true]) {
     await composer.press("Enter");
     await expect.poll(() => requests.length).toBe(1);
     await expect(
-      page.getByRole("button", { name: "Add your agent", exact: true }),
+      page.getByRole("button", { name: "Add your agent's instructions", exact: true }),
     ).toHaveCount(0);
     await expect(
       page.getByRole("status").filter({ hasText: /Sending your message/ }),
@@ -273,26 +274,23 @@ for (const mobile of [false, true]) {
     expect(state.document.artifacts[0].agent_prompt).toBe("");
     await expect(
       page.getByRole("textbox", { name: "Agent instructions", exact: true }),
-    ).toHaveCount(0);
+    ).toHaveCount(1);
     const tests = page.getByRole("region", { name: "Your tests", exact: true });
     const firstCase = tests.locator("summary").filter({ hasText: inputs[0] });
     if (!(await firstCase.evaluate(node => (node.parentElement as HTMLDetailsElement).open))) await firstCase.click();
     await expect(tests.getByText(expected[0], { exact: true })).toBeVisible();
-    await tests
-      .getByRole("button", { name: "Add your agent", exact: true })
-      .click();
     await expect(tests).toContainText(
       "your app’s tools and data aren’t connected",
     );
     await tests
       .getByRole("textbox", { name: "Agent instructions", exact: true })
       .fill(instructions);
-    await tests.getByRole("button", { name: "Use these instructions" }).click();
+    await tests.getByRole("button", { name: "Add your agent's instructions" }).click();
     expect(requests).toHaveLength(1);
     await tests.getByRole("button", { name: "Run 3 tests" }).click();
     await page.getByRole("button", { name: "View latest results", exact: true }).click();
     await expect(
-      page.getByRole("heading", { name: "2 of 3 tests passed" }),
+      page.getByRole("heading", { name: resultCopy.headline(2, 3) }),
     ).toBeVisible();
     await expect(
       page
@@ -301,7 +299,7 @@ for (const mobile of [false, true]) {
         })
         .first(),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Help me fix this" }).click();
+    await page.getByRole("button", { name: "Suggest a fix" }).click();
     await expect(
       page.getByRole("heading", { name: "Ready to test the fix" }),
     ).toBeVisible();
@@ -329,10 +327,10 @@ for (const mobile of [false, true]) {
     await page.locator("summary").filter({ hasText: /^Review the instruction change$/ }).click();
     await page.getByLabel("Instruction changes").scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("instruction-diff.png") });
-    await page.getByRole("button", { name: "Improve and rerun", exact: true }).click();
+    await page.getByRole("button", { name: "Test this change", exact: true }).click();
     await page.getByRole("tab", { name: "Results", exact: true }).click();
     await expect(
-      page.getByRole("heading", { name: "3 of 3 tests passed" }),
+      page.getByRole("heading", { name: resultCopy.headline(3, 3) }),
     ).toBeVisible();
     expect(requests.map((r) => r.kind)).toEqual([
       "message",
@@ -346,7 +344,7 @@ for (const mobile of [false, true]) {
     ).toBeVisible();
     await page.reload();
     await expect(
-      page.getByRole("heading", { name: "3 of 3 tests passed" }),
+      page.getByRole("heading", { name: resultCopy.headline(3, 3) }),
     ).toBeVisible();
     expect(requests).toHaveLength(5);
     await page.screenshot({ path: info.outputPath("same-tests-results.png"), fullPage: true });

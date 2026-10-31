@@ -1,18 +1,28 @@
 "use client";
 
-import { useCallback, useRef, useState, type SetStateAction } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore, type SetStateAction } from "react";
+import { useVibeBrowserReady } from "./use-vibe-browser-ready";
 import { readBuildDrafts, writeBuildDrafts, discardDrafts, draftMemory, emptyDrafts, type BuildDrafts } from "./vibe-build-drafts";
 
 const empty = emptyDrafts;
+const subscribeStorage = () => () => {};
+function readStorageAvailable() {
+  try { sessionStorage.getItem("vibe-build-drafts:"); return true; }
+  catch { return false; }
+}
+const serverStorageAvailable = () => true;
 // One atomic row owns both composers. Hydration cannot persist half a row or
 // replace edits made while HTTP is loading. Storage is only an optional mirror.
 export function useVibeDrafts(initialID?: string) {
-  const [draft, setDraft] = useState(() => ({ id: initialID, value: initialID ? draftMemory.get(initialID) || readBuildDrafts(initialID) || empty() : empty() }));
-  const current = useRef(draft);
-  const [storageAvailable, setStorageAvailable] = useState(() => {
-    try { if (typeof sessionStorage !== "undefined") sessionStorage.getItem("vibe-build-drafts:" + (initialID || "")); return true; }
-    catch { return false; }
-  });
+  const ready = useVibeBrowserReady();
+  const [firstID] = useState(initialID);
+  const restored = useMemo(() => ({ id: firstID, value: ready && firstID ? draftMemory.get(firstID) || readBuildDrafts(firstID) || empty() : empty() }), [ready, firstID]);
+  const [edited, setDraft] = useState<typeof restored>();
+  const draft = edited || restored;
+  const current = useRef<typeof restored | undefined>(undefined);
+  const readable = useSyncExternalStore(subscribeStorage, readStorageAvailable, serverStorageAvailable);
+  const [written, setStorageAvailable] = useState<boolean>();
+  const storageAvailable = written ?? readable;
   const composerEdits = useRef(0);
   const trialEdits = useRef<Record<string, number>>({});
   const publish = useCallback((next: { id: string | undefined; value: BuildDrafts }) => {
@@ -21,20 +31,20 @@ export function useVibeDrafts(initialID?: string) {
     setDraft(next);
   }, []);
   const activate = useCallback((id?: string) => {
-    const previous = current.current;
+    const previous = current.current || restored;
     if (previous.id === id) return;
     composerEdits.current++;
     if (previous.id) writeBuildDrafts(previous.id, previous.value.guide, previous.value.trials);
     publish({ id, value: id ? draftMemory.get(id) || readBuildDrafts(id) || empty() : empty() });
-  }, [publish]);
+  }, [publish, restored]);
   const setContent = useCallback((next: SetStateAction<string>) => {
-    const previous = current.current;
+    const previous = current.current || restored;
     publish({ ...previous, value: { ...previous.value, guide: typeof next === "function" ? next(previous.value.guide) : next } });
-  }, [publish]);
+  }, [publish, restored]);
   const setTrialBuffers = useCallback((next: SetStateAction<Record<string,string>>) => {
-    const previous = current.current;
+    const previous = current.current || restored;
     publish({ ...previous, value: { ...previous.value, trials: typeof next === "function" ? next(previous.value.trials) : next } });
-  }, [publish]);
+  }, [publish, restored]);
   const discard = useCallback((id: string) => {
     discardDrafts(id);
   }, []);

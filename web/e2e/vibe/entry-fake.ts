@@ -67,7 +67,7 @@ const bump = (s: Session) => { s.revision++; s.event_cursor = s.revision; s.upda
 export type Failure = { status: number; code: string; message: string; admission?: "rejected" };
 // Keys: "POST /sessions", "POST /messages:message", "POST /messages:check", "POST /import", "GET /users/me", "GET /config".
 // buildFails: the first Build turn ends with a retryable provider error (a retry then succeeds).
-export type FakeOptions = { config?: Record<string, unknown>; signedIn?: boolean; me?: unknown; failures?: Record<string, Failure | undefined>; buildFails?: boolean };
+export type FakeOptions = { config?: Record<string, unknown>; signedIn?: boolean; me?: unknown; failures?: Record<string, Failure | undefined>; buildFails?: boolean; loseFirstMessageAck?: boolean };
 
 export async function fakeVibe(page: Page, options: FakeOptions = {}) {
   // Hide the Next.js dev-tools badge; it is a dev-server artifact, not product UI.
@@ -81,7 +81,8 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
   const unknown: string[] = [], errors: string[] = [], external: string[] = [];
   let eventRequests = 0;
   const failures = options.failures ?? {};
-  const config = { ...fakeConfig, ...options.config };
+  let messageAckLost = false;
+  const config = { first_build_ceiling_nano_usd: 500_000_000, ...(options.signedIn ? {} : { guest_trial: { initial_build_used: false, build_in_progress: false } }), ...fakeConfig, ...options.config };
   const later = (s: Session, ...steps: (() => void)[]) => queues.set(s.id, [...(queues.get(s.id) ?? []), ...steps.map(step => () => { step(); bump(s); })]);
   const retries = new Map<string, () => void>();
   // The first Build turn makes a version, then runs its three tests.
@@ -132,7 +133,7 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
         return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(state)}\n\n` });
       }
       if (state && p === `/sessions/${id}`) return json(state);
-      unknown.push(`GET ${p}`);
+      if (!p.startsWith("/sessions/")) unknown.push(`GET ${p}`);
       return json({ error: { code: "not_found", message: "Project is unavailable." } }, 404);
     }
     let body: any = {};
@@ -141,19 +142,30 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
     const name = p === "/sessions" ? "/sessions" : p.endsWith("/messages") ? `/messages:${body.kind}` : `/${p.split("/").at(-1)}`;
     const f = failures[`${method} ${name}`] ?? failures[`${method} ${name.split(":")[0]}`];
     if (f) return route.fulfill({ headers, ...fail(f) });
+    if (method === "DELETE") { sessions.delete(id!); return json({ status: "deleted" }); }
     if (method === "POST" && p === "/sessions") {
       const created = project(body.id, body.door, body.workspace_id);
+      if (body.title) created.title = body.title;
       sessions.set(created.id, created);
       return json(created, 201);
     }
     if (!state) { unknown.push(`${method} ${p}`); return json({ error: { code: "not_found", message: "Project is unavailable." } }, 404); }
     const s = state;
+    if (s.document.evaluation?.door === "build" && !s.document.artifacts.length &&
+      (p.endsWith("/messages") && body.kind === "message" || p.endsWith("/actions") && body.payload?.kind === "answer_question") &&
+      (!body.cycle_id || s.document.build && body.cycle_id !== s.document.build.cycle_id))
+      return json({ error: { code: "quote_expired", message: "Use Build and run 3 tests, or Retry your saved request." } }, 409);
     if (p.endsWith("/build-quote")) return json({ id: `build-quote-${posts.length}`, max_calls: 9, cases: 3, max_cost_nano_usd: 250_000_000, request: { content: body.content, models: body.models, ...(body.inputs ? { inputs: body.inputs } : {}), ...(body.adopt_rules ? { adopt_rules: body.adopt_rules } : {}) }, expires_at: new Date(Date.now() + 600_000).toISOString() });
     if (p.endsWith("/run-quote")) return json({ id: `run-quote-${posts.length}`, max_cost_nano_usd: 120_000_000, cases: 3, calls: 6, expires_at: new Date(Date.now() + 600_000).toISOString() });
+    if (p.endsWith("/messages")) {
+      const limits = options.config?.[options.signedIn ? "signed_in_limits" : "anonymous_limits"] as { max_message_bytes?: number } | undefined;
+      const limit = limits?.max_message_bytes || (options.signedIn ? 65536 : 16384);
+      if (Buffer.byteLength(body.content || "", "utf8") > limit) return json({ error: { code: "invalid_message", message: "The message exceeds its size limit.", admission: "rejected" } }, 400);
+    }
     if (p.endsWith("/messages") && body.kind === "message") {
-      const op = running(body.client_id, "message", { max_cost_nano_usd: 1, conversation_decision: { intent: "prepare_tests", source_message_id: `m-${body.client_id}` }, progress: { phase: "preparing", completed_cases: 0, total_cases: 3, phase_elapsed_ms: 2_000 } } as any);
+      const op = running(body.client_id, "message", { max_cost_nano_usd: 1, conversation_decision: { intent: "prepare_tests", source_message_id: body.client_id }, progress: { phase: "preparing", completed_cases: 0, total_cases: 3, phase_elapsed_ms: 2_000 } } as any);
       s.operations.push(op);
-      s.document.messages.push({ id: `m-${body.client_id}`, role: "user", content: body.content, operation_id: op.id });
+      s.document.messages.push({ id: body.client_id, role: "user", content: body.content, operation_id: op.id });
       // "Help me fix this": Guide proposes a child version with changed instructions and the same tests.
       if (body.purpose === "suggest_change") {
         const parent = s.document.artifacts.find(a => a.id === body.artifact_id)!;
@@ -165,10 +177,10 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
         bump(s);
         return json(op, 202);
       }
-      const art: Artifact = { id: `v${s.document.artifacts.length + 1}`, kind: "test_suite", title: "Shop returns assistant", summary: "Eligible returns, late purchases and missing details.", agent_prompt: body.instructions || instructions, accepted: true, source_message_id: `m-${op.id}`, proposal_message_id: `prepared-${op.id}`, scope_note: "Answers return questions using the policy you supplied.", blueprint };
+      const art: Artifact = { id: `v${s.document.artifacts.length + 1}`, kind: "test_suite", title: "Shop returns assistant", summary: "Eligible returns, late purchases and missing details.", agent_prompt: body.instructions || instructions, accepted: true, source_message_id: body.client_id, proposal_message_id: `prepared-${op.id}`, scope_note: "Answers return questions using the policy you supplied.", blueprint };
       if (s.document.evaluation?.door === "build") {
         s.title = "Online shop returns helper";
-        s.document.build = { cycle_id: body.cycle_id || "cycle", phase: "preparing", clarifications_used: 0 };
+        s.document.build = { cycle_id: body.cycle_id, phase: "preparing", clarifications_used: 0 };
         if (options.buildFails) {
           later(s, () => {
             finish(op, { state: "FAILED", billing: "RELEASED", retryable: true, error: { code: "provider_error", message: "The selected model’s provider failed. Your request is saved." } } as any);
@@ -192,6 +204,7 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
         });
       }
       bump(s);
+      if (options.loseFirstMessageAck && !messageAckLost) { messageAckLost = true; return route.abort("failed"); }
       return json(op, 202);
     }
     if (p.endsWith("/messages") && (body.kind === "check" || body.kind === "retest")) {

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { fakeVibe } from "./entry-fake";
 import { defaultModels } from "../../src/lib/vibe";
-import { composer, doorButton, entryHeading, workspacePicker } from "./entry-model";
+import { composer, doorButton, doorHeading, entryHeading, workspacePicker } from "./entry-model";
 
 test.describe("before hydration", () => {
   test.use({ javaScriptEnabled: false });
@@ -9,6 +10,23 @@ test.describe("before hydration", () => {
     await expect(entryHeading(page)).toBeVisible();
     await expect(doorButton(page, "build")).toBeDisabled();
     await expect(page.getByText("What should your agent do?", { exact: true })).toHaveCount(0);
+  });
+  for (const width of [1440, 390]) test(`start reload has one centred loading status before hydration at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/vibe-evals?start=improve");
+    const status = page.getByRole("status");
+    await expect(status).toHaveCount(1);
+    await expect(status).toHaveText("Loading…");
+    await expect(status).toBeVisible();
+    await expect(page.getByText("Loading projects…", { exact: true })).toHaveCount(0);
+    const region = await page.locator(".vibe-start-region").boundingBox();
+    const box = await status.boundingBox();
+    expect(region).not.toBeNull(); expect(box).not.toBeNull();
+    expect(Math.abs(box!.x + box!.width / 2 - (region!.x + region!.width / 2))).toBeLessThan(2);
+    expect(Math.abs(box!.y + box!.height / 2 - (region!.y + region!.height / 2))).toBeLessThan(2);
+    expect(box!.y).toBeGreaterThan(56);
+    expect(box!.y + box!.height).toBeLessThan(850);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 });
 
@@ -52,12 +70,15 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await page.screenshot({ path: info.outputPath(`entry-loading-${viewport.width}.png`) });
     release();
     await expect(page.getByRole("alert").filter({ hasText: "Couldn’t connect" })).toBeVisible();
+    expect(configRequests).toBe(1);
     await expect(heading).toBeVisible();
     await expect(build).toBeDisabled();
     await expect(page.getByRole("status").filter({ hasText: "Connecting…" })).toHaveCount(0);
+    expect(await heading.boundingBox()).toEqual(before);
     await page.getByRole("button", { name: "Retry connection" }).click();
     await expect(build).toBeEnabled();
     await expect(improve).toBeEnabled();
+    expect(configRequests).toBe(2);
     expect(await heading.boundingBox()).toEqual(before);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(writes).toEqual([]);
@@ -98,10 +119,12 @@ test("offline retry preserves a restored unsent draft and submits nothing", asyn
   const draft = composer(page);
   await expect(draft).toHaveValue("Keep this unsent draft.");
   await expect(page.getByRole("alert").filter({ hasText: "Your message is still here." })).toBeVisible();
+  expect(configRequests).toBe(1);
   expect(writes).toEqual([]);
   expect(quotes).toEqual([]);
   await page.getByRole("button", { name: "Retry connection" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Couldn’t connect" })).toHaveCount(0);
+  expect(configRequests).toBe(2);
   await expect(draft).toHaveValue("Keep this unsent draft.");
   // Reconnection may price the unsent draft, but never submits or runs it.
   await expect.poll(() => quotes.length).toBe(1);
@@ -135,6 +158,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     const picker = workspacePicker(page);
     await expect(picker).toBeVisible({ timeout: 20_000 });
     await expect(picker).toHaveAccessibleDescription("Choose a workspace to use its credits.");
+    await expect(page.getByText("You need a workspace to start a project.", { exact: false })).toHaveCount(0);
     await expect(doorButton(page, "build")).toBeDisabled();
     await expect(page.getByRole("button", { name: "Review settings" })).toHaveCount(0);
     if (viewport.width < 1024) await page.getByRole("button", { name: "Open projects", exact: true }).click();
@@ -153,3 +177,17 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     expect(errors).toEqual([]);
   });
 }
+
+for (const width of [1440, 390]) test(`Improve reload keeps heading focus without an outline at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await fakeVibe(page);
+  await page.goto("/vibe-evals?start=improve");
+  await page.reload();
+  const heading = doorHeading(page, "improve");
+  await expect(heading).toBeVisible();
+  await expect(heading).toBeFocused();
+  expect(await heading.evaluate(element => document.activeElement === element)).toBe(true);
+  await expect(heading).toHaveCSS("outline-style", "none");
+  await expect(heading).toHaveCSS("box-shadow", "none");
+  await expect(page.getByText("Loading projects…", { exact: true })).toHaveCount(0);
+});

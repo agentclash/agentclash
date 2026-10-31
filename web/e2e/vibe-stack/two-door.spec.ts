@@ -1,6 +1,7 @@
+import { resultCopy } from "../vibe/entry-model";
 import {expect,test,type Page} from "@playwright/test";
 import {writeFile} from "node:fs/promises";
-import {chooseDoor,doorButton,doorReady,improveSource,sendButton,showView,sourceButton} from "../vibe/entry-model";
+import { chooseDoor, doorButton, doorReady, improveSource, sendButton, showView, sourceButton, runTestsButton, testChangeButton, addAgentInstructions, buildResult, composer as entryComposer } from "../vibe/entry-model";
 const api=`http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const description="Answer shop return questions. Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund. Prepare exactly three tests.";
 test.beforeEach(async({request})=>{
@@ -12,8 +13,14 @@ test.afterEach(async({page},info)=>{
  await page.request.post(`${api}/__fixture/control`,{data:{target_delay_ms:0}});
 });
 async function evidence(page: import("@playwright/test").Page) {
+ await expect.poll(()=>new URL(page.url()).searchParams.get("session"),{
+  message:"The committed input must create a project and publish its UUID in the session URL parameter",
+  timeout:30000,
+ }).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
  const id=new URL(page.url()).searchParams.get("session");
- const result=await (await page.request.get(`${api}/__fixture/evidence?session=${id}`)).json();
+ const response=await page.request.get(`${api}/__fixture/evidence?session=${id}`);
+ expect(response.ok(),`Saved evidence for session ${id}: ${await response.text()}`).toBe(true);
+ const result=await response.json();
  return {...result,calls:result.calls || []};
 }
 async function openGuide(page: Page) {
@@ -28,34 +35,43 @@ async function openView(page: Page, name: 'Agent'|'Tests'|'Results', finished?: 
  if(await sheet.isVisible()) await sheet.getByRole('button',{name:'Close Guide',exact:true}).click();
  await showView(page,name,finished,options);
 }
-// Occasional result actions share one "More actions" disclosure below the scorecard.
+// Both doors use this hook for occasional actions; Other results stays separate.
 async function openMoreActions(page: Page) {
  const more=page.locator('details.vibe-results-more');
+ await expect(more).toHaveCount(1);
  await expect(more.locator(':scope > summary')).toBeVisible();
  if(!(await more.evaluate(el=>(el as HTMLDetailsElement).open))) await more.locator(':scope > summary').click();
+ await expect(more).toHaveJSProperty('open',true);
 }
 // A new version from an ordinary Guide message stays unselected until "Review latest version".
 // Guide's fix after "Help me fix this" selects itself: its test asserts that and does not use this helper.
 async function reviewLatest(page: Page) {
  const latest=(await evidence(page)).session.document.artifacts.at(-1).id;
- if(new URL(page.url()).searchParams.get('agent')!==latest) await page.getByRole('button',{name:'Review latest version',exact:true}).click();
+ const review=page.getByRole('button',{name:'Review latest version',exact:true});
+ const selected=()=>new URL(page.url()).searchParams.get('agent')===latest;
+ await expect.poll(async()=>selected() || await review.isVisible()).toBe(true);
+ if(!selected()) await review.click({timeout:5000}).catch(()=>undefined);
  await expect.poll(()=>new URL(page.url()).searchParams.get('agent')).toBe(latest);
 }
 test("clear Build goes through real worker to three results, scoped export and interactive prototype",async({page},info)=>{
  await page.setViewportSize({width:1440,height:900});
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
  await page.goto('/vibe-evals');
- await expect(page.getByText('No projects yet.',{exact:true})).toBeVisible();
+ await expect(page.locator('.vibe-entry-topbar')).toBeVisible();
+ await expect(page.getByRole('complementary',{name:'Projects sidebar'})).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Retry projects',exact:true})).toHaveCount(0);
  await expect(page.getByText('Couldn’t load your projects.',{exact:false})).toHaveCount(0);
  await expect(doorButton(page,'build')).toBeVisible();
  await chooseDoor(page,'build');
- await expect(page.locator('[data-evaluation-id][aria-current="page"]')).toBeVisible();
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
+ await doorReady(page,'build');
+ await expect(page.locator('[data-evaluation-id][aria-current="page"]')).toHaveCount(0);
+ expect(new URL(page.url()).searchParams.get('session')).toBeNull();
+ await entryComposer(page).fill(description);
  const send=sendButton(page);
  await expect(send).toHaveText(/Build and run 3 tests/);
  await expect(send).toBeEnabled();
  await send.click();
+ await expect(page.locator('[data-evaluation-id][aria-current="page"]')).toBeVisible();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;},{timeout:90000}).toBe('results');
  const v=await evidence(page);
  expect(v.session.document.build.clarifications_used).toBe(0);
@@ -68,8 +84,9 @@ test("clear Build goes through real worker to three results, scoped export and i
  await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
  await openView(page,'Results','Run 1',{opensResults:true});
- await expect(page.getByRole('article',{name:'Run results'})).toContainText('3 passed · 0 failed');
- await expect(page.getByLabel('Result history').locator('option:not([disabled])')).toHaveCount(1);
+ await expect(buildResult(page)).toContainText(resultCopy.headline(3, 3));
+ await expect(page.getByLabel('Result history')).toHaveCount(0);
+ await expect(buildResult(page)).toHaveAttribute('data-run-id',v.session.operations.at(-1).id);
  await expect(page.locator('.vibe-project-header')).toContainText('Run 1: Completed');
  await page.screenshot({path:info.outputPath('results-desktop.png'),fullPage:true});
  for(const viewport of [{width:360,height:800},{width:390,height:844}]) {
@@ -83,8 +100,9 @@ test("clear Build goes through real worker to three results, scoped export and i
  await openMoreActions(page);
  await page.getByRole('button',{name:'Download / save',exact:true}).click();
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export / build it myself',exact:true}).click();await page.getByRole('button',{name:'Download exact export',exact:true}).click();await download;await page.getByRole('button',{name:'Close',exact:true}).last().click();
- await page.getByRole('button',{name:'Try it yourself',exact:true}).click();
- await expect(page.getByRole('region',{name:'Version scope'})).toContainText(/business systems (?:are not|aren’t) connected/);
+ await expect(buildResult(page)).toContainText(/business systems (?:are not|aren’t) connected/);
+ await buildResult(page).getByRole('button',{name:'Try your agent',exact:true}).click();
+ await expect(page.getByRole('region',{name:'Try your agent',exact:true})).toBeVisible();
  await page.getByRole('textbox',{name:'Message your agent',exact:true}).fill('My item is unopened and I bought it 10 days ago.');
  await page.getByRole('button',{name:'Send to agent',exact:true}).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.operations.at(-1)?.state;}).toBe('COMPLETED');
@@ -98,7 +116,7 @@ test("clear Build goes through real worker to three results, scoped export and i
  await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
  await openView(page,'Results');
- await expect(page.getByRole('article',{name:'Run results'})).toContainText('3 passed · 0 failed');
+ await expect(buildResult(page)).toContainText(resultCopy.headline(3, 3));
  expect((await evidence(page)).calls).toHaveLength(afterTrial.calls.length);
 });
 
@@ -106,12 +124,13 @@ test("mobile loading exposes Stop and cancelling does not restart the initial ch
  await page.setViewportSize({width:390,height:844});
  await page.request.post(`${api}/__fixture/control`,{data:{target_delay_ms:3000}});
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
+ await entryComposer(page).fill(description);
  await expect(sendButton(page)).toBeEnabled();
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
+ await sendButton(page).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('checking');
  await openGuide(page);
- await expect(page.locator('.vibe-status-dots')).toBeVisible();
+ await expect(page.locator('.vibe-progress-strip[data-active]')).toContainText('Run tests');
+ await expect(page.getByRole('button',{name:'Stop',exact:true})).toHaveCount(1);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:info.outputPath('loading-mobile.png'),fullPage:true});
  await page.emulateMedia({reducedMotion:'reduce'});await expect(page.locator('.vibe-status-dots')).not.toBeVisible();
@@ -124,9 +143,9 @@ test("mobile loading exposes Stop and cancelling does not restart the initial ch
 });
 test("one question then unknown produces a labelled sample, with no invented requirements",async({page},info)=>{
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill('Build me a returns agent for Shopify');
+ await entryComposer(page).fill('Build me a returns agent for Shopify');
  await expect(sendButton(page)).toBeEnabled();
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
+ await sendButton(page).click();
  await expect(page.getByRole('button',{name:'Use a sample policy'})).toBeVisible();
  await page.reload();await page.getByRole('button',{name:'Use a sample policy'}).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;},{timeout:90000}).toBe('results');
@@ -146,29 +165,32 @@ test("entry and context controls fit desktop and mobile",async({page},info)=>{
  }
  await chooseDoor(page,'improve');
  for(const source of ['import','instructions'] as const) await expect(sourceButton(page,source)).toBeVisible();
- await expect(page.getByText('Connect a live app from Details',{exact:false})).toBeVisible();
+ await expect(page.getByRole('textbox',{name:'Agent instructions'})).toBeVisible();
+ await expect(page.locator('h1:visible')).toHaveCount(1);
 });
 
 test("switching while a run completes keeps messages and draft attached to the selected evaluation",async({page})=>{
  await page.request.post(`${api}/__fixture/control`,{data:{target_delay_ms:2000}});
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
- const first=new URL(page.url()).searchParams.get('session');
+ await entryComposer(page).fill(description);
+ expect(new URL(page.url()).searchParams.get('session')).toBeNull();
  await expect(sendButton(page)).toBeEnabled();
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
+ await sendButton(page).click();
+ await expect(page).toHaveURL(/session=/);
+ const first=new URL(page.url()).searchParams.get('session');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('checking');
  await page.getByRole('button',{name:'New project',exact:true}).click();
  await chooseDoor(page,'improve');
  await doorReady(page,'improve');
- const second=new URL(page.url()).searchParams.get('session');expect(second).not.toBe(first);
- const composer=page.getByRole('textbox',{name:'Message Vibe Evals'});
+ expect(new URL(page.url()).searchParams.get('session')).toBeNull();
+ const composer=page.getByRole('textbox',{name:'Agent instructions'});
  await composer.fill('My unsent support agent brief');
  await expect.poll(async()=>{const v=await (await page.request.get(`${api}/__fixture/evidence?session=${first}`)).json();return v.session.document.build?.phase;},{timeout:60000}).toBe('results');
- await expect(page.locator(`[data-evaluation-id="${second}"]`)).toHaveAttribute('aria-current','page');
  await expect(composer).toHaveValue('My unsent support agent brief');
- expect((await evidence(page)).session.document.artifacts).toHaveLength(0);
+ await expect(page.locator(`[data-evaluation-id="${first}"]`)).toBeVisible();
  await page.locator(`[data-evaluation-id="${first}"]`).click();
- await page.locator(`[data-evaluation-id="${second}"]`).click();
+ await page.getByRole('button',{name:'New project',exact:true}).click();
+ await chooseDoor(page,'improve');
  await expect(composer).toHaveValue('My unsent support agent brief');
  await page.request.post(`${api}/__fixture/control`,{data:{target_delay_ms:0}});
 });
@@ -176,20 +198,19 @@ test("switching while a run completes keeps messages and draft attached to the s
 test("imported tests need independent target instructions and keep identical grading through a fix",async({page},info)=>{
  // Seed a real compiled pack through Build, then import its tests in another evaluation.
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
- await expect(sendButton(page)).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
+ await entryComposer(page).fill(description);
+ await expect(sendButton(page)).toBeEnabled();await sendButton(page).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('results');
  const original=(await evidence(page)).session.document.artifacts[0].blueprint;
  await page.getByRole('button',{name:'New project',exact:true}).click();await chooseDoor(page,'improve');
  await page.locator('input[type=file]').setInputFiles({name:'returns.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(original))});
  await openView(page,'Tests');
- await expect(page.getByRole('button',{name:'Add your agent',exact:true})).toBeVisible();
+ await expect(addAgentInstructions(page)).toBeVisible();
  let state=await evidence(page);expect(state.session.operations).toHaveLength(0);expect(state.session.document.artifacts.at(-1).blueprint).toEqual(original);
- await page.getByRole('button',{name:'Create an agent',exact:true}).click();
  await page.getByRole('textbox',{name:'Agent instructions',exact:true}).fill('Opened items are eligible. Unopened items within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.');
- await page.getByRole('button',{name:'Use these instructions',exact:true}).click();
+ await addAgentInstructions(page).click();
  await openView(page,'Tests');
- await page.getByRole('button',{name:'Run 3 tests',exact:true}).click();
+ await runTestsButton(page).click();
  await expect(page.getByRole('dialog')).toContainText('up to');
  expect((await evidence(page)).session.operations).toHaveLength(0);
  await expect(page.getByRole('dialog')).toContainText('3 tests ·');
@@ -202,7 +223,7 @@ test("imported tests need independent target instructions and keep identical gra
  const updated=await patch.json();
  await page.goto(`/vibe-evals?session=${state.session.id}&agent=${updated.document.artifacts.at(-1).id}&view=build`);
  await openView(page,'Tests');
- await page.getByRole('button',{name:'Improve and rerun',exact:true}).click();
+ await testChangeButton(page).click();
  await expect(page.getByRole('dialog')).toContainText('3 tests ·');
  await page.getByRole('button',{name:'Start run',exact:true}).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.operations.length===2 && v.session.operations.at(-1)?.state==='COMPLETED';}).toBe(true);
@@ -210,14 +231,16 @@ test("imported tests need independent target instructions and keep identical gra
  expect(rerun.baseline_id).toBe(baseline.id);expect(rerun.grading.hash).toBe(baseline.grading.hash);
  expect(rerun.scorecard.passed).toBe(3);expect(state.session.document.artifacts.at(-1).blueprint).toEqual(original);
  await openView(page,'Results');
- await expect(page.getByText('1 fixed · 0 new failures. Same tests and evaluator.')).toBeVisible();
+ await expect(page.getByText('1 fixed · 0 new failures. Same tests and grading model.')).toBeVisible();
+ await expect(page.getByRole('button',{name:'Copy the new instructions',exact:true})).toBeVisible();
+ await expect(page.getByText("Paste them into your app. We don't change your live app.",{exact:true})).toBeVisible();
  await page.screenshot({path:info.outputPath('same-tests-improvement.png'),fullPage:true});
 });
 
 test("tougher situations prepare and run one authorized batch while preserving the baseline",async({page})=>{
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
- await expect(sendButton(page)).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
+ await entryComposer(page).fill(description);
+ await expect(sendButton(page)).toBeEnabled();await sendButton(page).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('results');
  const before=await evidence(page), baseline=before.session.document.artifacts.at(-1);
  await openView(page,'Results');
@@ -245,8 +268,7 @@ test("tougher situations prepare and run one authorized batch while preserving t
 
 test("Build keeps the failed reply, proposed fix and authorized same-test improvement in project history",async({page},info)=>{
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
- const composer=page.getByRole('textbox',{name:'Message Vibe Evals'});
- await composer.fill(description);await expect(sendButton(page)).toBeEnabled();await composer.press('Enter');
+ await entryComposer(page).fill(description);await expect(sendButton(page)).toBeEnabled();await sendButton(page).click();
  await expect.poll(async()=> (await evidence(page)).session.document.build?.phase).toBe('results');
  const original=await evidence(page), target=original.session.document.artifacts.at(-1);
  // A controlled instruction edit yields a real failed target reply through the
@@ -264,7 +286,7 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  await openView(page,'Results');
  const failedCard=page.getByRole('article',{name:'Run results'});
  await expect(failedCard.getByText('Opened items are eligible.',{exact:true}).first()).toBeVisible();
- await failedCard.getByRole('button',{name:'Help me fix this',exact:true}).click();
+ await failedCard.getByRole('button',{name:resultCopy.fix,exact:true}).click();
  await expect.poll(async()=> (await evidence(page)).session.document.artifacts.length).toBe(3);
  const proposed=await evidence(page);
  expect(proposed.session.operations.filter((o:{kind:string})=>o.kind==='check'||o.kind==='retest')).toHaveLength(2);
@@ -291,14 +313,14 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  expect(final.session.document.artifacts.at(-1).blueprint).toEqual(target.blueprint);
  expect(final.session.operations.find((o:{id:string})=>o.id===baseline.id).results).toEqual(baseline.results);
  await openView(page,'Results');
- await expect(page.getByRole('article',{name:'Run results'})).toContainText(/1 (?:fixed · 0 new failures|previously failing test now passes · 0 new failures)/);
- await expect(page.getByRole('article',{name:'Run results'})).toContainText(/Same (?:tests|expectations) and evaluator/);
+ await expect(buildResult(page)).toContainText('1 improved · 0 regressed');
+ await expect(buildResult(page)).toContainText('Same tests and grading');
  const history=page.getByLabel('Result history');
  await expect(history.locator('option:not([disabled])')).toHaveCount(3);
  await history.selectOption(baseline.id);
- await expect(page.getByRole('article',{name:'Run results'})).toContainText('2 passed · 1 failed');
+ await expect(buildResult(page)).toContainText(resultCopy.headline(2, 3));
  await history.selectOption(comparison.id);
- await expect(page.getByRole('article',{name:'Run results'})).toContainText('3 passed · 0 failed');
+ await expect(buildResult(page)).toContainText(resultCopy.headline(3, 3));
  await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
  await page.screenshot({path:info.outputPath('build-same-test-improvement.png')});
@@ -306,14 +328,18 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
 
 test("sample continuation retains its prototype through harder requests, chat, real policy and export", async ({page},info)=>{
  await page.goto('/vibe-evals'); await chooseDoor(page,'build');
- await expect.poll(()=>new URL(page.url()).searchParams.get('session')).toBeTruthy();
- const callsBefore=(await evidence(page)).calls.filter((c:{role:string})=>c.role==='target').length;
- const composer=page.getByRole('textbox',{name:'Message Vibe Evals',exact:true});
+ await doorReady(page,'build');
+ expect(new URL(page.url()).searchParams.get('session')).toBeNull();
+ const callsBefore=0; // beforeEach resets the fixture journal; navigation makes no calls.
+ const composer=entryComposer(page);
  async function send(text:string){
-  await expect.poll(()=>new URL(page.url()).searchParams.get('session')).toBeTruthy();
-  const before=(await evidence(page)).session.operations.length;
-  if((await evidence(page)).session.document.artifacts.length) await openGuide(page);
-  await composer.fill(text);await expect(sendButton(page).or(page.getByRole('button',{name:'Send message',exact:true}))).toBeEnabled();await composer.press('Enter');
+  const state=new URL(page.url()).searchParams.get('session') ? await evidence(page) : undefined;
+  const before=state?.session.operations.length || 0;
+  if(state?.session.document.artifacts.length) await openGuide(page);
+  await composer.fill(text);
+  const submit=sendButton(page).or(page.getByRole('button',{name:'Send message',exact:true}));
+  await expect(submit).toBeEnabled();await submit.click();
+  await expect(page).toHaveURL(/session=/);
   await expect.poll(async()=>{const x=(await evidence(page)).session;return x.operations.length>before && ['COMPLETED','FAILED'].includes(x.operations.at(-1)?.state)?x.operations.at(-1)?.state:'waiting';},{timeout:60000}).toBe('COMPLETED');
  }
  await send('I waste time sorting emails. Separate spam from customer messages.');
@@ -371,18 +397,18 @@ test("sample continuation retains its prototype through harder requests, chat, r
 test("pasted instructions remain the exact target and run only after the disclosed approval", async ({page}) => {
  await page.goto('/vibe-evals');
  await chooseDoor(page,'improve');
- await expect.poll(()=>new URL(page.url()).searchParams.get('session')).toBeTruthy();
- const callsBefore=(await evidence(page)).calls.filter((c:{role:string})=>c.role==='target').length;
+ expect(new URL(page.url()).searchParams.get('session')).toBeNull();
+ const callsBefore=0; // beforeEach resets the fixture journal; navigation makes no calls.
  await improveSource(page,'instructions');
  const instructions='Answer shop return questions. Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.';
- await page.getByRole('textbox',{name:'Agent instructions to test',exact:true}).fill(instructions);
- await page.getByRole('button',{name:'Prepare tests',exact:true}).click();
+ await page.getByRole('textbox',{name:'Agent instructions',exact:true}).fill(instructions);
+ await page.getByRole('button',{name:'Write 3 tests',exact:true}).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.artifacts.length;},{timeout:90000}).toBe(1);
  let v=await evidence(page);
  expect(v.session.document.artifacts[0].agent_prompt).toBe(instructions);
  expect(v.calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(callsBefore);
  await openView(page,'Tests');
- await page.getByRole('button',{name:'Run 3 tests',exact:true}).click();
+ await runTestsButton(page).click();
  await expect(page.getByRole('dialog')).toContainText('up to');
  expect((await evidence(page)).calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(callsBefore);
  await expect(page.getByRole('dialog')).toContainText('3 tests ·');
@@ -402,10 +428,10 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  await page.goto('/vibe-evals');
  await chooseDoor(page,'improve');
  await improveSource(page,'recorded');
- await expect(page.getByRole('button',{name:'Review recorded replies',exact:true})).toBeVisible();
- await page.getByLabel('Recorded replies',{exact:true}).fill('Customer: I opened it.\nAgent: I can refund that.');
- await page.getByLabel('Expected behavior',{exact:true}).fill('Opened purchases are not eligible for refunds.');
- await page.getByRole('button',{name:'Review recorded replies',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Save and check',exact:true})).toBeVisible();
+ await page.getByLabel('Conversations',{exact:true}).fill('Customer: I opened it.\nAgent: I can refund that.');
+ await page.getByLabel('What a good reply must do',{exact:true}).fill('Opened purchases are not eligible for refunds.');
+ await page.getByRole('button',{name:'Save and check',exact:true}).click();
  await expect(page.getByRole('region',{name:'Recorded reply tests'})).toBeVisible();
  const saved=await evidence(page);expect(saved.calls).toHaveLength(0);expect(saved.session.document.artifacts).toHaveLength(1);
  await page.getByRole('button',{name:'Run recorded tests',exact:true}).click();
@@ -417,7 +443,14 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  const result=await evidence(page);expect(result.calls.map((c:{role:string})=>c.role)).toEqual(['judge']);
  expect(result.session.operations.at(-1).evidence_metadata.origin).toBe('recorded');
  await page.getByRole('tab',{name:'Results',exact:true}).click();
- await expect(page.getByRole('article',{name:'Run results'})).toBeVisible();
+ const resultCard=page.getByRole('article',{name:'Run results'});
+ await expect(resultCard.getByRole('heading',{name:resultCopy.headline(0,1),exact:true})).toBeVisible();
+ const customerInput=resultCard.locator('.vibe-example-evidence > div').first();
+ await expect(customerInput.locator('.vibe-recorded-bubble[data-role=user] p')).toHaveText('I opened it.');
+ await expect(customerInput).not.toContainText('"conversation"');
+ await expect(resultCard.locator('.vibe-example-reply')).toContainText('I can refund that.');
+ await resultCard.getByRole('button',{name:'Show full conversation',exact:true}).click();
+ await expect(resultCard.getByText('Full conversation · 2 messages',{exact:true})).toBeVisible();
  await openMoreActions(page);
  await page.getByRole('button',{name:'Review a grade',exact:true}).click();
  await page.getByLabel('Grade review reason',{exact:true}).fill('The recorded reply needs a second human review.');
@@ -426,14 +459,17 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  await expect(page.getByText('The recorded reply needs a second human review.',{exact:true})).toBeVisible();
  for(const width of [320,390,600,601,768,1023,1024,1279,1280,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)}
  await page.screenshot({path:info.outputPath('recorded-results.png'),fullPage:true});
- await page.reload();await expect(page.getByRole('article',{name:'Run results'})).toBeVisible();
+ await page.reload();
+ await expect(resultCard.getByRole('heading',{name:resultCopy.headline(0,1),exact:true})).toBeVisible();
+ await expect(customerInput.locator('.vibe-recorded-bubble[data-role=user] p')).toHaveText('I opened it.');
+ await expect(customerInput).not.toContainText('"conversation"');
  await openMoreActions(page);
  await expect(page.getByText('The recorded reply needs a second human review.',{exact:true})).toBeVisible();
  expect((await evidence(page)).calls).toHaveLength(1);
  // Actual CreateAgent projects retain the testJourney headline; new intake is
  // available independently of that headline and never quotes the old source.
  const baseline=result.session.operations.at(-1);
- await page.getByRole('button',{name:'Add new recorded replies',exact:true}).click();
+ await page.getByRole('button',{name:'Test new replies',exact:true}).click();
  await expect(page.getByLabel('Recorded replies',{exact:true})).toHaveValue('');
  await expect(page.getByLabel('Expected behavior',{exact:true})).toHaveValue('Opened purchases are not eligible for refunds.');
  await page.getByLabel('Recorded replies',{exact:true}).fill('Customer: I opened it.\nAgent: I can refund that now.');

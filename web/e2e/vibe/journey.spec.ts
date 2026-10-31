@@ -1,4 +1,7 @@
+import { resultCopy } from "./entry-model";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { fakeVibe, description } from "./entry-fake";
+import { buildResult, composer as entryComposer, doorButton, doorReady, entryReady, sendButton } from "./entry-model";
 import { readFile } from "node:fs/promises";
 import type { Operation, Session } from "../../src/lib/vibe";
 
@@ -730,7 +733,7 @@ async function createAndCheck(page: Page) {
     .getByRole("button", { name: "Send message", exact: true })
     .click({ clickCount: 2 });
   await page
-    .getByRole("button", { name: "Run 3 tests", exact: true })
+    .getByRole("button", { name: /^Run 3 tests(?: · up to \$[0-9.,]+)?$/ })
     .click();
   await page.getByRole("tab", {name:"Results",exact:true}).click();
 }
@@ -997,3 +1000,19 @@ for (const state of ["RUNNING", "CANCELLED"]) {
     expect(mock.messageCount()).toBe(1);
   });
 }
+
+for (const width of [1440, 390]) test(`Build reveals its failed test and inline trial without a tab click at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  const fake = await fakeVibe(page); await page.goto("/vibe-evals"); await entryReady(page);
+  await doorButton(page, "build").click(); await doorReady(page, "build");
+  await entryComposer(page).fill(description); await sendButton(page).click();
+  await expect(buildResult(page)).toContainText(resultCopy.headline(2, 3));
+  await expect(buildResult(page).locator("details[open]")).toContainText("It replied");
+  const fix = buildResult(page).getByRole("button", { name: resultCopy.fix, exact: true }); await expect(fix).toBeInViewport();
+  const trial = page.getByRole("region", { name: "Try your agent", exact: true }); await expect(trial).toBeVisible();
+  await trial.getByRole("textbox", { name: "Message your agent", exact: true }).fill("Can I return an item after 20 days?");
+  await expect(trial.getByRole("button", { name: "Send to agent", exact: true })).toBeEnabled();
+  await expect(trial.getByRole("textbox", { name: "Message your agent", exact: true })).toHaveValue("Can I return an item after 20 days?");
+  expect(fake.posts.filter(post => post.body.kind === "playground")).toHaveLength(0);
+  expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
+});

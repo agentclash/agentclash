@@ -30,6 +30,13 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); node.remove(); vi.unstubAllGlobals(); });
 async function render(pdfAvailable = true, configureUse = false) { await act(async () => root.render(<TaskInput inputs={inputs} pdfAvailable={pdfAvailable} disabled={false} configure={configureUse} />)); }
+it("omits recipient jargon for trial attachments while retaining the brief hint", async () => {
+  inputs = { ...inputs, recipient: "trial:conversation-one" }; await render();
+  expect(node.textContent).not.toContain("Recipient:");
+  expect(node.querySelector(".vibe-task-input")?.getAttribute("aria-label")).toBe("Task material");
+  expect(node.textContent).toContain("Add a file or text");
+  inputs = { ...inputs, recipient: "brief" }; await render(); expect(node.textContent).toContain("Recipient: Agent brief");
+});
 function button(name: string) { const b = Array.from(document.querySelectorAll("button")).find(button => button.textContent?.trim() === name); if (!b) throw Error(`Missing button ${name}`); return b as HTMLButtonElement; }
 async function click(name: string) { await act(async () => button(name).click()); }
 async function change(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {

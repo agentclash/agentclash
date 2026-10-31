@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Artifact, Operation, Session } from "../../src/lib/vibe";
+import { deferInstructionsAndKeepTests } from "./keep-tests";
 
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const reviewVersion = process.env.VIBE_BROWSER_REVIEW_VERSION ?? "suite-review-v3";
@@ -57,7 +58,9 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   page.on("pageerror", error => pageErrors.push(error.message));
   const original = await readFile(path.resolve(process.cwd(), "../backend/internal/vibe/testdata/reliability/returns-original-request.txt"), "utf8");
   await page.goto("/vibe-evals");
-  await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "test" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   await composer.fill(original);
   await composer.press("Enter");
@@ -80,11 +83,10 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await page.reload();
   await openTests(page);
   const tests = page.getByRole("region", { name: "Your tests", exact: true }).last();
-  await tests.getByRole("button", { name: "Add your agent", exact: true }).click();
   await page.getByRole("textbox", { name: "Agent instructions", exact: true }).fill("Opened items are eligible. Unopened items within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.");
-  await page.getByRole("button", { name: "Use these instructions" }).click();
+  await page.getByRole("button", { name: "Add your agent's instructions" }).click();
   await openTests(page);
-  await tests.getByRole("button", { name: "Run 3 tests", exact: true }).click();
+  await tests.getByRole("button", { name: /^Run 3 tests(?: · up to \$[0-9.,]+)?$/ }).click();
   await expect(page.getByRole("dialog")).toContainText("3 tests ·");
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();
@@ -96,7 +98,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   const originalHashes = state.hashes[baselineArtifact.id];
   expect(originalHashes).toEqual(state.hashes[prepared.id]);
 
-  await page.getByRole("button", { name: "Help me fix this", exact: true }).click();
+  await page.getByRole("button", { name: "Suggest a fix", exact: true }).click();
   const proposed = await finished(page, sessionID!, state.session.operations.length);
   expect(proposed.completion_receipt?.action).toBe("suggest_fix");
   state = await evidence(page, sessionID!);
@@ -107,7 +109,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await expect(page.getByRole("region", { name: "Agent instructions", exact: true })).toContainText(fix.agent_prompt!);
   await openTests(page);
   await expect(page.getByRole("region", { name: "Your tests", exact: true })).toHaveAttribute("data-proposal-id", fix.id);
-  await page.getByRole("button", { name: "Improve and rerun", exact: true }).click();
+  await page.getByRole("button", { name: /^Test this change(?: · up to \$[0-9.,]+)?$/ }).click();
   await expect(page.getByRole("dialog")).toContainText("3 tests ·");
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();
@@ -123,11 +125,24 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
 
   // A grade dispute reuses replies. It cannot call the target or edit the suite.
   const beforeRegrade = state;
-  const passedResults = page.locator("summary").filter({ hasText: /^Test results/ });
+  const passedResults = page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: /^More$/ });
   if (!(await passedResults.evaluate(node => (node.parentElement as HTMLDetailsElement).open))) await passedResults.click();
-  await page.locator('[aria-label="Individual results"] summary').first().click();
-  await expect(page.getByRole("region", { name: "Evidence for this grade" }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Regrade saved replies", exact: true }).first().click();
+  const individual = page.getByRole("region", { name: "Individual results", exact: true });
+  await expect(individual).toBeVisible();
+  await expect(individual.getByLabel("Leading finding", { exact: true })).toHaveCount(0);
+  const results = individual.locator("details.vibe-other-results");
+  await results.locator(":scope > summary").filter({ hasText: /^Results · 3$/ }).click();
+  await expect(results).toHaveJSProperty("open", true);
+  const firstTest = results.locator(".vibe-result-row").first();
+  await firstTest.locator(":scope > summary").click();
+  await expect(firstTest).toHaveJSProperty("open", true);
+  for (const label of ["We gave it", "It replied", "It should"]) await expect(firstTest.getByText(label, { exact: true })).toBeVisible();
+  await expect(firstTest.getByText(/^Why it passed(?: · excerpt)?$/)).toBeVisible();
+  await expect(firstTest.locator(".vibe-example-reply")).toBeVisible();
+  await expect(firstTest.locator(".vibe-example-reply")).not.toHaveText("");
+  await expect(firstTest.getByRole("button", { name: "Show full conversation", exact: true })).toBeVisible();
+  await expect(firstTest.getByRole("button", { name: "Change expected result", exact: true })).toBeVisible();
+  await firstTest.getByRole("button", { name: "Grade the same replies again", exact: true }).click();
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   const regraded = await finished(page, sessionID!, beforeRegrade.session.operations.length);
   expect(regraded.source?.comparison).toBe("regraded");
@@ -215,7 +230,9 @@ test("provider cooldown crosses the real worker and API and retry creates one ne
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.request.post(`${api}/__fixture/control`, { data: { rate_limit_calls: 1 } });
   await page.goto("/vibe-evals");
-  await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "test" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   const original = await readFile(path.resolve(process.cwd(), "../backend/internal/vibe/testdata/reliability/returns-original-request.txt"), "utf8");
   await composer.fill(original);
@@ -265,15 +282,16 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   const errors: string[]=[]; page.on("pageerror",e=>errors.push(e.message));
   const original=await readFile(path.resolve(process.cwd(),"../backend/internal/vibe/testdata/reliability/returns-original-request.txt"),"utf8");
   await page.goto("/vibe-evals");
-  await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "test" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
   await page.getByRole("textbox",{name:"Message Vibe Evals"}).fill(original);
   await page.getByRole("textbox",{name:"Message Vibe Evals"}).press("Enter");
   await openTests(page);
   await expect(page.getByRole("heading",{name:"3 tests are ready"})).toBeVisible();
   const id=new URL(page.url()).searchParams.get("session")!;
   const before=await evidence(page,id); const artifact=before.session.document.artifacts.at(-1)!;
-  await page.getByRole("button",{name:"Keep for later",exact:true}).click();
-  await page.getByRole("button",{name:"Keep these tests",exact:true}).click();
+  await deferInstructionsAndKeepTests(page);
   const link=page.getByRole("link",{name:"Sign in to save your work"});
   expect(new URL((await link.getAttribute("href"))!,page.url()).searchParams.get("returnTo")).toContain(`agent=${artifact.id}`);
   await link.click();
@@ -282,8 +300,7 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   await page.goBack();
   await openTests(page);
   await expect(page.getByRole("heading",{name:"3 tests are ready"})).toBeVisible();
-  await page.getByRole("button",{name:"Keep for later",exact:true}).click();
-  await page.getByRole("button",{name:"Keep these tests",exact:true}).click();
+  await deferInstructionsAndKeepTests(page);
   await page.getByRole("link",{name:"Sign in to save your work"}).click();
   await page.getByRole("button",{name:"Continue with AgentClash"}).click();
   await expect(page).toHaveURL(/vibe-evals\?.*keep=1/);
@@ -316,11 +333,10 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   await expect(page.getByRole("heading",{name:"3 tests are ready"})).toBeVisible();
   expect(new URL(page.url()).searchParams.get("agent")).toBe(artifact.id);
   const tests=page.getByRole("region",{name:"Your tests",exact:true}).last();
-  await tests.getByRole("button",{name:"Add your agent",exact:true}).click();
   await page.getByRole("textbox",{name:"Agent instructions",exact:true}).fill("Only unopened items within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.");
-  await page.getByRole("button",{name:"Use these instructions"}).click();
+  await page.getByRole("button",{name:"Add your agent's instructions"}).click();
   await openTests(page);
-  await tests.getByRole("button",{name:"Run 3 tests",exact:true}).click();
+  await tests.getByRole("button",{name:/^Run 3 tests(?: · up to \$[0-9.,]+)?$/}).click();
   await expect(page.getByRole("dialog")).toContainText("3 tests ·");
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();

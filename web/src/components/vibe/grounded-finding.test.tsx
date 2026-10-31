@@ -55,7 +55,7 @@ it("keeps grade rechecks separate from rule edits and makes no improvement claim
   expect(container.querySelector("h2")?.textContent).toBe("Saved replies regraded");
   expect(container.textContent).toContain("Your agent was not called again.");
   expect(container.textContent).not.toContain("fixed ·");
-  const button = [...container.querySelectorAll("button")].find(b => b.textContent === "Regrade saved replies")!;
+  const button = [...container.querySelectorAll("button")].find(b => b.textContent === "Grade the same replies again")!;
   await act(async () => button.click());
   expect(regrade).toHaveBeenCalledOnce();
   const separate = [...container.querySelectorAll("button")].find(b => b.textContent === "Start a separate run")!;

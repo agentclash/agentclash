@@ -28,3 +28,24 @@ it("exports the frozen full source identity and rejects conflicting descriptors"
  const value=canonicalExportValue(item,[result],"project");expect(value).toEqual(result);expect(value).not.toBe(result);
  for(const invalid of [{...item,hash:"changed"},{...item,artifact_id:"foreign"},{...item,result_ref:{kind:"eval_session" as const,id:"run"}},{...item,id:"run"}])expect(()=>canonicalExportValue(invalid,[result],"project")).toThrow("frozen preparation");
 });
+it("omits empty project application history and keeps existing results selectable",async()=>{
+ mocks.fetch.mockResolvedValue([]);const view=await render();try{
+  await act(async()=>view.root.render(<CanonicalResults {...view.p} selected={undefined} hideEmptyHistory/>));
+  expect(view.node.querySelector('[aria-label="Application run history"]')).toBeNull();
+  mocks.fetch.mockResolvedValue([result]);
+  await act(async()=>view.root.render(<CanonicalResults {...view.p} actorScope="next-actor" selected={undefined} hideEmptyHistory/>));
+  const history=view.node.querySelector<HTMLDetailsElement>('[aria-label="Application run history"]')!;expect(history).not.toBeNull();expect(history.open).toBe(false);
+  await act(async()=>history.querySelector<HTMLElement>("summary")!.click());
+  await act(async()=>[...history.querySelectorAll("button")].find(b=>b.textContent?.startsWith("Run Application fixture"))!.click());expect(view.p.onSelectResult).toHaveBeenCalledWith(result.binding);
+ }finally{await view.close()}
+});
+
+it("retries an unavailable project history without showing an empty Application run history",async()=>{
+ vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT",true);mocks.fetch.mockRejectedValue(new Error("History unavailable"));const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
+ try{
+  await act(async()=>root.render(<CanonicalResults {...props()} selected={undefined} hideEmptyHistory/>));
+  expect(node.querySelector('[aria-label="Application run history"]')).toBeNull();expect(node.querySelector('[role="alert"]')!.textContent).toBe("History unavailable");
+  mocks.fetch.mockResolvedValue([]);await act(async()=>[...node.querySelectorAll("button")].find(b=>b.textContent==="Refresh application runs")!.click());
+  expect(node.textContent).toBe("");
+ }finally{await act(async()=>root.unmount());node.remove()}
+});

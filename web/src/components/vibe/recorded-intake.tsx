@@ -3,6 +3,8 @@ import { useState } from "react";
 import { useVibeEditorDraft } from "@/lib/use-vibe-editor-draft";
 import type { RecordedIntakeRequest, RecordedIntakeOutcome } from "@/lib/vibe-result-evidence";
 import { VibeDataUseNotice } from "./vibe-data-use";
+import { ReplyCount, repliesPlaceholder } from "./improve-inputs";
+import "./improve.css";
 import { VibeButton } from "./vibe-button";
 
 export function RecordedIntake({project,revision,busy,onSave,onClose,reviewedExpectations}:{project:string;revision:number;busy:boolean;reviewedExpectations?:{id:string;statement:string}[];onSave:(request:RecordedIntakeRequest)=>Promise<RecordedIntakeOutcome>;onClose:()=>void}){
@@ -25,10 +27,11 @@ export function RecordedIntake({project,revision,busy,onSave,onClose,reviewedExp
   <h2>Test replies from my app</h2><p>Paste 1–3 complete conversations, including customer messages and actual agent replies. Enter your expectations separately. This grades saved replies; it does not call your app.</p>
   <VibeDataUseNotice/>
   <details><summary>Sample transcript format</summary><pre className="whitespace-pre-wrap">{"Customer: I opened an item bought 10 days ago.\nAgent: I can refund that."}</pre><p>Example expectation: Opened items are not eligible for a refund. Use your own rules.</p></details>
-  <label>Recorded replies<textarea aria-label="Recorded replies" className="vibe-textarea" disabled={busy||!!pending.value} value={content.value} onChange={e=>content.setValue(e.target.value)}/></label>
-  <label>Expected behavior<textarea aria-label="Expected behavior" className="vibe-textarea" disabled={busy||!!pending.value} value={expectations.value} onChange={e=>expectations.setValue(e.target.value)}/></label><p className="text-sm vibe-muted">One expectation per line. Saving does not run a model. The server checks the upload and project storage limits.</p>
+  <label>Recorded replies<textarea aria-label="Recorded replies" className="vibe-textarea" placeholder={repliesPlaceholder} disabled={busy||!!pending.value} value={content.value} onChange={e=>content.setValue(e.target.value)}/></label>
+  <ReplyCount text={content.value} />
+  <label>Expected behavior<textarea placeholder="One rule per line. For example: Opened items are not eligible for a refund." aria-label="Expected behavior" className="vibe-textarea" disabled={busy||!!pending.value} value={expectations.value} onChange={e=>expectations.setValue(e.target.value)}/></label><p className="text-sm vibe-muted">One expectation per line. Saving does not run a model. The server checks the upload and project storage limits.</p>
   {error&&<p role="alert">{error}</p>}
-  <VibeButton type="submit" disabled={busy}>{pending.value?"Retry saving these replies":"Review recorded replies"}</VibeButton><VibeButton disabled={busy} onClick={onClose}>Back</VibeButton>
+  <VibeButton variant="primary" type="submit" disabled={busy}>{pending.value?"Retry saving these replies":"Review recorded replies"}</VibeButton><VibeButton variant="quiet" className="underline" disabled={busy} onClick={onClose}>Back</VibeButton>
  </form>;
 }
 

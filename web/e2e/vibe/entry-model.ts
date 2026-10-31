@@ -6,28 +6,45 @@ export type Door = "build" | "improve";
 export type ImproveSource = "instructions" | "recorded" | "import";
 type FilePayload = { name: string; mimeType: string; buffer: Buffer };
 
+export const startCopy = {
+  build: { heading: "What task should the agent handle?", composer: "What task should the agent handle?", primary: "Build and run 3 tests", switchDoor: "Already have an agent? Improve it instead." },
+  improve: { heading: "How do you want to test your agent?", composer: "Agent instructions", switchDoor: "Build an agent instead" },
+  sources: { instructions: "Instructions", recorded: "Real replies", import: "Test pack" },
+  primaries: { instructions: "Write 3 tests", recorded: "Save and check", import: "Choose a file" },
+  replies: "Conversations", rules: "What a good reply must do",
+  existingProject: { build: "What task should the agent handle?", improve: "Improve an agent you already have." },
+  buildOptions: "Attach a file", improveOptions: "Other ways to bring your agent", resultsMore: "More",
+} as const;
 export const entryCopy = {
-  heading: "What would you like to evaluate?",
-  choices: "New project choices",
-  doors: { build: /Build an agent/, improve: /Improve an existing agent/ },
-  doorHeadings: { build: "What would you like help with?", improve: "Improve an agent you already have." },
-  sources: { instructions: "Try my saved instructions", recorded: "Test replies from my app", import: "Import a test pack" },
-  composer: "Message Vibe Evals",
-  // The Build start send button. Its name is its visible text (E2, WCAG 2.5.3).
-  send: "Build and run 3 tests",
+  heading: "What would you like to evaluate?", choices: "New project choices",
+  doors: { build: "Build an agent", improve: "Improve an existing agent" },
+  doorHeadings: { build: startCopy.build.heading, improve: startCopy.improve.heading },
+  sources: startCopy.sources, composer: startCopy.build.composer, send: startCopy.build.primary,
 } as const;
 
+export const startScreen = (page: Page) => page.locator(".vibe-start-page");
 export const entryHeading = (page: Page) => page.getByRole("heading", { name: entryCopy.heading });
 // The reason the doors are unavailable (connection, workspace, capacity), with its one action.
 export const entryNotice = (page: Page) => page.locator(".vibe-entry-availability");
 export const workspacePicker = (page: Page) => page.getByRole("combobox", { name: "Workspace for new projects", exact: true });
 export const newProjectChoices = (page: Page, exact = true) => page.getByLabel(entryCopy.choices, { exact });
-export const doorButton = (page: Page, door: Door) => page.getByRole("button", { name: entryCopy.doors[door] });
-export const doorHeading = (page: Page, door: Door, exact?: boolean) =>
-  page.getByRole("heading", { name: entryCopy.doorHeadings[door], ...(exact === undefined ? {} : { exact }) });
-export const sourceButton = (page: Page, source: ImproveSource) => page.getByRole("button", { name: entryCopy.sources[source], exact: true });
-export const composer = (page: Page) => page.getByRole("textbox", { name: entryCopy.composer });
-export const sendButton = (page: Page) => page.getByRole("button", { name: entryCopy.send, exact: true });
+export const doorButton = (page: Page, door: Door) => page.getByRole("button", { name: entryCopy.doors[door], exact: true });
+export const doorHeading = (page: Page, door: Door, exact = true) => startScreen(page).getByRole("heading", { level: 1, name: startCopy[door].heading, exact });
+export const projectStartHeading = (page: Page, door: Door) => doorHeading(page, door).or(page.getByRole("heading", { level: 2, name: startCopy.existingProject[door], exact: true }));
+export const sourceButton = (page: Page, source: ImproveSource) => startScreen(page).getByRole("radio", { name: startCopy.sources[source], exact: true }).or(page.getByRole("button", { name: { instructions: "Try my saved instructions", recorded: "Test replies from my app", import: "Import a test pack" }[source], exact: true }));
+export const startComposer = (page: Page, door: Door) => startScreen(page).getByRole("textbox", { name: startCopy[door].composer, exact: true });
+// Retain the project Guide composer as well as the start inputs for existing specs.
+export const composer = (page: Page) => page.getByRole("textbox", { name: "Message Vibe Evals", exact: true }).or(startComposer(page, "build")).or(startComposer(page, "improve"));
+export const buildResult = (page: Page) => page.getByRole("article", { name: "Agent test results", exact: true });
+export const sendButton = (page: Page) => startScreen(page).getByRole("button", { name: startCopy.build.primary, exact: true });
+export const improvePrimary = (page: Page, source: ImproveSource) => startScreen(page).getByRole("button", { name: startCopy.primaries[source], exact: true });
+export const repliesInput = (page: Page) => startScreen(page).getByRole("textbox", { name: startCopy.replies, exact: true });
+export const rulesInput = (page: Page) => startScreen(page).getByRole("textbox", { name: startCopy.rules, exact: true });
+export const buildOptions = (page: Page) => startScreen(page).getByRole("button", { name: startCopy.buildOptions, exact: true });
+export const improveOptions = (page: Page) => startScreen(page).locator("summary").filter({ hasText: new RegExp(`^${startCopy.improveOptions}$`) });
+export const resultsMore = (page: Page) => page.locator("summary").filter({ hasText: new RegExp(`^${startCopy.resultsMore}$`) });
+export const switchDoorButton = (page: Page, door: Door) => startScreen(page).getByRole("button", { name: startCopy[door].switchDoor, exact: true });
+export const sampleButton = (page: Page) => page.getByRole("button", { name: "Read a sample test", exact: true });
 // A filled primary button (components/vibe/vibe-button.tsx). Add any new primary style here too.
 export const primaryButtons = (page: Page): Locator => page.locator(".vibe-button-primary").filter({ visible: true });
 
@@ -44,6 +61,11 @@ export async function chooseDoor(page: Page, door: Door) {
 /** The start screen of a door is shown. */
 export async function doorReady(page: Page, door: Door, timeout?: number) {
   await expect(doorHeading(page, door)).toBeVisible({ timeout });
+  await expect(door === "build" ? startComposer(page, door) : doorHeading(page, door)).toBeFocused({ timeout });
+  await expect(door === "build" ? sendButton(page) : startScreen(page).getByRole("radiogroup", { name: "Agent source" })).toBeVisible({ timeout });
+  await expect(page.locator("h1:visible")).toHaveCount(1);
+  await expect(page.locator(".vibe-project-header")).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`[?&]start=${door === "build" ? "build" : "improve"}(?:&|$)`));
 }
 
 /**
@@ -68,7 +90,29 @@ export async function showView(page: Page, name: "Agent" | "Tests" | "Results", 
 
 /** Chooses a source on the Improve start screen. For "import", pass the file to choose. */
 export async function improveSource(page: Page, source: ImproveSource, file?: FilePayload) {
-  const chooser = source === "import" && file ? page.waitForEvent("filechooser") : undefined;
-  await sourceButton(page, source).click();
-  if (chooser && file) await (await chooser).setFiles(file);
+  if (await startScreen(page).count()) {
+    await sourceButton(page, source).click();
+    if (source === "import" && file) {
+      const chooser = page.waitForEvent("filechooser");
+      await improvePrimary(page, source).click();
+      await (await chooser).setFiles(file);
+    }
+  } else {
+    const chooser = source === "import" && file ? page.waitForEvent("filechooser") : undefined;
+    await sourceButton(page, source).click();
+    if (chooser && file) await (await chooser).setFiles(file);
+  }
 }
+
+// Improve can display a matching price from an earlier Run click.
+export const runTestsButton = (page: Page, count = 3) => page.getByRole("button", { name: new RegExp(`^Run ${count} tests(?: · up to \\$[0-9.,]+)?$`) });
+export const testChangeButton = (page: Page) => page.getByRole("button", { name: /^Test this change(?: · up to \$[0-9.,]+)?$/ });
+export const addAgentInstructions = (page: Page) => page.getByRole("button", { name: "Add your agent's instructions", exact: true });
+
+export const resultCopy = {
+  headline: (passed: number, total: number) => passed === total ? `Your agent passed all ${total} ${total === 1 ? "test" : "tests"}` : `Your agent passed ${passed} of ${total} ${total === 1 ? "test" : "tests"}`,
+  fix: "Suggest a fix",
+  other: /^Other results ·/,
+} as const;
+export const otherResults = (page: Page) => page.locator("summary").filter({ hasText: resultCopy.other }).filter({ visible: true });
+export const suggestFix = (page: Page) => page.getByRole("button", { name: resultCopy.fix, exact: true });
