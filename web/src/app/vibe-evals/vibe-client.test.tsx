@@ -5072,3 +5072,28 @@ it("keeps a restored pack start blocked while configuration is loading", async (
   expect(button("Choose a file").disabled).toBe(true);
   expect(requests.filter(request => request.method === "POST")).toEqual([]);
 });
+
+
+it.each([false, true])("PR7 fix2 keeps an existing empty Improve chat on its bound start (unapproved new-project default: %s)", async unavailableDefault => {
+  session.document.evaluation = { id: session.id, chat_id: session.id, door: "test" };
+  const original = "Help test our returns agent without inventing its instructions.";
+  const previous = respond;
+  respond = async (path, options) => path === "/config" ? json({ ...(await twoDoorConfig().json()), ...(unavailableDefault ? { defaults: { ...defaultModels, assistant: "unapproved/new-project-default" } } : {}) })
+    : path.endsWith("/messages") ? json({ id: "existing-chat-first", kind: "message", state: "RUNNING", billing: "RESERVED", models: defaultModels, results: [], max_cost_nano_usd: 0, actual_cost_nano_usd: 0 }, 202)
+    : previous(path, options);
+  await render();
+  await type("Keep my separate instruction draft.", "Agent instructions");
+  await click("Describe it in chat");
+  expect(container.querySelector(".vibe-project-header")).toBeNull();
+  expect(container.querySelector("h1")?.textContent).toBe("Describe your agent");
+  await type(original, "Message Guide");
+  expect(button("Send message").disabled).toBe(false);
+  expect(requests.filter(request => request.method !== "GET")).toEqual([]);
+  await click("Send message");
+  expect(container.querySelector(".vibe-project-header")).not.toBeNull();
+  expect(posts()).toHaveLength(1);
+  expect(posts()[0]).toMatchObject({ path: `/sessions/${session.id}/messages`, body: { content: original, evaluation_first: true, test_journey: true } });
+  expect(posts()[0].body.instructions).toBeUndefined();
+  expect(requests.filter(request => request.path === "/sessions" && request.method === "POST" || request.method === "DELETE")).toEqual([]);
+  expect(new URL(window.location.href).searchParams.get("session")).toBe(session.id);
+});

@@ -1,7 +1,7 @@
 import { resultCopy } from "./entry-model";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { fakeVibe, description } from "./entry-fake";
-import { buildResult, composer as entryComposer, doorButton, doorReady, entryReady, sendButton } from "./entry-model";
+import { buildResult, composer as entryComposer, doorButton, doorReady, entryReady, sendButton, chooseDoor, describeInChat, guideComposer, improvePrimary, startComposer, chatStartHeading } from "./entry-model";
 import { readFile } from "node:fs/promises";
 import type { Operation, Session } from "../../src/lib/vibe";
 
@@ -48,9 +48,11 @@ async function openScorecardSection(page: Page, name: string | RegExp) {
   );
 }
 
-async function openLegacy(page: Page) {
+async function openDescriptionStart(page: Page) {
   await page.goto("/vibe-evals");
-  await expect(page.getByRole("heading", { name: "What should your agent do?" })).toBeVisible({ timeout: 20000 });
+  await entryReady(page, 20000);
+  await chooseDoor(page, "improve");
+  await describeInChat(page);
 }
 
 async function openInstructions(page: Page) {
@@ -85,9 +87,15 @@ test("new conversations use the server's free model defaults", async ({
       }),
     }),
   );
+  await page.route("**/v1/vibe/sessions", route => route.fulfill({ headers: {
+    "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true",
+  }, json: [] }));
   await page.goto("/vibe-evals");
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("Liquid (free)");
+  await entryReady(page);
+  await chooseDoor(page, "improve");
+  const model = page.getByRole("combobox", { name: "Which model does your agent use?", exact: true });
+  await expect(model).toHaveValue(id);
+  await expect(model).toContainText("Liquid (free)");
   await expect(
     page.getByRole("combobox", { name: "Assistant model" }),
   ).toHaveCount(0);
@@ -177,6 +185,7 @@ async function mockVibe(
           { id: "openai/gpt-4.1", name: "GPT-4.1" },
         ],
       });
+    if (request.method() === "GET" && path.endsWith("/sessions")) return send(session.id ? [snapshot()] : []);
     if (path.endsWith("/sessions") && request.method() === "POST") {
       session.id = request.postDataJSON().id;
       return send(session, 201);
@@ -566,12 +575,9 @@ test("describe, review, independently select agent, check, inspect unknowns and 
   page,
 }) => {
   const mock = await mockVibe(page);
-  await openLegacy(page);
-  await expect(
-    page.getByRole("heading", { name: "What should your agent do?" }),
-  ).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "Message Vibe Evals" })
+  await openDescriptionStart(page);
+  await expect(chatStartHeading(page)).toBeVisible();
+  await guideComposer(page)
     .fill(
       "We need a customer support agent. Refunds are allowed within 30 days; escalate unclear cases.",
     );
@@ -621,9 +627,8 @@ test("simple chat sends a real message, offers proposals without a draft and nev
   page,
 }) => {
   const mock = await mockVibe(page, { casual: true });
-  await openLegacy(page);
-  await page
-    .getByRole("textbox", { name: "Message Vibe Evals" })
+  await openDescriptionStart(page);
+  await guideComposer(page)
     .fill("Help me explore how AI could support our customer support team.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(
@@ -651,15 +656,14 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport);
     const mock = await mockVibe(page);
-    await openLegacy(page);
+    await page.goto("/vibe-evals"); await entryReady(page);
+    await chooseDoor(page, "improve"); await doorReady(page, "improve");
     await expect(page.getByRole("tablist")).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Send message", exact: true }),
-    ).toBeDisabled();
-    await page.getByRole("button", { name: "See an example" }).click();
-    await page.getByRole("button", { name: "Use this description" }).click();
+    await expect(improvePrimary(page, "instructions")).toBeDisabled();
+    await page.getByRole("button", { name: "Use sample instructions", exact: true }).click();
+    await expect(startComposer(page, "improve")).not.toHaveValue("");
     expect(mock.messageCount()).toBe(0);
-    await page.getByRole("button", { name: "Send message", exact: true }).click();
+    await improvePrimary(page, "instructions").click();
     await page.getByRole("button", { name: "Run 3 tests" }).click();
   await page.getByRole("button", {name:"View latest results",exact:true}).click();
     await expect(page.getByRole("tab", { name: "Results" })).toHaveAttribute(
@@ -682,9 +686,8 @@ test("draft editor exposes the full instructions and exports the user's exact re
   page,
 }) => {
   const mock = await mockVibe(page, { previewRules: true });
-  await openLegacy(page);
-  await page
-    .getByRole("textbox", { name: "Message Vibe Evals" })
+  await openDescriptionStart(page);
+  await guideComposer(page)
     .fill("Build a support agent with a 30 day refund policy.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await openInstructions(page);
@@ -725,9 +728,8 @@ test("draft editor exposes the full instructions and exports the user's exact re
 });
 
 async function createAndCheck(page: Page) {
-  await openLegacy(page);
-  await page
-    .getByRole("textbox", { name: "Message Vibe Evals" })
+  await openDescriptionStart(page);
+  await guideComposer(page)
     .fill("Build a support agent with a 30 day refund policy.");
   await page
     .getByRole("button", { name: "Send message", exact: true })
@@ -742,17 +744,15 @@ test("Try keeps followups separate from Build and starts fresh on reset", async 
   page,
 }) => {
   const mock = await mockVibe(page);
-  await openLegacy(page);
-  await page
-    .getByRole("textbox", { name: "Message Vibe Evals" })
+  await openDescriptionStart(page);
+  await guideComposer(page)
     .fill("Build a return-policy assistant.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   // The reply resets the composer, so type the next draft after it arrives.
   await expect(
     page.getByRole("button", { name: "Try it yourself", exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "Message Vibe Evals" })
+  await guideComposer(page)
     .fill("Unsent changes to my agent");
   await page
     .getByRole("button", { name: "Try it yourself", exact: true })
@@ -770,7 +770,7 @@ test("Try keeps followups separate from Build and starts fresh on reset", async 
     .getByRole("button", { name: "← Back to Vibe Evals", exact: true })
     .click();
   await expect(
-    page.getByRole("textbox", { name: "Message Vibe Evals" }),
+    guideComposer(page),
   ).toHaveValue("Unsent changes to my agent");
   await expect(
     page.getByRole("log", { name: "Conversation with Vibe Evals" }),
@@ -873,8 +873,8 @@ test("lost acknowledgement retries exactly after SSE advances and preserves the 
   page,
 }) => {
   const mock = await mockVibe(page, { loseAcknowledgement: true });
-  await openLegacy(page);
-  const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
+  await openDescriptionStart(page);
+  const composer = guideComposer(page);
   await composer.fill("Build a refund agent.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(
@@ -896,9 +896,8 @@ test("unapplied instructions cannot run checks; applying creates a ready-to-try 
   page,
 }) => {
   const mock = await mockVibe(page);
-  await openLegacy(page);
-  await page
-    .getByRole("textbox", { name: "Message Vibe Evals" })
+  await openDescriptionStart(page);
+  await guideComposer(page)
     .fill("Build a refund agent.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await openInstructions(page);

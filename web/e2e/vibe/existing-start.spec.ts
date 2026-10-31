@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { description, fakeVibe, instructions, project } from "./entry-fake";
-import { startComposer, startCopy, startScreen } from "./entry-model";
+import { startComposer, startCopy, startScreen, describeInChat, guideComposer, sendButton } from "./entry-model";
 
 for (const door of ["build", "improve"] as const) test(`existing empty ${door}: first send uses its project`, async ({ page }) => {
   const fake = await fakeVibe(page);
@@ -81,4 +81,26 @@ test("trial rejection permits an edited message with Enter and a new conversatio
   await input.fill("Fresh trial"); await page.getByRole("button", { name: "Send to agent", exact: true }).click();
   await expect(alert).toHaveText("Rejected trial 3.");
   expect(bodies.map(body => body.content)).toEqual(["First trial", "Edited trial", "Fresh trial"]);
+});
+
+
+test("existing empty Improve chat keeps the new start and sends its description to the same project", async ({ page }) => {
+  const fake = await fakeVibe(page);
+  const id = "a8000000-0000-4000-8000-000000000080";
+  fake.sessions.set(id, project(id, "test"));
+  await page.goto(`/vibe-evals?session=${id}`);
+  await describeInChat(page);
+  const description = "Help test my returns agent using our supplied rules.";
+  await guideComposer(page).fill(description);
+  expect(fake.posts).toEqual([]);
+  await sendButton(page, "chat").click();
+  await expect(page.locator(".vibe-project-header")).toBeVisible();
+  const sent = fake.posts.filter(request => request.path.endsWith("/messages"));
+  expect(sent).toHaveLength(1);
+  expect(sent[0].path).toBe(`/sessions/${id}/messages`);
+  expect(sent[0].body.content).toBe(description);
+  expect(sent[0].body.instructions).toBeUndefined();
+  expect(fake.posts.filter(request => request.path === "/sessions" || request.method === "DELETE")).toEqual([]);
+  expect(fake.sessions.size).toBe(1);
+  expect(fake.errors).toEqual([]); expect(fake.unknown).toEqual([]);
 });

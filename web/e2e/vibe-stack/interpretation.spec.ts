@@ -1,20 +1,20 @@
 import { expect, test } from "@playwright/test";
+import { describeInChat, guideComposer, sendButton } from "../vibe/entry-model";
 
 test("v15 real stack: joke, vague job, clarification, three clean tests", async ({ page }, info) => {
   test.skip(process.env.VIBE_BROWSER_V15 !== "1", "Versioned opt-in fixture");
   const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.goto("/vibe-evals");
-  if (process.env.VIBE_BROWSER_TWO_DOOR === "1") {
   const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "test" } });
   expect(created.ok(), await created.text()).toBe(true);
   await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
-  }
-  const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
+  await describeInChat(page);
+  const composer = guideComposer(page);
   const send = page.getByRole("button", { name: "Send message", exact: true });
   await composer.fill("drin vodka hewhe");
   await expect(send).toBeEnabled();
-  await composer.press("Enter");
+  await sendButton(page, "chat").click();
   await expect(page.getByText("Tell me what your agent should help with.", { exact: true })).toBeVisible();
   await composer.fill("Build me a returns agent for Shopify");
   await expect(send).toBeEnabled();

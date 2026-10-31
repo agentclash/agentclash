@@ -9,6 +9,7 @@ type FilePayload = { name: string; mimeType: string; buffer: Buffer };
 export const startCopy = {
   build: { heading: "What task should the agent handle?", composer: "What task should the agent handle?", primary: "Build and run 3 tests", switchDoor: "Already have an agent? Improve it instead." },
   improve: { heading: "How do you want to test your agent?", composer: "Agent instructions", switchDoor: "Build an agent instead" },
+  chat: { heading: "Describe your agent", composer: "Message Guide", primary: "Send message", choice: "Describe it in chat" },
   sources: { instructions: "Instructions", recorded: "Real replies", import: "Test pack" },
   primaries: { instructions: "Write 3 tests", recorded: "Save and check", import: "Choose a file" },
   replies: "Conversations", rules: "What a good reply must do",
@@ -32,11 +33,13 @@ export const doorButton = (page: Page, door: Door) => page.getByRole("button", {
 export const doorHeading = (page: Page, door: Door, exact = true) => startScreen(page).getByRole("heading", { level: 1, name: startCopy[door].heading, exact });
 export const projectStartHeading = (page: Page, door: Door) => doorHeading(page, door).or(page.getByRole("heading", { level: 2, name: startCopy.existingProject[door], exact: true }));
 export const sourceButton = (page: Page, source: ImproveSource) => startScreen(page).getByRole("radio", { name: startCopy.sources[source], exact: true }).or(page.getByRole("button", { name: { instructions: "Try my saved instructions", recorded: "Test replies from my app", import: "Import a test pack" }[source], exact: true }));
-export const startComposer = (page: Page, door: Door) => startScreen(page).getByRole("textbox", { name: startCopy[door].composer, exact: true });
+export const startComposer = (page: Page, door: Door | "chat") => startScreen(page).getByRole("textbox", { name: startCopy[door].composer, exact: true });
 // Retain the project Guide composer as well as the start inputs for existing specs.
-export const composer = (page: Page) => page.getByRole("textbox", { name: "Message Vibe Evals", exact: true }).or(startComposer(page, "build")).or(startComposer(page, "improve"));
+export const guideComposer = (page: Page) => page.getByRole("textbox", { name: "Message Vibe Evals", exact: true }).or(startComposer(page, "chat"));
+export const composer = (page: Page) => guideComposer(page).or(startComposer(page, "build")).or(startComposer(page, "improve"));
 export const buildResult = (page: Page) => page.getByRole("article", { name: "Agent test results", exact: true });
-export const sendButton = (page: Page) => startScreen(page).getByRole("button", { name: startCopy.build.primary, exact: true });
+export const sendButton = (page: Page, door: "build" | "chat" = "build") => startScreen(page).getByRole("button", { name: startCopy[door].primary, exact: true });
+export const chatStartHeading = (page: Page) => startScreen(page).getByRole("heading", { level: 1, name: startCopy.chat.heading, exact: true });
 export const improvePrimary = (page: Page, source: ImproveSource) => startScreen(page).getByRole("button", { name: startCopy.primaries[source], exact: true });
 export const repliesInput = (page: Page) => startScreen(page).getByRole("textbox", { name: startCopy.replies, exact: true });
 export const rulesInput = (page: Page) => startScreen(page).getByRole("textbox", { name: startCopy.rules, exact: true });
@@ -116,3 +119,13 @@ export const resultCopy = {
 } as const;
 export const otherResults = (page: Page) => page.locator("summary").filter({ hasText: resultCopy.other }).filter({ visible: true });
 export const suggestFix = (page: Page) => page.getByRole("button", { name: resultCopy.fix, exact: true });
+
+/** Keep descriptions as descriptions: the Instructions source binds a runnable prompt. */
+export async function describeInChat(page: Page) {
+  await expect(doorHeading(page, "improve")).toBeVisible();
+  await improveOptions(page).click();
+  await startScreen(page).getByRole("button", { name: startCopy.chat.choice, exact: true }).click();
+  await expect(chatStartHeading(page)).toBeVisible();
+  await expect(startComposer(page, "chat")).toBeVisible();
+  await expect(page.locator(".vibe-project-header")).toHaveCount(0);
+}

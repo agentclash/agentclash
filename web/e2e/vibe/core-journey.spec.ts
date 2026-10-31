@@ -1,4 +1,4 @@
-import { resultCopy } from "./entry-model";
+import { resultCopy, entryReady, chooseDoor, describeInChat, guideComposer, sendButton } from "./entry-model";
 import { expect, test } from "@playwright/test";
 import type { Artifact, Operation, Session } from "../../src/lib/vibe";
 
@@ -112,6 +112,7 @@ for (const mobile of [false, true]) {
               (c) => c.case_key === new URL(req.url()).searchParams.get("key"),
             ),
         );
+      if (req.method() === "GET" && path.endsWith("/sessions")) return send(state.id ? [snapshot()] : []);
       if (req.method() === "POST" && path.endsWith("/sessions")) {
         state.id = req.postDataJSON().id;
         return send(snapshot(), 201);
@@ -250,11 +251,11 @@ for (const mobile of [false, true]) {
       return send(snapshot());
     });
     await page.goto("/vibe-evals");
-    await expect(
-      page.getByRole("heading", { name: "What should your agent do?" }),
-    ).toBeVisible();
+    await entryReady(page);
+    await chooseDoor(page, "improve");
+    await describeInChat(page);
     await expect(page.getByRole("tab")).toHaveCount(0);
-    const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
+    const composer = guideComposer(page);
     await composer.fill(brief);
     await composer.press("Shift+Enter");
     await expect(composer).toHaveValue(brief + "\n");
@@ -264,9 +265,9 @@ for (const mobile of [false, true]) {
     await expect(
       page.getByRole("button", { name: "Add your agent's instructions", exact: true }),
     ).toHaveCount(0);
-    await expect(
-      page.getByRole("status").filter({ hasText: /Sending your message/ }),
-    ).toBeVisible();
+    const sending = sendButton(page, "chat");
+    await expect(sending).toHaveAttribute("aria-busy", "true");
+    await expect(sending).toBeDisabled();
     releasePreparation();
     await expect(
       page.getByRole("heading", { name: "3 tests are ready" }),
