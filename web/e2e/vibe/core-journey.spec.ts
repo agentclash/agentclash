@@ -1,5 +1,6 @@
-import { resultCopy, entryReady, chooseDoor, describeInChat, guideComposer, sendButton } from "./entry-model";
+import { resultCopy, entryReady, chooseDoor, describeInChat, guideComposer, sendButton, projectReady } from "./entry-model";
 import { expect, test } from "@playwright/test";
+import { project } from "./entry-fake";
 import type { Artifact, Operation, Session } from "../../src/lib/vibe";
 
 test.use({ video: { mode: "on", size: { width: 1440, height: 960 } } });
@@ -114,7 +115,8 @@ for (const mobile of [false, true]) {
         );
       if (req.method() === "GET" && path.endsWith("/sessions")) return send(state.id ? [snapshot()] : []);
       if (req.method() === "POST" && path.endsWith("/sessions")) {
-        state.id = req.postDataJSON().id;
+        const body = req.postDataJSON();
+        Object.assign(state, project(body.id, body.door, body.workspace_id, models), { title: body.title });
         return send(snapshot(), 201);
       }
       if (req.method() === "PATCH") {
@@ -269,6 +271,7 @@ for (const mobile of [false, true]) {
     await expect(sending).toHaveAttribute("aria-busy", "true");
     await expect(sending).toBeDisabled();
     releasePreparation();
+    await projectReady(page);
     await expect(
       page.getByRole("heading", { name: "3 tests are ready" }),
     ).toBeVisible();

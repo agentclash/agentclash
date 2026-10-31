@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { describeInChat, guideComposer, sendButton } from "../vibe/entry-model";
+import { describeInChat, guideComposer, sendButton, projectReady } from "../vibe/entry-model";
 
 test("v15 real stack: joke, vague job, clarification, three clean tests", async ({ page }, info) => {
   test.skip(process.env.VIBE_BROWSER_V15 !== "1", "Versioned opt-in fixture");
@@ -15,6 +15,7 @@ test("v15 real stack: joke, vague job, clarification, three clean tests", async 
   await composer.fill("drin vodka hewhe");
   await expect(send).toBeEnabled();
   await sendButton(page, "chat").click();
+  await projectReady(page, false);
   await expect(page.getByText("Tell me what your agent should help with.", { exact: true })).toBeVisible();
   await composer.fill("Build me a returns agent for Shopify");
   await expect(send).toBeEnabled();

@@ -1,7 +1,7 @@
 import { resultCopy } from "./entry-model";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { fakeVibe, description } from "./entry-fake";
-import { buildResult, composer as entryComposer, doorButton, doorReady, entryReady, sendButton, chooseDoor, describeInChat, guideComposer, improvePrimary, startComposer, chatStartHeading } from "./entry-model";
+import { fakeVibe, description, project } from "./entry-fake";
+import { buildResult, composer as entryComposer, doorButton, doorReady, entryReady, sendButton, chooseDoor, describeInChat, guideComposer, improvePrimary, startComposer, chatStartHeading, projectReady } from "./entry-model";
 import { readFile } from "node:fs/promises";
 import type { Operation, Session } from "../../src/lib/vibe";
 
@@ -107,6 +107,7 @@ async function mockVibe(
     casual?: boolean;
     loseAcknowledgement?: boolean;
     previewRules?: boolean;
+    existing?: Session;
   } = {},
 ) {
   const submissions = new Map<string, { body: string; operation: unknown }>();
@@ -115,7 +116,7 @@ async function mockVibe(
   let messages = 0;
   let checks = 0;
   let trials = 0;
-  const session: Session = {
+  const session: Session = options.existing ?? {
     id: "",
     revision: 0,
     anonymous: true,
@@ -123,10 +124,10 @@ async function mockVibe(
     operations: [],
   };
   let stale = false;
-  const initial = structuredClone(session);
+  let initial = structuredClone(session);
   const snapshot = () => ({
     ...session,
-    event_cursor: session.event_cursor ?? session.revision,
+    event_cursor: Math.max(session.event_cursor ?? 0, session.revision),
     operations: session.operations.map((o) => ({
       ...o,
       results: o.results.map((r) => ({
@@ -187,7 +188,9 @@ async function mockVibe(
       });
     if (request.method() === "GET" && path.endsWith("/sessions")) return send(session.id ? [snapshot()] : []);
     if (path.endsWith("/sessions") && request.method() === "POST") {
-      session.id = request.postDataJSON().id;
+      const body = request.postDataJSON();
+      Object.assign(session, project(body.id, body.door, body.workspace_id, models), { title: body.title });
+      initial = structuredClone(session);
       return send(session, 201);
     }
     if (path.endsWith("/events"))
@@ -582,6 +585,7 @@ test("describe, review, independently select agent, check, inspect unknowns and 
       "We need a customer support agent. Refunds are allowed within 30 days; escalate unclear cases.",
     );
   await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await projectReady(page);
   await expect(page.getByRole("heading", { name: "3 tests are ready" })).toBeVisible();
   expect(mock.messageCount()).toBe(1);
   // Review an exact saved expectation before selecting the target model.
@@ -631,6 +635,7 @@ test("simple chat sends a real message, offers proposals without a draft and nev
   await guideComposer(page)
     .fill("Help me explore how AI could support our customer support team.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await projectReady(page, false);
   await expect(
     page.getByText("What would you like to explore about support agents?"),
   ).toBeVisible();
@@ -664,6 +669,7 @@ for (const viewport of [
     await expect(startComposer(page, "improve")).not.toHaveValue("");
     expect(mock.messageCount()).toBe(0);
     await improvePrimary(page, "instructions").click();
+    await projectReady(page);
     await page.getByRole("button", { name: "Run 3 tests" }).click();
     await page.getByRole("tab", { name: "Results", exact: true }).click();
     await expect(page.getByRole("tab", { name: "Results" })).toHaveAttribute(
@@ -690,6 +696,7 @@ test("draft editor exposes the full instructions and exports the user's exact re
   await guideComposer(page)
     .fill("Build a support agent with a 30 day refund policy.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await projectReady(page);
   await openInstructions(page);
   const instructions = page.getByRole("textbox", {
     name: "Agent instructions",
@@ -735,17 +742,26 @@ async function createAndCheck(page: Page) {
   await page
     .getByRole("button", { name: "Send message", exact: true })
     .click({ clickCount: 2 });
+  await projectReady(page);
   await page
     .getByRole("button", { name: /^Run 3 tests(?: · up to \$[0-9.,]+)?$/ })
     .click();
   await page.getByRole("tab", {name:"Results",exact:true}).click();
 }
 
-test("Try keeps followups separate from Build and starts fresh on reset", async ({
+function legacyTrialFixture(): Session {
+  return { id: "legacy-trial", revision: 1, anonymous: true, operations: [],
+    document: { models, messages: [], requirements: [], artifacts: [] } };
+}
+
+test("legacy trial returns to Vibe Evals, keeps followups separate and starts fresh on reset", async ({
   page,
 }) => {
-  const mock = await mockVibe(page);
-  await openDescriptionStart(page);
+  const mock = await mockVibe(page, { existing: legacyTrialFixture() });
+  await page.goto("/vibe-evals?session=legacy-trial");
+  await expect(guideComposer(page)).toBeVisible();
+  await expect(page.locator(".vibe-project-header")).toHaveCount(0);
+  expect(mock.snapshot().document.evaluation).toBeUndefined();
   await guideComposer(page)
     .fill("Build a return-policy assistant.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
@@ -877,6 +893,7 @@ test("lost acknowledgement retries exactly after SSE advances and preserves the 
   const composer = guideComposer(page);
   await composer.fill("Build a refund agent.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await projectReady(page);
   await expect(
     page.getByRole("heading", { name: "3 tests are ready" }),
   ).toBeVisible();
@@ -900,6 +917,7 @@ test("unapplied instructions cannot run checks; applying creates a ready-to-try 
   await guideComposer(page)
     .fill("Build a refund agent.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await projectReady(page);
   await openInstructions(page);
   await page
     .getByRole("textbox", { name: "Agent instructions", exact: true })
@@ -1005,6 +1023,7 @@ for (const width of [1440, 390]) test(`Build reveals its failed test and inline 
   const fake = await fakeVibe(page); await page.goto("/vibe-evals"); await entryReady(page);
   await doorButton(page, "build").click(); await doorReady(page, "build");
   await entryComposer(page).fill(description); await sendButton(page).click();
+  await projectReady(page);
   await expect(buildResult(page)).toContainText(resultCopy.headline(2, 3));
   await expect(buildResult(page).locator("details[open]")).toContainText("It replied");
   const fix = buildResult(page).getByRole("button", { name: resultCopy.fix, exact: true }); await expect(fix).toBeInViewport();

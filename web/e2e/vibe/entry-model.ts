@@ -129,3 +129,13 @@ export async function describeInChat(page: Page) {
   await expect(startComposer(page, "chat")).toBeVisible();
   await expect(page.locator(".vibe-project-header")).toHaveCount(0);
 }
+
+/** A door-backed project must never silently render the legacy workspace. */
+export async function projectReady(page: Page, withArtifact = true) {
+  const header = page.locator(".vibe-project-header");
+  await expect(header).toBeVisible();
+  if (withArtifact) {
+    await expect(header.getByRole("button", { name: "Guide", exact: true })).toBeVisible();
+    await expect(header.getByRole("button", { name: "Details", exact: true })).toBeVisible();
+  }
+}

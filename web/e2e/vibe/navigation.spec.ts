@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+import { project } from "./entry-fake";
 import { defaultModels, type Session } from "../../src/lib/vibe";
-import { chooseDoor, composer, doorButton, doorReady, entryHeading, improveSource, newProjectChoices, projectStartHeading, sourceButton, otherResults, improveOptions, startComposer, startScreen, improvePrimary } from "./entry-model";
+import { chooseDoor, composer, doorButton, doorReady, entryHeading, improveSource, newProjectChoices, projectStartHeading, sourceButton, otherResults, improveOptions, startComposer, startScreen, improvePrimary, projectReady } from "./entry-model";
 
 function evaluation(id: string): Session {
   return { id, revision: 1, event_cursor: 1, anonymous: true, operations: [],
@@ -76,10 +77,10 @@ async function serve(page: Page, many = false, prototypes = false) {
       if (path.endsWith("/sessions")) {
         const body = request.postDataJSON();
         posts.push({ path, body });
-        const created = evaluation(body.id);
-        created.document.evaluation!.door = body.door;
+        const created = project(body.id, body.door, body.workspace_id);
+        created.title = body.title;
         sessions.set(created.id, created);
-        return route.fulfill({ headers, json: created });
+        return route.fulfill({ status: 201, headers, json: created });
       }
       if (path.endsWith("/import")) {
         posts.push({ path, body: { file: request.postData() || "" } });
@@ -932,6 +933,7 @@ test("Improve import keeps instructions in Tests and requests a price only on Ru
   const fake = await fakeVibe(page);
   await page.goto("/vibe-evals"); await entryReady(page);
   await chooseDoor(page, "improve"); await improveSource(page, "import", packFile);
+  await projectReady(page);
   const tests = page.getByRole("region", { name: "Your tests", exact: true });
   await expect(tests.getByRole("textbox", { name: "Agent instructions", exact: true })).toBeVisible();
   await expect(tests.getByRole("button", { name: "Create an agent", exact: true })).toHaveCount(0);

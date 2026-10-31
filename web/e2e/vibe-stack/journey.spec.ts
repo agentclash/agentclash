@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Artifact, Operation, Session } from "../../src/lib/vibe";
 import { deferInstructionsAndKeepTests } from "./keep-tests";
-import { describeInChat, guideComposer, sendButton } from "../vibe/entry-model";
+import { describeInChat, guideComposer, sendButton, projectReady } from "../vibe/entry-model";
 
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const reviewVersion = process.env.VIBE_BROWSER_REVIEW_VERSION ?? "suite-review-v3";
@@ -66,6 +66,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   const composer = guideComposer(page);
   await composer.fill(original);
   await sendButton(page, "chat").click();
+  await projectReady(page, false);
   await openTests(page);
   await expect(page.getByRole("heading", { name: "3 tests are ready" })).toBeVisible();
   const sessionID = new URL(page.url()).searchParams.get("session");
@@ -240,6 +241,7 @@ test("provider cooldown crosses the real worker and API and retry creates one ne
   const original = await readFile(path.resolve(process.cwd(), "../backend/internal/vibe/testdata/reliability/returns-original-request.txt"), "utf8");
   await composer.fill(original);
   await sendButton(page, "chat").click();
+  await projectReady(page, false);
   await expect(page.getByRole("button", { name: /Try again in/ })).toBeDisabled();
   const sessionID = new URL(page.url()).searchParams.get("session")!;
   let state = await evidence(page, sessionID);
@@ -291,6 +293,7 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   await describeInChat(page);
   await guideComposer(page).fill(original);
   await sendButton(page, "chat").click();
+  await projectReady(page, false);
   await openTests(page);
   await expect(page.getByRole("heading",{name:"3 tests are ready"})).toBeVisible();
   const id=new URL(page.url()).searchParams.get("session")!;

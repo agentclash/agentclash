@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { description, fakeVibe, instructions, project } from "./entry-fake";
-import { startComposer, startCopy, startScreen, describeInChat, guideComposer, sendButton } from "./entry-model";
+import { startComposer, startCopy, startScreen, describeInChat, guideComposer, sendButton, projectReady } from "./entry-model";
 
 for (const door of ["build", "improve"] as const) test(`existing empty ${door}: first send uses its project`, async ({ page }) => {
   const fake = await fakeVibe(page);
@@ -20,7 +20,7 @@ for (const door of ["build", "improve"] as const) test(`existing empty ${door}: 
   await startComposer(page, door).fill(door === "build" ? description : instructions);
   expect(fake.posts).toEqual([]);
   await startScreen(page).getByRole("button", { name: door === "build" ? startCopy.build.primary : startCopy.primaries.instructions, exact: true }).click();
-  await expect(page.locator(".vibe-project-header")).toBeVisible();
+  await projectReady(page);
   const sent = fake.posts.filter(request => request.path.endsWith("/messages"));
   expect(sent).toHaveLength(1);
   expect(sent[0].path).toBe(`/sessions/${id}/messages`);
@@ -94,7 +94,7 @@ test("existing empty Improve chat keeps the new start and sends its description 
   await guideComposer(page).fill(description);
   expect(fake.posts).toEqual([]);
   await sendButton(page, "chat").click();
-  await expect(page.locator(".vibe-project-header")).toBeVisible();
+  await projectReady(page);
   const sent = fake.posts.filter(request => request.path.endsWith("/messages"));
   expect(sent).toHaveLength(1);
   expect(sent[0].path).toBe(`/sessions/${id}/messages`);

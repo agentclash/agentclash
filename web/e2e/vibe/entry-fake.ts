@@ -6,7 +6,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "@playwright/test";
-import { defaultModels, type Artifact, type CaseResult, type Operation, type Session } from "../../src/lib/vibe";
+import { defaultModels, type Artifact, type CaseResult, type Operation, type Models, type Session } from "../../src/lib/vibe";
 
 export const models = defaultModels;
 export const fakeConfig = {
@@ -58,9 +58,9 @@ const fixedScorecard = { ...scorecard, passed: 3, failed: 0, pass_rate: 1 };
 const running = (id: string, kind: string, extra: Partial<Operation> = {}): Operation => ({ id, kind, state: "RUNNING", billing: "RESERVED", models, max_cost_nano_usd: 120_000_000, actual_cost_nano_usd: 0, results: [], ...extra });
 const finish = (op: Operation, extra: Partial<Operation> = {}) => Object.assign(op, { state: "COMPLETED", billing: "SETTLED", progress: undefined, ...extra });
 
-export function project(id: string, door: "build" | "test", workspace?: string): Session {
+export function project(id: string, door: "build" | "test", workspace?: string, selectedModels: Models = models): Session {
   return { id, revision: 1, event_cursor: 1, anonymous: !workspace, ...(workspace ? { workspace_id: workspace } : {}), operations: [], updated_at: new Date().toISOString(),
-    document: { format_version: 1, models, messages: [], requirements: [], artifacts: [], test_journey: true, evaluation: { id, chat_id: "chat", door } } };
+    document: { format_version: 1, models: selectedModels, messages: [], requirements: [], artifacts: [], test_journey: true, evaluation: { id, chat_id: id, door } } };
 }
 const bump = (s: Session) => { s.revision++; s.event_cursor = s.revision; s.updated_at = new Date().toISOString(); };
 

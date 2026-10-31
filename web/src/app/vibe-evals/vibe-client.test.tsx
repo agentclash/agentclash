@@ -6,6 +6,7 @@ import { defaultModels, VibeError, type Operation, type Session } from "@/lib/vi
 import { draftMemory } from "@/lib/vibe-build-drafts";
 import { VibeClient } from "./vibe-client";
 import VibePage from "./page";
+import { project } from "../../../e2e/vibe/entry-fake";
 
 const harness = vi.hoisted(() => ({
   params: new URLSearchParams("session=session-one"),
@@ -243,6 +244,31 @@ it("opens Improve chat through the real start mount and creates a project only o
   expect(posts()[0].body).toMatchObject({ content: "Our support agent answers return questions. Help me decide what to test.", test_journey: true });
   expect(posts()[0].body.instructions).toBeUndefined();
   expect(params().get("session")).toBeTruthy();
+});
+
+it.each(["build", "test"] as const)("the browser journey fixture mounts the %s project frame after its first send", async door => {
+  await enterDoor(door);
+  const before = respond;
+  respond = async (path, options) => {
+    if (path === "/sessions" && options.method === "POST") {
+      const body = JSON.parse(String(options.body));
+      session = project(body.id, body.door, body.workspace_id);
+      return json(session, 201);
+    }
+    return before(path, options);
+  };
+  if (door === "test") await click("Describe it in chat");
+  await type("Help shoppers with returns.", door === "build" ? "What task should the agent handle?" : "Message Guide");
+  await click(door === "build" ? "Build and run 3 tests" : "Send message");
+  expect(container.querySelector(".vibe-project-header")).not.toBeNull();
+  scenarioAgent();
+  session.document.messages.push({ id: "ready", role: "assistant", content: "Your tests are ready.", artifact_id: "artifact-one" });
+  session.revision++; session.event_cursor = session.revision;
+  await act(async () => snapshot(structuredClone(session)));
+  const header = container.querySelector(".vibe-project-header")!;
+  expect(header.querySelector('button[aria-label="Guide"]')).not.toBeNull();
+  expect(header.querySelector('button[aria-label="Details"]')).not.toBeNull();
+  expect(header.querySelector('[role="tablist"][aria-label="Workspace views"]')).not.toBeNull();
 });
 
 it.each([["live_app", false], ["sdk_report", false], ["live_app", true], ["sdk_report", true]] as const)("opens the existing signed-in %s flow from the real start mount without writes (legacy: %s)", async (source, legacy) => {
