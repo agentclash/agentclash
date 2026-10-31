@@ -281,7 +281,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
             <details className="vibe-build-all-results"><summary>All {result.results.length} test results</summary>{scorecard}</details>
           </> : <>
 
-          <VibeScorecard headingLevel={1} more={p.testJourney && !build ? <>
+          <VibeScorecard headingLevel={1} actionNotice={runFeedback} more={p.testJourney && !build ? <>
           <ResultRecoveryControls key={`recovery:${result.id}`} operation={result} busy={p.busy||p.dirty} onReload={p.onReloadEvidence||(()=>{})} onRetry={p.onRetryCases?keys=>p.onRetryCases!(result,keys):undefined} onFullRun={()=>p.onRun(undefined,result.source?.evidence_set_id)} />
           {terminal(result.state) && <div className="vibe-results-more-body">
             <div><VibeButton onClick={() => askRun(result)}>Ask about this result</VibeButton></div>

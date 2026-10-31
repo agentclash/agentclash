@@ -187,6 +187,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
 function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
   const door = p.session?.document.evaluation?.door;
   const buildJourney = door === "build";
+  const runFeedback = <>{p.runNotice}{p.feedbackTarget === "run" && p.actionError && <p role="alert">{p.actionError}</p>}</>;
   const previewOpen = buildJourney && p.view === "try";
   const [referencedRun, setReferencedRun] = useState<Operation>();
 
@@ -361,7 +362,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
   const suiteContents = p.artifact?.kind === "test_suite" ? (
     <div className="space-y-4" data-proposal-id={p.artifact.id}>
       {promptChanged && <PromptChange key={`instructions:${p.artifact.id}`} before={parent!.agent_prompt} after={p.artifact.agent_prompt} defaultOpen={buildJourney} />}
-      <TestSuitePanel inferenceUnavailable={p.inferenceUnavailable} selectedCase={p.selectedCase} onSelectCase={p.onSelectCase} projectID={p.session?.id} primary={primary === "tests"} key={`tests:${p.artifact.id}`} artifact={p.artifact} busy={p.busy} blocked={p.dirty}
+      <TestSuitePanel inferenceUnavailable={p.inferenceUnavailable} selectedCase={p.selectedCase} onSelectCase={p.onSelectCase} projectID={p.session?.id} primary={primary === "tests"} key={`tests:${p.artifact.id}`} artifact={p.artifact} busy={p.busy} blocked={p.dirty} editError={p.feedbackTarget === "edit" ? p.actionError : undefined} runNotice={runFeedback}
         buildJourney={buildJourney}
         parent={parent}
         comparison={!!changeBaseline} onRun={() => startRun(changeBaseline)} onEdit={p.onEdit}
@@ -657,6 +658,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   </div>
                 )}
                 <VibeScorecard
+                  actionNotice={runFeedback}
                       buildJourney={buildJourney}
                   findingFirst={!!door}
                   testJourney={p.testJourney}

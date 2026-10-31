@@ -412,7 +412,7 @@ return (
           </>
         }
         preview={
-          <PrototypeTrial workspace notice={trialSubmission ? submissionRecovery : undefined} sessionID={session?.id} error={feedbackTarget === "trial" && error ? error : new TextEncoder().encode(trialText).length > messageLimit ? `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.` : undefined} inline={buildJourney} dock={false} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} busy={busy} inferenceBlocked={!inferenceAvailable || dirtyArtifact || trialMaterials.blocked} text={trialText} hasMaterial={trialMaterials.bindings.length > 0}
+          <PrototypeTrial workspace notice={trialSubmission ? submissionRecovery : undefined} sessionID={session?.id} sendError={feedbackTarget === "trial" ? error : undefined} error={new TextEncoder().encode(trialText).length > messageLimit ? `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.` : undefined} inline={buildJourney} dock={false} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} busy={busy} inferenceBlocked={!inferenceAvailable || dirtyArtifact || trialMaterials.blocked} text={trialText} hasMaterial={trialMaterials.bindings.length > 0}
             materialInput={config?.material_build && buildJourney ? <TaskInput key={`${sessionID}:${materialScope}`} inputs={trialMaterials} pdfAvailable={!!config?.pdf_uploads} disabled={busy || dirtyArtifact} /> : undefined}
             onText={setTrialText} onSend={() => { setFeedbackTarget("trial"); void submit("playground", trialText); }}
             onBack={() => navigate("build")} onNew={newTrial} thread={threadID}

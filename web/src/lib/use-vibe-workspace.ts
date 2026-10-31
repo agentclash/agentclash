@@ -322,7 +322,7 @@ export function useVibeWorkspace() {
     setUncertain(!!request?.uncertain); setPendingMessage(recovery.message);
     setPendingAction(sending.current && request?.retryOperationID ? "Retrying your request…" : undefined);
     setPendingEdit(undefined); setError(recovery.error); setRunQuote(undefined); setRunQuotePreparing(false); setRunQuoteError("");
-  }, [requestScope]);
+  }, [requestScope, recovery]);
   const file = useRef<HTMLInputElement>(null);
   const active = session?.operations.find((o) => !terminal(o.state));
   const sessionUnavailable =

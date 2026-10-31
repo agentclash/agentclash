@@ -4849,6 +4849,90 @@ it.each(["build", "test"] as const)("PR7 retains an existing empty %s project an
   expect(new URL(window.location.href).searchParams.get("session")).toBe(session.id);
 });
 
+it.each(["build", "test"] as const)("PR7 fix1 recovers an ambiguous first send to an existing empty %s project", async door => {
+  session.document.evaluation = { id: session.id, chat_id: session.id, door };
+  const previous = respond;
+  let lost = false;
+  respond = async (path, options) => {
+    if (path === "/config") return twoDoorConfig();
+    if (path.endsWith("/build-quote")) return json({ id: "existing-cycle", expires_at: new Date(Date.now() + 600000).toISOString(), cases: 3, max_cost_nano_usd: 0 });
+    if (path.endsWith("/messages")) {
+      if (!lost) { lost = true; throw new TypeError("First response lost"); }
+      return json({ id: "recovered-first", kind: "message", state: "QUEUED", models: defaultModels, results: [] }, 202);
+    }
+    if (lost && path === `/sessions/${session.id}`) throw new TypeError("Receipt unavailable");
+    return previous(path, options);
+  };
+  await render(); await type("Keep this first request.", door === "build" ? "Message Vibe Evals" : "Agent instructions");
+  await click(door === "build" ? "Build and run 3 tests" : "Write 3 tests");
+  expect(container.textContent).toContain("First response lost");
+  expect(container.textContent).toContain("Keep this first request.");
+  expect(button("Retry submission").disabled).toBe(false);
+  await click("Retry submission");
+  expect(posts()).toHaveLength(2); expect(posts()[1]).toEqual(posts()[0]);
+  expect(container.textContent).not.toContain("Retry submission");
+  expect(container.textContent).not.toContain("First response lost");
+  expect(requests.filter(request => request.path === "/sessions" && request.method === "POST" || request.method === "DELETE")).toEqual([]);
+});
+
+it.each(["button", "Enter", "new conversation"] as const)("PR7 fix1 permits another trial send after rejection via %s", async method => {
+  readyTests("build");
+  const previous = respond;
+  respond = async (path, options) => path === "/config" ? twoDoorConfig() : path.endsWith("/messages")
+    ? posts().length === 1 ? json({ error: { code: "invalid_message", message: "Try another message.", admission: "rejected" } }, 400)
+      : json({ id: "trial-accepted", kind: "playground", state: "QUEUED", models: defaultModels, results: [] }, 202)
+    : previous(path, options);
+  await render(); await type("Rejected trial", "Message your agent"); await click("Send to agent");
+  expect(container.querySelector('.vibe-prototype-trial [role="alert"]')?.textContent).toBe("Try another message.");
+  if (method === "new conversation") await click("New conversation");
+  await type("Corrected trial", "Message your agent");
+  expect(button("Send to agent").disabled).toBe(false);
+  if (method === "Enter") await act(async () => textarea("Message your agent").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+  else await click("Send to agent");
+  expect(posts()).toHaveLength(2); expect(posts()[1].body).toMatchObject({ kind: "playground", content: "Corrected trial" });
+  expect(container.querySelector('.vibe-prototype-trial [role="alert"]')).toBeNull();
+});
+
+it.each(["run", "edit", "rerun"] as const)("PR7 fix1 shows legacy project %s failures beside its controls", async action => {
+  readyTests("test"); delete session.document.evaluation; harness.params.set("view", "tests");
+  if (action === "rerun") { session.operations = [run(runID, "artifact-one")]; harness.params.set("view", "checks"); }
+  const previous = respond;
+  respond = async (path, options) => path.endsWith("/messages") || options.method === "PATCH"
+    ? json({ error: { code: "invalid_request", message: "This legacy project is read-only.", admission: "rejected" } }, 400)
+    : path.includes("/case") ? json(session.operations[0].results[0]) : previous(path, options);
+  await render();
+  if (action === "run") await click("Run 3 tests");
+  else if (action === "rerun") await click("Run tests again");
+  else {
+    await click("Edit tests");
+    const area = container.querySelectorAll<HTMLTextAreaElement>('[aria-label="Your tests"] textarea')[1];
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(area, "Retain my legacy edit."); area.dispatchEvent(new Event("input", { bubbles: true })); });
+    await click("Save test changes");
+    expect(area.value).toBe("Retain my legacy edit.");
+  }
+  const alerts = [...container.querySelectorAll('[role="alert"]')].filter(node => node.textContent?.includes("This legacy project is read-only."));
+  expect(alerts).toHaveLength(1);
+  expect(alerts[0].closest(action === "rerun" ? '[aria-label="Run results"]' : '[aria-label="Your tests"]')).not.toBeNull();
+});
+
+it.each(["rerun", "regrade"].flatMap(action => ["estimate", "admission"].map(phase => ({ action, phase }))))("PR7 fix1 shows an Improve Results $action $phase failure beside result actions", async ({ action, phase }) => {
+  const suite = readyTests("test"), result = run(runID, suite.id);
+  session.operations = [result]; harness.params.set("view", "results"); harness.params.set("run", result.id);
+  const previous = respond;
+  respond = async (path, options) => path === "/config" ? json({ ...(await twoDoorConfig().json()), grading_recheck: true })
+    : path.includes("/case") ? json(result.results[0])
+    : path.endsWith("/run-quote") ? phase === "estimate" ? json({ error: { code: "unavailable", message: "Result action unavailable." } }, 503)
+      : json({ id: "result-quote", cases: 3, calls: 6, max_cost_nano_usd: 0, expires_at: new Date(Date.now() + 600000).toISOString() })
+    : path.endsWith("/messages") ? json({ error: { code: "invalid_request", message: "Result action unavailable.", admission: "rejected" } }, 400)
+    : previous(path, options);
+  await render(); await click(action === "rerun" ? "Run tests again" : "Grade the same replies again");
+  if (phase === "admission") await click("Start run");
+  const alerts = [...container.querySelectorAll('[role="alert"]')].filter(node => node.textContent?.includes("Result action unavailable."));
+  expect(alerts).toHaveLength(1);
+  expect(alerts[0].closest('[aria-label="Run results"]')).not.toBeNull();
+  expect(posts()).toHaveLength(phase === "admission" ? 1 : 0);
+});
+
 it("PR7 always shows the two-door entry even if an old config says false", async () => {
   harness.params = new URLSearchParams();
   respond = async path => path === "/config" ? json({ ...(await twoDoorConfig().json()), two_door: false }) : json([]);

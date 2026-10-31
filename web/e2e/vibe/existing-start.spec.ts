@@ -31,3 +31,54 @@ for (const door of ["build", "improve"] as const) test(`existing empty ${door}: 
   expect(fake.errors).toEqual([]);
   expect(fake.unknown).toEqual([]);
 });
+
+for (const door of ["build", "improve"] as const) test(`existing empty ${door}: lost first response offers an exact retry`, async ({ page }) => {
+  const fake = await fakeVibe(page);
+  const id = "a8000000-0000-4000-8000-000000000078";
+  fake.sessions.set(id, project(id, door === "build" ? "build" : "test"));
+  const bodies: string[] = [];
+  await page.route(`**/v1/vibe/sessions/${id}/messages`, async route => {
+    bodies.push(route.request().postData()!);
+    if (bodies.length === 1) return route.abort("failed");
+    return route.fallback();
+  });
+  await page.route(`**/v1/vibe/sessions/${id}`, route => bodies.length === 1 ? route.abort("failed") : route.fallback());
+  await page.goto(`/vibe-evals?session=${id}`);
+  await startComposer(page, door).fill(door === "build" ? description : instructions);
+  await startScreen(page).getByRole("button", { name: door === "build" ? startCopy.build.primary : startCopy.primaries.instructions, exact: true }).click();
+  const retry = page.getByRole("button", { name: "Retry submission", exact: true });
+  await expect(retry).toBeVisible();
+  await expect(page.locator(".vibe-project-main")).toContainText(door === "build" ? description : instructions);
+  await retry.click();
+  await expect(retry).toHaveCount(0);
+  expect(bodies).toHaveLength(2); expect(bodies[1]).toBe(bodies[0]);
+  expect(fake.posts.filter(request => request.path === "/sessions" || request.method === "DELETE")).toEqual([]);
+  expect(fake.sessions.size).toBe(1);
+});
+
+test("trial rejection permits an edited message with Enter and a new conversation with Send", async ({ page }) => {
+  const fake = await fakeVibe(page);
+  const id = "a8000000-0000-4000-8000-000000000079";
+  fake.sessions.set(id, project(id, "build"));
+  await page.goto(`/vibe-evals?session=${id}`);
+  await startComposer(page, "build").fill(description);
+  await startScreen(page).getByRole("button", { name: startCopy.build.primary, exact: true }).click();
+  const input = page.getByRole("textbox", { name: "Message your agent", exact: true });
+  await expect(input).toBeVisible();
+  const bodies: Record<string, unknown>[] = [];
+  await page.route(`**/v1/vibe/sessions/${id}/messages`, async route => {
+    const body = route.request().postDataJSON();
+    if (body.kind !== "playground") return route.fallback();
+    bodies.push(body);
+    return route.fulfill({ status: 400, headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" }, json: { error: { code: "invalid_message", admission: "rejected", message: `Rejected trial ${bodies.length}.` } } });
+  });
+  const alert = page.locator('.vibe-prototype-trial [role="alert"]');
+  await input.fill("First trial"); await page.getByRole("button", { name: "Send to agent", exact: true }).click();
+  await expect(alert).toHaveText("Rejected trial 1.");
+  await input.fill("Edited trial"); await input.press("Enter");
+  await expect(alert).toHaveText("Rejected trial 2.");
+  await page.getByRole("button", { name: "New conversation", exact: true }).click();
+  await input.fill("Fresh trial"); await page.getByRole("button", { name: "Send to agent", exact: true }).click();
+  await expect(alert).toHaveText("Rejected trial 3.");
+  expect(bodies.map(body => body.content)).toEqual(["First trial", "Edited trial", "Fresh trial"]);
+});
