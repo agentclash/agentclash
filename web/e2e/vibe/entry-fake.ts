@@ -219,7 +219,7 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
       s.operations.push(op);
       later(s, () => finish(op, recorded ? {
         actual_cost_nano_usd: 12_000_000, scorecard: { passed: 0, failed: 1, unknown: 0, total: 1, evaluated: 1, pass_rate: 0, coverage: 1 },
-        results: [{ case_key: "conversation-1", title: "Conversation 1", version: artifactID, input: null, output: "", verdict: "FAIL", messages: s.document.evidence_sets![0].conversations[0].messages, expectations: [{ id: "expectation-1", statement: expectation }],
+        results: [{ case_key: "c1", title: "Conversation 1", version: artifactID, input: null, output: "", verdict: "FAIL", messages: s.document.evidence_sets![0].conversations[0].messages, expectations: [{ id: "expectation-1", statement: expectation }],
           checks: [{ key: "expectation-1", verdict: "FAIL", evidence: "The agent accepted a sealed item bought 45 days ago.", message_ids: ["c1-a"] }] }],
       } : { actual_cost_nano_usd: 41_000_000, results: caseResults(artifactID), scorecard: artifactID.endsWith("-fix") ? fixedScorecard : scorecard }));
       bump(s);
@@ -232,7 +232,7 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
       return json(s.operations.at(-1), 202);
     }
     if (p.endsWith("/evidence")) {
-      const conversations = [{ key: "conversation-1", title: "Conversation 1", messages: [{ id: "c1-u", role: "user" as const, content: "I bought headphones 45 days ago. They are still sealed. Can I return them?" }, { id: "c1-a", role: "assistant" as const, content: "Sure, bring them back with the receipt." }] }];
+      const conversations = [{ key: "c1", title: "Conversation 1", messages: [{ id: "c1-u", role: "user" as const, content: "I bought headphones 45 days ago. They are still sealed. Can I return them?" }, { id: "c1-a", role: "assistant" as const, content: "Sure, bring them back with the receipt." }] }];
       s.document.evidence_sets = [{ id: "ev-1", label: body.label || "App replies", raw: body.content, conversations }];
       s.document.active_evidence_id = "ev-1";
       const art: Artifact = { id: "rec-v1", kind: "conversation_evaluation", title: "App replies", agent_prompt: "", accepted: true, source_message_id: body.client_id, blueprint: {}, conversation_evaluation: { evidence_set_id: "ev-1", expectations: body.expectations } } as any;
