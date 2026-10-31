@@ -61,7 +61,6 @@ type Props = {
   accountLabel?: string;
   listStatus?: CollectionStatus;
   onRetryList?: () => void;
-  enabled?: boolean;
   contexts: Session[];
   session: Session | null;
   choosing: boolean;
@@ -118,7 +117,6 @@ export function EvaluationNavigation(p: Props) {
   const afterDrawerClose = useRef<(() => void) | null>(null);
   const drawerNavigating = useRef(false);
   const reduced = useReducedMotion();
-  if (!p.enabled) return p.children(null);
   const contexts = p.contexts
     .map((item) => (item.id === p.session?.id ? p.session : item))
     .filter(
@@ -127,14 +125,14 @@ export function EvaluationNavigation(p: Props) {
         (p.archiveMode === "only" ? !!item.archived_at : !item.archived_at),
     );
   if (
-    p.session?.document.evaluation &&
+    p.session &&
     (p.archiveMode === "all" ||
       (p.archiveMode === "only" ? !!p.session.archived_at : !p.session.archived_at)) &&
     !contexts.some((item) => item.id === p.session!.id)
   )
     contexts.push(p.session);
   const guest = !p.actorScope || p.actorScope === "guest";
-  const hasProjects = p.contexts.length > 0 || !!p.session?.document.evaluation;
+  const hasProjects = p.contexts.length > 0 || !!p.session;
   const filtered = !!p.archiveMode && p.archiveMode !== "exclude";
   const showListTools = !guest || hasProjects || filtered;
   // A short list needs no search; the filter stays reachable so archived projects can be restored.
@@ -317,11 +315,13 @@ export function EvaluationNavigation(p: Props) {
                         Project title
                         <input
                           aria-label="Project title"
+                          aria-describedby={metadataError ? `vibe-title-error-${mobile ? "mobile" : "desktop"}` : undefined}
                           value={titleDraft}
                           onChange={(e) => setTitleDraft(e.target.value)}
                           className="vibe-input w-full"
                         />
                       </label>
+                      {metadataError && <p id={`vibe-title-error-${mobile ? "mobile" : "desktop"}`} role="alert">{metadataError}</p>}
                       <VibeButton type="submit" disabled={metadataBusy || !titleDraft.trim()}>
                         Save title
                       </VibeButton>
@@ -346,7 +346,7 @@ export function EvaluationNavigation(p: Props) {
                   >
                     {p.session.archived_at ? "Restore project" : "Archive project"}
                   </VibeButton>
-                  {metadataError && <p role="alert">{metadataError}</p>}
+                  {!renaming && metadataError && <p role="alert">{metadataError}</p>}
                 </>
               )}
               {p.session.document.evaluation && p.onDeleted && (

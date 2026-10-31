@@ -13,7 +13,7 @@ it("discards obsolete metadata failures and resets pending controls on project s
   const session = { id: "first", document: { artifacts: [] }, operations: [] } as unknown as Session;
   let reject!: (e: Error) => void;
   const metadata = () => new Promise<boolean>((_, no) => { reject = no; });
-  const render = (selected: Session) => root.render(<EvaluationNavigation enabled contexts={[selected]} session={selected} choosing={false} disabled={false} onMetadata={metadata} onNew={()=>{}} onSwitch={()=>{}} onSettings={()=>{}} onSavedWork={()=>{}}>{()=>null}</EvaluationNavigation>);
+  const render = (selected: Session) => root.render(<EvaluationNavigation contexts={[selected]} session={selected} choosing={false} disabled={false} onMetadata={metadata} onNew={()=>{}} onSwitch={()=>{}} onSettings={()=>{}} onSavedWork={()=>{}}>{()=>null}</EvaluationNavigation>);
   try {
     await act(async () => render(session));
     await act(async () => Array.from(node.querySelectorAll("summary")).find(summary => summary.textContent === "Project actions")!.click());
@@ -32,7 +32,7 @@ it("keeps guest project tools out of an empty list and preserves real load error
   const node = document.createElement("div"), root = createRoot(node);
   document.body.append(node);
   const retry = vi.fn();
-  const render = (actorScope?: string, status: CollectionStatus = "forbidden") => root.render(<EvaluationNavigation actorScope={actorScope} enabled contexts={[]} session={null} choosing disabled={false} listStatus={status} onRetryList={retry} onArchiveMode={()=>{}} onNew={()=>{}} onSwitch={()=>{}} onSettings={()=>{}} onSavedWork={()=>{}}>{()=>null}</EvaluationNavigation>);
+  const render = (actorScope?: string, status: CollectionStatus = "forbidden") => root.render(<EvaluationNavigation actorScope={actorScope} contexts={[]} session={null} choosing disabled={false} listStatus={status} onRetryList={retry} onArchiveMode={()=>{}} onNew={()=>{}} onSwitch={()=>{}} onSettings={()=>{}} onSavedWork={()=>{}}>{()=>null}</EvaluationNavigation>);
   try {
     await act(async () => render("guest", "ready"));
     expect(node.querySelector(".vibe-entry-topbar")).not.toBeNull();
@@ -60,7 +60,7 @@ it("keeps list tools reachable after search misses and switching to an empty arc
   const node = document.createElement("div"), root = createRoot(node);
   document.body.append(node);
   const session = { id: "first", document: { artifacts: [] }, operations: [] } as unknown as Session;
-  const render = (contexts: Session[], archiveMode: "exclude" | "only") => root.render(<EvaluationNavigation enabled contexts={contexts} session={null} choosing disabled={false} archiveMode={archiveMode} onArchiveMode={()=>{}} onRetryList={()=>{}} onNew={()=>{}} onSwitch={()=>{}} onSettings={()=>{}} onSavedWork={()=>{}}>{()=>null}</EvaluationNavigation>);
+  const render = (contexts: Session[], archiveMode: "exclude" | "only") => root.render(<EvaluationNavigation contexts={contexts} session={null} choosing disabled={false} archiveMode={archiveMode} onArchiveMode={()=>{}} onRetryList={()=>{}} onNew={()=>{}} onSwitch={()=>{}} onSettings={()=>{}} onSavedWork={()=>{}}>{()=>null}</EvaluationNavigation>);
   const projects = Array.from({ length: 7 }, (_, i) => ({ ...session, id: `project-${i}` }));
   try {
     // A short list shows no search, but the archive filter and refresh stay reachable.
@@ -93,7 +93,7 @@ it("groups project actions and retains rename input and failure recovery", async
   const metadata = vi.fn().mockRejectedValue(Error("Could not save this title"));
   const button = (label: string) => Array.from(node.querySelectorAll("button")).find(button => button.textContent === label)!;
   try {
-    await act(async () => root.render(<EvaluationNavigation enabled contexts={[session]} session={session} choosing={false} disabled={false} onMetadata={metadata} onNew={()=>{}} onSwitch={()=>{}} onSettings={()=>{}} onSavedWork={()=>{}}>{()=>null}</EvaluationNavigation>));
+    await act(async () => root.render(<EvaluationNavigation contexts={[session]} session={session} choosing={false} disabled={false} onMetadata={metadata} onNew={()=>{}} onSwitch={()=>{}} onSettings={()=>{}} onSavedWork={()=>{}}>{()=>null}</EvaluationNavigation>));
     const summary = Array.from(node.querySelectorAll("summary")).find(summary => summary.textContent === "Project actions")!;
     expect(summary).toBeDefined();
     const details = summary.parentElement as HTMLDetailsElement;
@@ -113,5 +113,23 @@ it("groups project actions and retains rename input and failure recovery", async
     expect(node.querySelector('[role="alert"]')?.textContent).toBe("Could not save this title");
     expect(input.value).toBe("Renamed project");
     expect(metadata).toHaveBeenCalledWith(session, { title: "Renamed project" });
+  } finally { await act(async () => root.unmount()); node.remove(); vi.unstubAllGlobals(); }
+});
+
+it("PR7 associates a rename failure with the title beside Save title", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const node = document.createElement("div"), root = createRoot(node); document.body.append(node);
+  const session = { id: "rename", document: { artifacts: [] }, operations: [] } as unknown as Session;
+  const metadata = vi.fn(async () => { throw Error("Use a shorter title."); });
+  try {
+    await act(async () => root.render(<EvaluationNavigation contexts={[session]} session={session} choosing={false} disabled={false} onMetadata={metadata} onNew={()=>{}} onSwitch={()=>{}} onSettings={()=>{}} onSavedWork={()=>{}}>{()=>null}</EvaluationNavigation>));
+    const button = (name: string) => [...node.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === name)!;
+    await act(async () => button("Rename project").click());
+    await act(async () => button("Save title").click());
+    const title = node.querySelector<HTMLInputElement>('[aria-label="Project title"]')!;
+    const error = document.getElementById(title.getAttribute("aria-describedby")!);
+    expect(error?.textContent).toBe("Use a shorter title.");
+    expect(error?.nextElementSibling).toBe(button("Save title"));
+    expect(node.querySelectorAll('[role="alert"]')).toHaveLength(1);
   } finally { await act(async () => root.unmount()); node.remove(); vi.unstubAllGlobals(); }
 });

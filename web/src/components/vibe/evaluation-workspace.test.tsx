@@ -1,3 +1,4 @@
+import { ImproveStart } from "./improve-start";
 import { draftMemory } from "@/lib/vibe-build-drafts";
 import React, { act } from "react";
 import { createRoot, hydrateRoot, type Root } from "react-dom/client";
@@ -10,7 +11,6 @@ import {
 } from "@/lib/vibe";
 import {
   EvaluationWorkspace,
-  exampleAnswer,
   type EvaluationWorkspaceProps,
 } from "./evaluation-workspace";
 
@@ -145,15 +145,6 @@ function button(text: string) {
   return found!;
 }
 
-async function type(input: HTMLTextAreaElement, value: string) {
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(
-      HTMLTextAreaElement.prototype,
-      "value",
-    )!.set!.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-}
 
 it("clears copied instruction feedback when the selected historical version changes", async () => {
   const copy = vi.fn().mockResolvedValue(undefined);
@@ -282,71 +273,12 @@ it("shows a committed result instead of a stale failure and removes its retry", 
   expect([...container.querySelectorAll("button")].some(b => b.textContent === "Retry")).toBe(false);
 });
 
-it("shows an example without changing the draft; explicit use fills it without sending", async () => {
-  await render();
-  expect(container.textContent).toContain("Test the AI in your app.");
-  expect(container.querySelectorAll("textarea")).toHaveLength(1);
-  expect(container.textContent).not.toContain("I have example chats");
-  expect(container.textContent).not.toContain("I have the instructions");
-  await act(async () => button("See an example").click());
-  expect(props.onContent).not.toHaveBeenCalled();
-  expect(container.textContent).toContain("Example only");
-  await act(async () => button("Use this description").click());
-  expect(props.onContent).toHaveBeenCalledWith(exampleAnswer);
-  expect(exampleAnswer).toContain("User:");
-  expect(exampleAnswer).toContain("Assistant:");
-  expect(exampleAnswer).toContain("total budget");
-  expect(props.onSend).not.toHaveBeenCalled();
-  expect(document.activeElement).toBe(container.querySelector("textarea"));
-});
 
-it("shows the pending message before session admission and preserves focus and typed-ahead text", async () => {
-  await render({ content: "I built a trip planner." });
-  const input = container.querySelector("textarea")!;
-  input.focus();
-  const pendingMessage = {
-    id: "message-one",
-    content: "I built a trip planner.",
-  };
-  await render({
-    busy: true,
-    pendingMessage,
-    pendingLabel: "Sending your message…",
-    content: "It should respect the budget.",
-  });
-  expect(container.querySelectorAll(".vibe-message-user")).toHaveLength(1);
-  expect(container.querySelector(".vibe-message-user")?.textContent).toContain(
-    pendingMessage.content,
-  );
-  expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
-  expect(container.querySelector('[role="status"]')?.textContent).toContain(
-    "Sending your message…",
-  );
-  expect(button("Send message").disabled).toBe(true);
-  expect(container.querySelector("textarea")).toBe(input);
-  expect(input.value).toBe("It should respect the budget.");
-  expect(document.activeElement).toBe(input);
-  await render({ session: session([{ ...pendingMessage, role: "user" }]) });
-  expect(container.querySelectorAll(".vibe-message-user")).toHaveLength(1);
-});
 
-it("offers distinct instructions and recorded-reply intake", async () => {
-  const data = session([]);
-  data.document.evaluation = { id: data.id, chat_id: data.id, door: "test" };
-  data.document.format_version = 1;
-  await render({ session: data, twoDoor: true });
-  expect(container.textContent).not.toContain("Paste a real conversation");
-  await act(async () => button("Try my saved instructions").click());
-  expect(container.querySelector('textarea[aria-label="Conversations to check"]')).toBeNull();
-  const input = container.querySelector<HTMLTextAreaElement>('#vibe-instructions-source')!;
-  await type(input, "Only unopened items qualify.");
-  await act(async () => button("Prepare tests").click());
-  expect(props.onMessage).toHaveBeenCalledWith("Write three tests for these instructions.", undefined, "Only unopened items qualify.");
-});
 
 it("holds the direct-check proposal behind one truthful activity state", async () => {
   const data = session([
-    { id: "question", role: "user", content: exampleAnswer },
+    { id: "question", role: "user", content: "Check this answer from my trip-planning app against the total budget." },
     {
       id: "proposal",
       role: "assistant",
@@ -419,7 +351,7 @@ it("hides result history for no runs or the only displayed run", async () => {
   const data = session();
   const artifact = { id: "artifact-one", title: "Returns", agent_prompt: "Follow the policy", accepted: true, source_message_id: "task", blueprint: {} };
   data.document.evaluation = { id: data.id, chat_id: data.id, door: "test" }; data.document.artifacts = [artifact];
-  await render({ twoDoor: true, view: "checks", session: data, artifact });
+  await render({ view: "checks", session: data, artifact });
   expect(container.querySelector('[aria-label="Result history"]')).toBeNull();
   data.operations = [operation("first")]; await render({ session: { ...data } });
   expect(container.querySelector('[aria-label="Result history"]')).toBeNull();
@@ -455,7 +387,7 @@ it("keeps the previous transcript hidden while a new-answer check is being admit
 });
 
 it("sends on Enter while preserving Shift+Enter and IME composition", async () => {
-  await render({ content: "Check this answer" });
+  await render({ session: session(), content: "Check this answer" });
   const input = container.querySelector("textarea")!;
   await act(async () => {
     input.dispatchEvent(
@@ -534,7 +466,7 @@ it.each(["waiting", "clarifying"])("offers a sample only for a real clarificatio
  const current = session([{id: "joke", role: "user", content: "let's drink vodka yay"}]);
  current.document.evaluation = {id: current.id, chat_id: current.id, door: "build"};
  current.document.build = {cycle_id: "cycle", phase, clarifications_used: phase === "clarifying" ? 1 : 0};
- await act(async () => root.render(<EvaluationWorkspace {...props} session={current} twoDoor onSample={vi.fn()} />));
+ await act(async () => root.render(<EvaluationWorkspace {...props} session={current} onSample={vi.fn()} />));
  expect(container.textContent?.includes("Use a sample policy")).toBe(phase === "clarifying");
 });
 
@@ -544,7 +476,7 @@ it("shows a saved taskless demo offer without starting it", async () => {
  current.document.build = {cycle_id: "cycle", phase: "waiting", clarifications_used: 1};
  current.document.conversation_state = {version: 1, brief: {scope_id: "scope", revision: 1, facts: []}, guidance: {}, pending_demo: {id: "offer", scope_id: "scope", origin_message_id: "offer-reply", sample: "email"}};
  const choose = vi.fn();
- await act(async () => root.render(<EvaluationWorkspace {...props} session={current} twoDoor onDemo={choose} />));
+ await act(async () => root.render(<EvaluationWorkspace {...props} session={current} onDemo={choose} />));
  expect(choose).not.toHaveBeenCalled();
  expect(container.textContent).toContain("You can describe your own task instead.");
  await act(async () => button("Try a sample email assistant").click());
@@ -557,7 +489,7 @@ it("does not promise a prototype for an unclassified message or casual chat", as
   current.document.build = { cycle_id: "cycle", phase: "preparing", clarifications_used: 0 };
   const turn: Operation = { ...operation("turn"), kind: "message", state: "QUEUED", source: undefined, scorecard: undefined };
   current.operations = [turn];
-  const show = () => act(async () => root.render(<EvaluationWorkspace {...props} session={current} twoDoor busy />));
+  const show = () => act(async () => root.render(<EvaluationWorkspace {...props} session={current} busy />));
   for (const state of ["QUEUED", "RUNNING", "FINALIZING"] as const) {
     turn.state = state;
     await show();
@@ -583,7 +515,7 @@ it("announces prototype creation only after a confirmed build decision", async (
   current.document.build = { cycle_id: "cycle", phase: "preparing", clarifications_used: 0 };
   current.operations = [{ ...operation("turn"), kind: "message", state: "RUNNING", source: undefined, scorecard: undefined,
     conversation_decision: { intent: "prepare_tests", source_message_id: "task" } }];
-  await act(async () => root.render(<EvaluationWorkspace {...props} session={current} twoDoor busy />));
+  await act(async () => root.render(<EvaluationWorkspace {...props} session={current} busy />));
   expect(container.querySelector(".vibe-build-intro")?.textContent).toContain("I’m making a first version");
   expect(container.textContent).toContain("Understand the task");
 });
@@ -593,7 +525,7 @@ it("owns agent and test editors in main while Guide references a case without se
   state.document.evaluation = { id: state.id, chat_id: state.id, door: "test" };
   const artifact = { id: "suite", kind: "test_suite" as const, title: "Returns", agent_prompt: "Use our actual policy", accepted: true, source_message_id: "request", blueprint: { cases: [{ key: "return", payload: { question: "Return?" }, expectations: [{ key: "expected_behavior", kind: "text", value: "Expected observation, never policy" }] }] } };
   state.document.artifacts = [artifact];
-  await render({ twoDoor: true, session: state, artifact, content: "My own question", preview: <section aria-label="Try your agent">Trial owner</section> });
+  await render({ session: state, artifact, content: "My own question", preview: <section aria-label="Try your agent">Trial owner</section> });
   expect(container.querySelector('[aria-label="Agent instructions"]')).not.toBeNull();
   expect(container.querySelector('[aria-label="Your tests"]')).toBeNull();
   expect(container.querySelector('[aria-label="Try your agent"]')).not.toBeNull();
@@ -619,7 +551,7 @@ it("keeps Guide focus when an instruction save resolves and expands a full reply
   const artifact = {id:"suite",kind:"test_suite" as const,title:"Returns",agent_prompt:"Use supplied policy",accepted:true,source_message_id:"request",blueprint:{cases:[]}};
   current.document.artifacts=[artifact];
   let complete!:(value:boolean)=>void;
-  await render({twoDoor:true,session:current,artifact,onEdit:vi.fn(()=>new Promise(resolve=>{complete=resolve;}))});
+  await render({session:current,artifact,onEdit:vi.fn(()=>new Promise(resolve=>{complete=resolve;}))});
   await act(async()=>button("Change agent instructions").click());
   await act(async()=>button("Use these instructions").click());
   await act(async()=>button("Guide").click());
@@ -640,7 +572,7 @@ it("restores instruction reading focus after saving creates a new version", asyn
  const artifact={id:"old",kind:"test_suite" as const,title:"Returns",agent_prompt:"Policy",accepted:true,source_message_id:"request",blueprint:{cases:[]}};
  const next={...artifact,id:"new",parent_id:"old"}; current.document.artifacts=[artifact];
  let complete!:()=>void; const saved=new Promise<void>(resolve=>{complete=resolve;});
- await render({twoDoor:true,session:current,artifact,onEdit:vi.fn(async()=>{await saved; return true;})});
+ await render({session:current,artifact,onEdit:vi.fn(async()=>{await saved; return true;})});
  await act(async()=>button("Change agent instructions").click());
  await act(async()=>new Promise(resolve=>setTimeout(resolve,25)));
  button("Use these instructions").focus();
@@ -659,7 +591,7 @@ it("opens Guide by default on wide screens, keeps a closed Guide closed after a 
   current.document.evaluation = { id: current.id, chat_id: current.id, door: "build" };
   const artifact = { id: "suite", kind: "test_suite" as const, title: "Returns", agent_prompt: "Use supplied policy", accepted: true, source_message_id: "request", blueprint: { cases: [] } };
   current.document.artifacts = [artifact];
-  await render({ twoDoor: true, session: current, artifact, content: "Keep my question" });
+  await render({ session: current, artifact, content: "Keep my question" });
   expect(container.querySelector('[aria-label="Guide utility"]')).not.toBeNull();
   expect(button("Guide").getAttribute("aria-pressed")).toBe("true");
   await act(async () => button("Close Guide").click());
@@ -718,7 +650,7 @@ it("marks the reply read when the Guide closes, and only the Guide button change
   current.document.evaluation = { id: current.id, chat_id: current.id, door: "build" };
   const artifact = { id: "draft", kind: "agent_draft" as const, title: "Returns", agent_prompt: "Use supplied policy", accepted: true, source_message_id: "request", blueprint: {} };
   current.document.artifacts = [artifact];
-  await render({ twoDoor: true, session: current, artifact, view: "tests" });
+  await render({ session: current, artifact, view: "tests" });
   await act(async () => button("Close Guide").click());
   // The user saw this reply in the open Guide, so neither the badge nor the status announces it.
   expect(button("Guide").textContent).not.toContain("New response");
@@ -738,7 +670,7 @@ it("PR4 keeps a message indeterminate and retains frame tools after the first ar
   const artifact = { id: "suite", kind: "test_suite" as const, title: "Returns", agent_prompt: "Use supplied policy", accepted: true, source_message_id: "request", blueprint: { cases: [] } };
   current.document.artifacts = [artifact];
   current.operations = [{ ...operation("turn"), kind: "message", state: "RUNNING", source: undefined, scorecard: undefined, progress: { phase: "understanding", completed_cases: 0, total_cases: 0 } }];
-  await render({ twoDoor: true, session: current, artifact });
+  await render({ session: current, artifact });
   const bar = container.querySelector('.vibe-progress-strip [role="progressbar"]')!;
   expect(bar.hasAttribute("data-indeterminate")).toBe(true);
   expect(bar.hasAttribute("aria-valuenow")).toBe(false);
@@ -761,7 +693,7 @@ it("shows a single progress strip and Stop for the very first Build with no arti
   current.document.evaluation = { id: current.id, chat_id: current.id, door: "build" };
   current.document.build = { cycle_id: "cycle", phase: "preparing", clarifications_used: 0 };
   current.operations = [{ ...operation("turn"), kind: "message", state: "RUNNING", progress: { phase: "preparing", completed_cases: 0, total_cases: 0 }, conversation_decision: { intent: "prepare_tests", source_message_id: "task" } }];
-  await render({ twoDoor: true, session: current, artifact: undefined });
+  await render({ session: current, artifact: undefined });
   expect(container.querySelectorAll(".vibe-progress-strip")).toHaveLength(1);
   expect(container.querySelector('.vibe-progress-strip [role="status"]')?.textContent).toBe("Write the instructions");
   expect([...container.querySelectorAll("button")].filter(b => b.textContent?.trim() === "Stop")).toHaveLength(1);
@@ -780,7 +712,7 @@ it.each([
     ...(previousRun ? [operation("finished")] : []),
     { ...operation("live"), source: { kind: "prompt", label: "Returns", artifact_id: artifact.id }, state: "RUNNING", progress: { phase: "grading", completed_cases: 1, total_cases: 3 } },
   ];
-  await render({ twoDoor: true, session: current, artifact });
+  await render({ session: current, artifact });
   expect(container.querySelector('.vibe-progress-strip [role="status"]')?.textContent).toBe(label);
   expect(container.querySelectorAll('.vibe-progress-strip [aria-label="Build stages"] li')).toHaveLength(stages);
 });
@@ -791,7 +723,7 @@ it("renders Build clarification buttons, keeps the sample quiet and focuses the 
   current.document.build = { cycle_id: "cycle", phase: "clarifying", clarifications_used: 1 };
   current.document.conversation_state = { version: 1, actions_version: 1, through_message_id: "question", brief: { scope_id: "scope", revision: 1, facts: [] }, guidance: {}, pending_question: { id: "q", revision: 1, scope_id: "scope", origin_message_id: "question", purpose: "clarify_rule", status: "active", text: "14 days or 30 days?", options: [{ id: "14", label: "14 days" }, { id: "30", label: "30 days" }], max_selections: 1, proposal_id: null, proposal_revision: null } };
   const choice = vi.fn(async () => {});
-  await render({ twoDoor: true, session: current, artifact: undefined, interactionActions: true, onChoice: choice, onReloadChoices: vi.fn() });
+  await render({ session: current, artifact: undefined, interactionActions: true, onChoice: choice, onReloadChoices: vi.fn() });
   expect(button("Use a sample policy").classList.contains("vibe-button-quiet")).toBe(true);
   expect(document.activeElement?.id).toBe("vibe-message");
   expect(container.querySelector('.vibe-progress-strip [role="status"]')?.textContent).toBe("Needs your answer");
@@ -804,7 +736,7 @@ it("shows the first Build result with leading evidence and an inline trial", asy
   current.document.artifacts = [artifact]; current.document.build = { cycle_id: "cycle", phase: "results", clarifications_used: 0, artifact_id: artifact.id };
   const evidence = { case_key: "late", version: artifact.id, input: "Return after 40 days", output: "Declined", expected: "Decline returns after 30 days", verdict: "PASS" as const, checks: [] };
   const run = { ...operation("run"), source: { kind: "prompt" as const, label: "Returns", artifact_id: artifact.id }, results: [evidence], scorecard: { total: 1, evaluated: 1, passed: 1, failed: 0, unknown: 0, coverage: 1, pass_rate: 1 } }; current.operations = [run];
-  await render({ twoDoor: true, view: "checks", session: current, artifact, loadEvidence: vi.fn(async () => evidence), preview: <section aria-label="Try your agent"><textarea id="vibe-trial-message" /></section> });
+  await render({ view: "checks", session: current, artifact, loadEvidence: vi.fn(async () => evidence), preview: <section aria-label="Try your agent"><textarea id="vibe-trial-message" /></section> });
   expect(container.querySelector('[aria-label="Agent test results"] .vibe-results-outcome')?.textContent).toBe("Your agent passed all 1 test");
   expect(container.textContent).toContain("Return after 40 days"); expect(container.textContent).toContain("Decline returns after 30 days");
   expect(container.querySelector('[aria-label="Try your agent"]')).not.toBeNull();
@@ -818,7 +750,7 @@ it.each(["error", "ready"])("shows a saved Build artifact's automatic-run error 
   const current = session(); current.document.evaluation = { id: current.id, chat_id: current.id, door: "build" };
   const artifact = { id: "agent", kind: "test_suite" as const, title: "Returns", agent_prompt: "Follow the policy", accepted: true, source_message_id: "task", blueprint: {} };
   current.document.artifacts = [artifact]; current.document.build = { cycle_id: "cycle", phase, clarifications_used: 0, artifact_id: artifact.id, error: { code: "unavailable", message: "The run could not start." } };
-  await render({ twoDoor: true, session: current, artifact }); expect(container.querySelector('[role="alert"]')?.textContent).toBe("The run could not start.");
+  await render({ session: current, artifact }); expect(container.querySelector('[role="alert"]')?.textContent).toBe("The run could not start.");
   await act(async () => button("Run 3 tests").click()); expect(props.onRun).toHaveBeenCalledOnce();
 });
 
@@ -829,7 +761,7 @@ it.each([false, true])("hydrates the desktop Guide preference without reading br
   current.document.evaluation = { id: current.id, chat_id: current.id, door: "build" };
   const artifact = { id: "suite", kind: "test_suite" as const, title: "Returns", agent_prompt: "Use supplied policy", accepted: true, source_message_id: "request", blueprint: { cases: [] } };
   current.document.artifacts = [artifact];
-  props = { ...props, twoDoor: true, session: current, artifact };
+  props = { ...props, session: current, artifact };
   localStorage.setItem("vibe-guide:v1", closed ? "closed" : "open");
   const reads = vi.spyOn(Storage.prototype, "getItem");
   container.innerHTML = renderToString(<EvaluationWorkspace {...props} />);
@@ -850,7 +782,7 @@ it("restores an unsent instruction editor after hydrating its read-only server v
   current.document.evaluation = { id: current.id, chat_id: current.id, door: "test" };
   const artifact = { id: "suite", kind: "test_suite" as const, title: "Returns", agent_prompt: "Use supplied policy", accepted: true, source_message_id: "request", blueprint: { cases: [] } };
   current.document.artifacts = [artifact];
-  props = { ...props, twoDoor: true, session: current, artifact };
+  props = { ...props, session: current, artifact };
   container.innerHTML = renderToString(<EvaluationWorkspace {...props} />);
   expect(container.querySelector('[aria-label="Agent instructions"] textarea')).toBeNull();
   sessionStorage.setItem("vibe-build-drafts:session-one", JSON.stringify({ version: 2, composers: {}, editors: {
@@ -861,4 +793,14 @@ it("restores an unsent instruction editor after hydrating its read-only server v
   expect(errors).toEqual([]); expect(consoleErrors.mock.calls).toEqual([]);
   expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Agent instructions"] textarea')?.value).toBe("Keep these unsent instructions");
   consoleErrors.mockRestore();
+});
+
+
+it("offers distinct instructions and recorded-reply intake", async () => {
+  const start = <ImproveStart mode="instructions" onMode={vi.fn()} drafts={{ instructions: "", conversations: "", rules: "" }} onDraft={vi.fn()} models={[]} signedIn={false} busy={false} onWriteTests={vi.fn()} onSaveReplies={vi.fn()} onImportPack={vi.fn()} onOther={vi.fn()} onSwitchDoor={vi.fn()} onBack={vi.fn()} />;
+  await render({ startScreen: start });
+  expect(container.querySelectorAll("h1")).toHaveLength(1);
+  expect([...container.querySelectorAll('[role="radio"]')].map(node => node.textContent)).toEqual(["Instructions", "Real replies", "Test pack"]);
+  expect(container.querySelector('textarea')?.labels?.[0]?.textContent).toBe("Agent instructions");
+  expect(container.querySelector(".vibe-composer-dock")).toBeNull();
 });

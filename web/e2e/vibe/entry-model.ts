@@ -12,7 +12,7 @@ export const startCopy = {
   sources: { instructions: "Instructions", recorded: "Real replies", import: "Test pack" },
   primaries: { instructions: "Write 3 tests", recorded: "Save and check", import: "Choose a file" },
   replies: "Conversations", rules: "What a good reply must do",
-  existingProject: { build: "What task should the agent handle?", improve: "Improve an agent you already have." },
+  existingProject: { build: "What task should the agent handle?", improve: "How do you want to test your agent?" },
   buildOptions: "Attach a file", improveOptions: "Other ways to bring your agent", resultsMore: "More",
 } as const;
 export const entryCopy = {

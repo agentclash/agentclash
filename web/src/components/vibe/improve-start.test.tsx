@@ -156,3 +156,13 @@ it("keeps programmatic heading focus without a control outline", async () => {
     expect(getComputedStyle(heading).outline).toBe("none");
   } finally { style.remove(); }
 });
+
+it.each(["instructions", "replies", "pack"] as const)("PR7 connects %s feedback to the visible controls with one alert", async mode => {
+  await draw({ mode, error: "Review this input.", blockedReason: "Models are paused." });
+  const action = button(mode === "pack" ? "Choose a file" : mode === "instructions" ? "Write 3 tests" : "Save and check");
+  const descriptions = action.getAttribute("aria-describedby")!.split(" ").map(id => document.getElementById(id)?.textContent);
+  expect(descriptions).toEqual(["Models are paused.", "Review this input."]);
+  expect(node.querySelectorAll('[role="alert"]')).toHaveLength(1);
+  expect(action.parentElement?.parentElement?.textContent).toContain("Review this input.");
+  for (const area of node.querySelectorAll("textarea")) expect(document.getElementById(area.getAttribute("aria-describedby")!)?.textContent).toBe("Review this input.");
+});

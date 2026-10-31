@@ -213,3 +213,13 @@ it.each(["failed", "expired"] as const)("targets the %s source replacement and d
   expect(owner.items).toEqual([]); expect(owner.blocked).toBe(false);
   expect(vi.mocked(vibeFetch).mock.calls.every(call=>!call[2]?.method)).toBe(true);
 });
+
+it("PR7 keeps material field errors in their active panel and associates them with the field", async () => {
+  inputs = { ...inputs, error: "Could not store this text.", canRetry: true };
+  await render(); await click("Add a file or text"); await click("Paste text");
+  const area = document.querySelector<HTMLTextAreaElement>('[role="dialog"] textarea')!;
+  const error = document.getElementById(area.getAttribute("aria-describedby")!);
+  expect(error?.textContent).toContain("Could not store this text.");
+  expect(error?.closest('[role="tabpanel"]')?.contains(area)).toBe(true);
+  expect(document.querySelectorAll('[role="alert"]')).toHaveLength(1);
+});

@@ -11,10 +11,11 @@ import { VibeButton } from "./vibe-button";
 import { sendOnEnter } from "./composer-keyboard";
 import { useComposerAutosize } from "./use-composer-autosize";
 
-export function PrototypeTrial({ workspace = false, sessionID, error, materialInput, hasMaterial = false, inline, dock = false, title, version, busy, inferenceBlocked = false, text, onText, onSend, onBack, onNew, thread, onThread, history, messages, example, model }: {
+export function PrototypeTrial({ workspace = false, sessionID, error, notice, materialInput, hasMaterial = false, inline, dock = false, title, version, busy, inferenceBlocked = false, text, onText, onSend, onBack, onNew, thread, onThread, history, messages, example, model }: {
   workspace?: boolean;
   sessionID?: string;
   error?: string;
+  notice?: ReactNode;
   materialInput?: ReactNode;
   hasMaterial?: boolean;
   inline: boolean;
@@ -54,7 +55,7 @@ export function PrototypeTrial({ workspace = false, sessionID, error, materialIn
     {!dock && !messages.length && example && <VibeButton variant="quiet" disabled={busy} onClick={() => onText(example)}>Use a test message</VibeButton>}
     {thread.startsWith("legacy:") ? <p className="vibe-build-note">Start a new conversation to try follow-ups. This earlier trial used one message.</p> : <>
       {materialInput || <VibeDataUseNotice />}
-      {error && <p id="vibe-trial-error" role="alert">{error}</p>}
+      {error && <p id="vibe-trial-error" role="alert">{error}</p>}{notice}
       <form className="vibe-composer vibe-composer-compact vibe-chat-composer" onSubmit={event => { event.preventDefault(); if (!busy && !inferenceBlocked && !error && (text.trim() || hasMaterial)) onSend(); }}>
         <label className="sr-only" htmlFor="vibe-trial-message">Message your agent</label>
         <textarea id="vibe-trial-message" aria-describedby={error ? "vibe-trial-error" : undefined} ref={input} rows={1} aria-label="Message your agent" placeholder="Give your agent a task…" value={text} onChange={event => onText(event.target.value)} onKeyDown={event => sendOnEnter(event, () => { if (!busy && !inferenceBlocked && !error && (text.trim() || hasMaterial)) onSend(); })} />

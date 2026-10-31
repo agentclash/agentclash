@@ -166,3 +166,16 @@ it("uses the display serif and a flat card with a distinct keyboard focus ring",
     expect(style.textContent).toContain("outline: 2px solid var(--vibe-focus)");
   } finally { style.remove(); }
 });
+
+it("PR7 puts a file error beside Attach a file and associates a start error with the task", async () => {
+  await render({ draft: "Keep this task description.", error: "Cannot start this task." });
+  expect(document.getElementById(input().getAttribute("aria-describedby")!.split(" ").at(-1)!)?.textContent).toBe("Cannot start this task.");
+  const file = node.querySelector<HTMLInputElement>('input[type="file"]')!;
+  Object.defineProperty(file, "files", { configurable: true, value: [{ name: "photo.png", size: 20 }] });
+  await act(async () => file.dispatchEvent(new Event("change", { bubbles: true })));
+  const attach = button("Attach a file");
+  const error = document.getElementById(attach.getAttribute("aria-describedby")!);
+  expect(error?.textContent).toContain("Choose a text file");
+  expect(error?.previousElementSibling?.contains(attach)).toBe(true);
+  expect(node.querySelectorAll('[role="alert"]')).toHaveLength(2);
+});
