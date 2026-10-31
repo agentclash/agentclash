@@ -2431,7 +2431,7 @@ it("closes the Guide sheet before a run estimate that arrives while it is open b
   let release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   respond = async path => {
-    if (path === "/config") return json({ enabled: true, two_door: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id })) });
+    if (path === "/config") return json({ enabled: true, two_door: true, first_build_ceiling_nano_usd: 500000000, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id })) });
     if (path.endsWith("/run-quote")) { await held; return json({ id: "quote-1", cases: 3, calls: 6, max_cost_nano_usd: 0, expires_at: new Date(Date.now() + 600000).toISOString() }); }
     return path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
   };
@@ -2987,10 +2987,10 @@ it("explains unavailable evaluation entry before its disabled choices while keep
 
 // Entry and door invariants (~/.claude/plans/vibe-evals-redesign.md section 8.2). it.fails marks a
 // known defect; vitest errors once it is fixed, so the marker must then be removed.
-async function enterDoor(door: "build" | "test") {
+async function enterDoor(door: "build" | "test", config: Record<string, unknown> = {}) {
   harness.params = new URLSearchParams();
   respond = async (path, options) => {
-    if (path === "/config") return json({ enabled: true, two_door: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
+    if (path === "/config") return json({ enabled: true, two_door: true, first_build_ceiling_nano_usd: 500000000, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path === "/sessions" && options.method === "POST") {
       const id = JSON.parse(String(options.body)).id;
       session = { ...session, id, document: { ...session.document, format_version: 1, test_journey: true, evaluation: { id, chat_id: id, door } } };
@@ -3006,6 +3006,8 @@ async function enterDoor(door: "build" | "test") {
     }
     return path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
   };
+  const base = respond;
+  respond = async (path, options) => path === "/config" ? json({ ...(await (await base(path, options)).json()), ...config }) : base(path, options);
   await render();
   const choice = [...container.querySelectorAll<HTMLButtonElement>(".vibe-entry-doors button")].find(b => b.textContent?.includes(door === "build" ? "Build an agent" : "Improve an existing agent"))!;
   choice.focus();
@@ -3058,7 +3060,7 @@ it("never shows two dialogs at once from the entry to the first Build send", asy
 });
 
 // PR 1 flow fixes (~/.claude/plans/vibe-evals-redesign.md sections 2 and 7, row 1).
-const twoDoorConfig = () => json({ enabled: true, two_door: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id })) });
+const twoDoorConfig = () => json({ enabled: true, two_door: true, first_build_ceiling_nano_usd: 500000000, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id })) });
 const runID = "a8000000-0000-4000-8000-0000000000a8";
 const params = () => new URL(location.href).searchParams;
 const frame = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
@@ -3927,6 +3929,15 @@ it.each(["test", "build"] as const)("keeps clarification choices on actions for 
 });
 
 function buttonByDoor(door: "build" | "test") { return container.querySelector<HTMLButtonElement>(`#vibe-door-${door}`)!; }
+
+it("an API without project titles gets no title field, so its strict decoder accepts the first project", async () => {
+  await enterDoor("build", { first_build_ceiling_nano_usd: undefined });
+  await type("Answer return questions.");
+  await click("Build and run 3 tests");
+  const created = requests.find(r => r.path === "/sessions" && r.method === "POST")?.body as Record<string, unknown>;
+  expect(created).toMatchObject({ door: "build" });
+  expect(created).not.toHaveProperty("title");
+});
 
 it("PR4 creates a titled Build only on submit with a quote-bound first message and grows the frame", async () => {
   await enterDoor("build");
