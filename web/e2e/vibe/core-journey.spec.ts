@@ -385,7 +385,8 @@ for (const mobile of [false, true]) {
     const firstResult = page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: inputs[0] });
     await expect(firstResult).toBeVisible();
     await firstResult.click();
-    await expect(page.getByRole("article", { name: "Run results" }).getByText(expected[0], { exact: true })).toBeVisible();
+    // The fixture's reply repeats the expectation, so the text shows under "It replied" and "It should".
+    await expect(page.getByRole("article", { name: "Run results" }).getByText(expected[0], { exact: true }).first()).toBeVisible();
     await page
       .getByRole("button", { name: "Keep these tests", exact: true })
       .click();
