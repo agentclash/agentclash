@@ -24,32 +24,30 @@ const canvas = (selector: string) => {
 const light = canvas(".vibe-workspace[data-appearance]");
 const dark = canvas('.vibe-workspace[data-appearance="dark"]');
 
-it("colours the browser bar with the Vibe canvas of each system appearance", () => {
+it("colours the browser bar with the dark Vibe canvas, the default appearance", () => {
   expect(light).toBe("#faf8f5");
   expect(dark).toBe("#12110f");
-  expect(viewport.themeColor).toEqual([
-    { media: "(prefers-color-scheme: light)", color: light },
-    { media: "(prefers-color-scheme: dark)", color: dark },
-  ]);
+  expect(viewport.themeColor).toBe(dark);
 });
 
 it("server-renders the V1 entry with disabled doors before configuration loads", () => {
   const html = renderToString(<VibePage />);
-  expect(html).toContain('class="vibe-entry-title">What would you like to evaluate?</h1>');
+  expect(html).toContain('class="vibe-entry-title">AI agents you can trust with real work.</h1>');
   expect(html).toContain("Connecting…");
   const doors = html.match(/<button[^>]*disabled=""[^>]*>[\s\S]*?<\/button>/g) || [];
-  expect(doors.filter(button => /Build an agent|Improve an existing agent/.test(button))).toHaveLength(2);
-  expect(html).toContain('data-appearance="light"');
+  expect(doors.filter(button => /I have an idea|I have an agent/.test(button))).toHaveLength(2);
+  expect(html).toContain("I have work to automate");
+  expect(html).toContain('data-appearance="dark"');
   expect(html).not.toContain('class="vibe-route-fallback"');
   expect(html).not.toContain("What should your agent do?");
 });
 
-it("paints the fallback with the system canvas only when the client suspends", () => {
+it("paints the fallback with the dark canvas only when the client suspends", () => {
   route.suspended = true;
   const html = renderToString(<VibePage />);
   expect(html).toContain('class="vibe-route-fallback"');
   expect(html).not.toContain('class="vibe-entry-title"');
   expect(html).not.toContain("bg-background");
-  expect(css).toMatch(new RegExp(`\\.vibe-route-fallback \\{[^}]*background: ${light};`));
-  expect(css).toMatch(new RegExp(`@media \\(prefers-color-scheme: dark\\) \\{ \\.vibe-route-fallback \\{ background: ${dark}; \\} \\}`));
+  expect(css).toMatch(new RegExp(`\\.vibe-route-fallback \\{[^}]*background: ${dark};`));
+  expect(css).not.toContain("@media (prefers-color-scheme: dark) { .vibe-route-fallback");
 });

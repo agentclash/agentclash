@@ -41,8 +41,8 @@ test("reviewed tests execute application CI, retain a real regression, and retur
   await post("/__fixture/connector-output", { regressed: false });
   await page.goto("/auth/login?returnTo=%2Fvibe-evals");
   await page.getByRole("button", { name: "Continue with AgentClash" }).click();
-  await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled(); await expect(page.getByLabel("Workspace for new projects")).toHaveCount(0);
-  await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+  await expect(page.getByRole("button", { name: /I have an idea/ })).toBeEnabled(); await expect(page.getByLabel("Workspace for new projects")).toHaveCount(0);
+  await page.getByRole("button", { name: /I have an agent/ }).click();
   const bundle = await post("/__fixture/connector-bundle", blueprint);
   await page.getByRole("radio", { name: "Test pack", exact: true }).click();
   const chooser = page.waitForEvent("filechooser");

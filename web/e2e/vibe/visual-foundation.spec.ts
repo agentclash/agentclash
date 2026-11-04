@@ -5,7 +5,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { Session } from "../../src/lib/vibe";
 import { description, fakeVibe, instructions, models, project } from "./entry-fake";
-import { chooseDoor, composer, doorButton, doorReady, entryHeading, entryReady, sendButton, sourceButton, doorHeading, startScreen, startComposer, buildOptions, startCopy, otherResults, resultsMore } from "./entry-model";
+import { chooseDoor, composer, doorButton, doorReady, entryHeading, followSystemAppearance, entryReady, sendButton, sourceButton, doorHeading, startScreen, startComposer, buildOptions, startCopy, otherResults, resultsMore } from "./entry-model";
 
 type Scheme = "light" | "dark";
 const schemes = ["light", "dark"] as const;
@@ -24,6 +24,7 @@ test.use({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
 test.describe.configure({ timeout: 90_000 });
 
 async function settle(page: Page, scheme: Scheme, media: Parameters<Page["emulateMedia"]>[0] = {}) {
+  await followSystemAppearance(page);
   await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce", contrast: "no-preference", ...media });
   await expect(page.locator("main.vibe-workspace")).toHaveAttribute("data-appearance", scheme);
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -289,6 +290,7 @@ test("the working state: no gradient text, a soft sweep for an unknown total, an
     if (p.endsWith(`/sessions/${state.id}`)) return route.fulfill({ headers, json: state });
     return route.fulfill({ headers, json: [] });
   });
+  await followSystemAppearance(page);
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
   await page.goto(`/vibe-evals?session=${state.id}`);
   const bar = page.locator('.vibe-progress-bar[data-indeterminate]').first();
@@ -327,17 +329,17 @@ test("the working state: no gradient text, a soft sweep for an unknown total, an
 
 test.describe("before hydration", () => {
   test.use({ javaScriptEnabled: false });
-  test("a light system paints the server entry or Suspense fallback with the light Vibe canvas", async ({ page }) => {
+  test("the server entry or Suspense fallback paints the dark Vibe canvas by default, also on a light system", async ({ page }) => {
     await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/vibe-evals");
     // Dev renders the entry; a production build can suspend on useSearchParams.
     const canvasSurface = page.locator("main.vibe-route, main.vibe-route-fallback").filter({ visible: true });
     await expect(canvasSurface).toHaveCount(1);
     await expect(canvasSurface).toBeVisible();
-    await expect(canvasSurface).toHaveCSS("background-color", canvas.light);
+    await expect(canvasSurface).toHaveCSS("background-color", canvas.dark);
     expect((await canvasSurface.boundingBox())!.height).toBeGreaterThanOrEqual(960);
   });
-  for (const scheme of schemes) test(`the Suspense fallback CSS paints the ${scheme} Vibe canvas`, async ({ page }) => {
+  for (const scheme of schemes) test(`the Suspense fallback CSS paints the dark Vibe canvas on a ${scheme} system`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto("/vibe-evals");
     // Dev need not suspend. Probe the fallback CSS alongside the server entry in that case.
@@ -349,7 +351,7 @@ test.describe("before hydration", () => {
     });
     const fallback = page.locator("main.vibe-route-fallback").filter({ visible: true });
     await expect(fallback).toBeVisible();
-    await expect(fallback).toHaveCSS("background-color", canvas[scheme]);
+    await expect(fallback).toHaveCSS("background-color", canvas.dark);
     expect((await fallback.boundingBox())!.height).toBeGreaterThanOrEqual(960);
   });
 });
@@ -361,11 +363,12 @@ test("review polish: shared start hierarchy, chip rows and vertical steps, align
     await page.goto("/vibe-evals");
     await entryReady(page, 30_000);
     await settle(page, scheme);
-    const steps = page.locator(".vibe-door-steps > li");
-    const rects = await steps.evaluateAll(elements => elements.map(element => { const rect = element.getBoundingClientRect(); return { x: rect.x, y: rect.y }; }));
+    // The three paths share one row on a wide screen and stack on a phone.
+    const paths = page.locator(".vibe-entry-path");
+    const rects = await paths.evaluateAll(elements => elements.map(element => { const rect = element.getBoundingClientRect(); return { x: rect.x, y: rect.y }; }));
     expect(rects).toHaveLength(3);
-    expect(new Set(rects.map(rect => rect.x)).size).toBe(1);
-    expect(rects[0].y).toBeLessThan(rects[1].y); expect(rects[1].y).toBeLessThan(rects[2].y);
+    if (width > 600) expect(new Set(rects.map(rect => rect.y)).size).toBe(1);
+    else { expect(new Set(rects.map(rect => rect.x)).size).toBe(1); expect(rects[0].y).toBeLessThan(rects[1].y); expect(rects[1].y).toBeLessThan(rects[2].y); }
     for (const door of ["build", "improve"] as const) {
       await chooseDoor(page, door); await doorReady(page, door);
       const dataUse = startScreen(page).getByRole("link", { name: "Data use and retention (new tab)", exact: true });

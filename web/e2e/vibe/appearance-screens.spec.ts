@@ -8,7 +8,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { defaultModels, type Artifact, type CaseResult, type Operation, type Session } from "../../src/lib/vibe";
 import { actionSession } from "./interaction-fixture";
 import { description, fakeVibe, packFile, transcript } from "./entry-fake";
-import { chooseDoor, composer, doorButton, doorReady, entryNotice, entryReady, improveSource, workspacePicker } from "./entry-model";
+import { chooseDoor, composer, contactPath, doorButton, doorReady, entryNotice, entryReady, improveSource, workspacePicker } from "./entry-model";
 import { tabsTo } from "./flow-meter";
 
 test.skip(process.env.VIBE_SCREENS !== "1", "Screenshot review only; enable VIBE_SCREENS=1.");
@@ -181,6 +181,8 @@ async function serve(page: Page) {
 async function prepare(page: Page, combo: Combo) {
   await page.setViewportSize({ width: combo.width, height: combo.height });
   await page.emulateMedia({ colorScheme: combo.scheme, reducedMotion: "reduce" });
+  // Dark is the default appearance; the light screens use the Settings choice.
+  await page.addInitScript(scheme => { try { localStorage.setItem("vibe-appearance", scheme); } catch { /* Storage is optional. */ } }, combo.scheme);
   // Hide the Next.js dev-tools badge; it is a dev-server artifact, not product UI.
   await page.addInitScript(() => {
     const hide = () => { const style = document.createElement("style"); style.textContent = "nextjs-portal{display:none!important}"; document.head.appendChild(style); };
@@ -247,6 +249,22 @@ for (const combo of combos) {
       await page.goto("/vibe-evals");
       await entryReady(page, 20_000);
       await shoot(page, "a-entry", combo);
+      expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
+    });
+
+    test(`s talk to us dialog ${label}`, async ({ page }) => {
+      await prepare(page, combo);
+      const control = await serve(page);
+      await page.goto("/vibe-evals");
+      await entryReady(page, 20_000);
+      await contactPath(page).click();
+      const dialog = page.getByRole("dialog", { name: "What takes your team the most time?" });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole("link", { name: "Email our team", exact: true })).toHaveAttribute("href", /^mailto:/);
+      await shoot(page, "s-talk-to-us", combo);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      await expect(contactPath(page)).toBeFocused();
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
 

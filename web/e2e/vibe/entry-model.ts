@@ -17,14 +17,15 @@ export const startCopy = {
   buildOptions: "Attach a file", improveOptions: "Other ways to bring your agent", resultsMore: "More",
 } as const;
 export const entryCopy = {
-  heading: "What would you like to evaluate?", choices: "New project choices",
-  doors: { build: "Build an agent", improve: "Improve an existing agent" },
+  // First visit, and a visitor with projects (who gets "Continue" first).
+  heading: "AI agents you can trust with real work.", returningHeading: "Welcome back.", choices: "New project choices",
+  doors: { build: "I have an idea", improve: "I have an agent" }, contact: "I have work to automate",
   doorHeadings: { build: startCopy.build.heading, improve: startCopy.improve.heading },
   sources: startCopy.sources, composer: startCopy.build.composer, send: startCopy.build.primary,
 } as const;
 
 export const startScreen = (page: Page) => page.locator(".vibe-start-page");
-export const entryHeading = (page: Page) => page.getByRole("heading", { name: entryCopy.heading });
+export const entryHeading = (page: Page) => page.getByRole("heading", { level: 1, name: entryCopy.heading, exact: true }).or(page.getByRole("heading", { level: 1, name: entryCopy.returningHeading, exact: true }));
 // The reason the doors are unavailable (connection, workspace, capacity), with its one action.
 export const entryNotice = (page: Page) => page.locator(".vibe-entry-availability");
 export const workspacePicker = (page: Page) => page.getByRole("combobox", { name: "Workspace for new projects", exact: true });
@@ -47,9 +48,16 @@ export const buildOptions = (page: Page) => startScreen(page).getByRole("button"
 export const improveOptions = (page: Page) => startScreen(page).locator("summary").filter({ hasText: new RegExp(`^${startCopy.improveOptions}$`) });
 export const resultsMore = (page: Page) => page.locator("summary").filter({ hasText: new RegExp(`^${startCopy.resultsMore}$`) });
 export const switchDoorButton = (page: Page, door: Door) => startScreen(page).getByRole("button", { name: startCopy[door].switchDoor, exact: true });
-export const sampleButton = (page: Page) => page.getByRole("button", { name: "Read a sample test", exact: true });
+export const sampleButton = (page: Page) => page.getByRole("button", { name: "See a sample result", exact: true });
+export const contactPath = (page: Page) => page.getByRole("button", { name: entryCopy.contact, exact: true });
 // A filled primary button (components/vibe/vibe-button.tsx). Add any new primary style here too.
 export const primaryButtons = (page: Page): Locator => page.locator(".vibe-button-primary").filter({ visible: true });
+
+/** Dark is the default appearance. A spec that follows the emulated system theme saves "System". */
+export async function followSystemAppearance(page: Page) {
+  await page.addInitScript(() => { try { localStorage.setItem("vibe-appearance", "system"); } catch { /* Storage is optional. */ } });
+  await page.evaluate(() => { try { localStorage.setItem("vibe-appearance", "system"); window.dispatchEvent(new StorageEvent("storage", { key: "vibe-appearance" })); } catch { /* about:blank has no storage. */ } }).catch(() => {});
+}
 
 /** The entry screen is shown and the first door can be chosen. */
 export async function entryReady(page: Page, timeout?: number) {

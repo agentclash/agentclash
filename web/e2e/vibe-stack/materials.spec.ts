@@ -63,7 +63,7 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   expect(state.session.document.artifacts[0].agent_prompt).not.toContain("Mira");
   await expect(page.locator(".vibe-result-row")).toHaveCount(0);
   await page.getByRole("tab",{name:"Results",exact:true}).click();
-  await page.getByRole("button",{name:"Discuss this with AgentClash",exact:true}).click();
+  await page.getByRole("button",{name:"Talk to us about this agent",exact:true}).click();
   await expect(page.getByRole("dialog")).toContainText("Review what you’ll share. Files, raw replies and conversation history are not attached.");
   await expect(page.getByRole("textbox",{name:"Your email",exact:true})).toBeVisible();
   const summary=page.getByRole("textbox",{name:"Project summary",exact:true});
@@ -95,7 +95,7 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   await expect(receipt).toBeVisible();
   await receipt.getByRole("button",{name:"Done",exact:true}).click();
   await expect(receipt).toHaveCount(0);
-  await expect(page.getByRole("button",{name:/Build an agent/})).toBeVisible();
+  await expect(page.getByRole("button",{name:/I have an idea/})).toBeVisible();
   await expect(doorButton(page,"build")).toBeFocused();
   expect(errors).toEqual([]);
 });
