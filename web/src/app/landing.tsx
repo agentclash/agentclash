@@ -22,6 +22,7 @@ import { ExpandedCardsBlock } from "@/components/marketing/expanded-cards-block"
 import { TrackBox } from "@/components/marketing/track-box";
 import { AgentPromoBanner } from "@/components/marketing/agent-promo-banner";
 import { MatrixMark } from "@/components/marketing/matrix-mark";
+import { CURATED_REPLAY_SHARE_URL } from "@/lib/curated-replay";
 import { COMPARISON_COLUMNS, COMPARISON_ROWS } from "@/lib/comparison-data";
 import { HOME_FAQ } from "@/lib/home-faq";
 
@@ -1611,6 +1612,17 @@ export default function HomePage({
               the tool it called, the state it worked from. Debug production
               issues with a full replay, not a log dump.
             </p>
+            {CURATED_REPLAY_SHARE_URL && (
+              <a
+                href={CURATED_REPLAY_SHARE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-6 inline-flex items-center gap-1.5 text-sm text-white/55 transition-colors hover:text-white/85"
+              >
+                See a real replay
+                <ArrowRight className="size-3.5" />
+              </a>
+            )}
           </div>
           <div>
             <LightFlowArrows />
