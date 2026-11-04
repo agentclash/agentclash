@@ -1,4 +1,4 @@
-import type { Session } from "./vibe";
+import { terminal, type Session } from "./vibe";
 export function projectTitle(session: Pick<Session, "id" | "title" | "document" | "updated_at">) {
   const title = session.title?.trim();
   if (title) return title;
@@ -35,4 +35,19 @@ export function setGuidePreference(closed: boolean) {
   try {
     localStorage.setItem("vibe-guide:v1", closed ? "closed" : "open");
   } catch {}
+}
+
+/** One line about the latest run of a project, for the "Continue" row of the entry screen. */
+export function recentProjectSummary(session: Pick<Session, "operations">): { detail: string; tone: "issue" | "pass" | "running" | "idle" } {
+  if (session.operations.some(operation => !terminal(operation.state))) return { detail: "A run is in progress.", tone: "running" };
+  const latest = session.operations.findLast(operation => operation.kind === "check" || operation.kind === "retest");
+  if (!latest) return { detail: "No tests have run yet.", tone: "idle" };
+  const score = latest.scorecard;
+  if (latest.state === "COMPLETED" && score?.total) {
+    if (score.failed) return { detail: `${score.failed} of ${score.total} tests failed in the last run.`, tone: "issue" };
+    if (score.unknown) return { detail: `${score.passed} of ${score.total} tests passed in the last run. ${score.unknown} could not be graded.`, tone: "idle" };
+    return { detail: `All ${score.total} tests passed in the last run.`, tone: "pass" };
+  }
+  if (latest.state === "FAILED") return { detail: "The last run stopped before it finished.", tone: "issue" };
+  return { detail: "The last run did not finish.", tone: "idle" };
 }
