@@ -41,10 +41,8 @@ async function improveResultShown(page: Page, expected: string) {
   await expect(leading.locator("p").filter({ hasText: /^(We gave it|It replied|It should|What needs attention)$/ })).toHaveText(["We gave it", "It replied", "It should", "What needs attention"]);
   const fix = runResults(page).getByRole("button", { name: "Suggest a fix", exact: true });
   await expect(fix).toBeVisible();
-  expect(await leading.evaluate(element => element.nextElementSibling?.textContent?.trim())).toBe("Suggest a fix");
-  const remaining = await runResults(page).locator(".vibe-result-row").count() - 1;
-  if (remaining > 0) expect(await fix.evaluate(element => element.nextElementSibling?.classList.contains("vibe-other-results"))).toBe(true);
-  else expect(await fix.evaluate(element => element.nextElementSibling === null)).toBe(true);
+  expect(await fix.evaluate(element => element.closest(".vibe-results-actions")?.nextElementSibling?.getAttribute("aria-label"))).toBe("Individual results");
+  await expect(runResults(page).getByRole("button", { name: "Run tests again", exact: true })).toBeVisible();
   const actions = leading.locator(".vibe-evidence-actions").first();
   await expect(actions.getByRole("button", { name: "Ask Guide about this test", exact: true })).toBeVisible();
   await expect(actions.getByRole("button", { name: "Show full conversation", exact: true })).toBeVisible();
@@ -66,7 +64,7 @@ async function open(page: Page, name: string, options: { keyboardOnly?: boolean 
 
 // The agent reply in the failed test is the first agent answer (M1). Open the test only when it is closed.
 async function firstAnswer(page: Page, flow: FlowMeter) {
-  const failed = runResults(page).locator("details").filter({ has: page.locator("summary", { hasText: "Issue found" }) }).first();
+  const failed = runResults(page).locator("details").filter({ has: page.locator("summary", { hasText: "Issue" }) }).first();
   if (!(await failed.evaluate(el => (el as HTMLDetailsElement).open))) await flow.click(failed.locator("summary").first(), "open failed test");
   await expect(agentReply(page)).toBeVisible();
   for (const label of ["We gave it", "It replied", "It should", "What needs attention"]) await expect(failed.getByText(label, { exact: true })).toBeVisible();
@@ -117,8 +115,8 @@ test("Build reaches its first test result in 2 clicks and 1 text", async ({ page
   await runDone(page);
   await expect(tab(page, "Results")).toHaveAttribute("aria-selected", "true");
   await expect(buildResult(page)).toContainText(resultCopy.headline(2, 3));
-  expect(await buildResult(page).locator(".vibe-build-examples").evaluate(element => element.nextElementSibling?.textContent?.trim())).toBe("Suggest a fix");
-  expect(await buildResult(page).locator(".vibe-build-evidence-action").evaluate(element => element.nextElementSibling?.classList.contains("vibe-other-results"))).toBe(true);
+  expect(await buildResult(page).locator(".vibe-build-examples").evaluate(element => element.previousElementSibling?.textContent?.trim())).toBe("Suggest a fix");
+  expect(await buildResult(page).locator(".vibe-build-evidence-action").evaluate(element => element.nextElementSibling?.classList.contains("vibe-build-examples"))).toBe(true);
   await expect(buildResult(page).locator("details[open]")).toContainText("It replied");
   await flow.mark("M2");
   await expect(agentReply(page)).toBeVisible();
@@ -126,7 +124,7 @@ test("Build reaches its first test result in 2 clicks and 1 text", async ({ page
   await finish(page, fake, flow, { clicks: 2, texts: 1, files: 0, decisions: 2 });
   const others = buildResult(page).locator(".vibe-other-results");
   await others.locator(":scope > summary").click();
-  const passed = others.locator(".vibe-result-row").filter({ has: page.locator("summary", { hasText: "Passed" }) }).first();
+  const passed = others.locator(".vibe-result-row").filter({ has: page.locator("summary", { hasText: "Pass" }) }).first();
   await passed.locator(":scope > summary").click();
   for (const label of ["We gave it", "It replied", "It should", "Why it passed"]) await expect(passed.getByText(label, { exact: true })).toBeVisible();
   await expect(passed.locator(".vibe-example-reply")).toBeVisible();

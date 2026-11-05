@@ -185,7 +185,7 @@ it("opens the complete exact explanation beside its concise excerpt",async()=>{
  const disclosure=summary!.parentElement as HTMLDetailsElement;
  await act(async()=>{disclosure.open=true;disclosure.dispatchEvent(new Event("toggle"))});
  expect(disclosure.textContent).toContain(explanation);
- expect(disclosure.parentElement?.textContent).toContain("excerpt");
+ expect(disclosure.closest(".vibe-evidence-field")?.textContent).toContain("excerpt");
 });
 
 it("shows a grounded finding and its expectation once, and offers changes only for expectations", async () => {
@@ -260,4 +260,11 @@ it.each(["invented", "unverified"])("keeps %s findings out of the grounded evide
   await act(async () => root.render(<CaseEvidence summary={evidence} load={async () => evidence} defaultOpen />));
   expect(container.querySelector('[aria-label="Evidence for this grade"]')).toBeNull();
   expect(container.textContent).toContain("An explanation was recorded.");
+});
+
+
+it.each(["PASS", "FAIL", "UNKNOWN", "", undefined] as const)("always marks CaseEvidence rows for the evidence layout (%s)", async verdict => {
+  const summary = { ...result("UNKNOWN"), verdict } as CaseResult;
+  await act(async () => root.render(<CaseEvidence summary={summary} load={async () => summary} />));
+  expect(container.querySelector(".vibe-result-row")?.getAttribute("data-verdict")).toBe(verdict || "UNKNOWN");
 });

@@ -442,14 +442,14 @@ test("text roles stay consistent across viewport sizes and portaled dialogs", as
   await otherResults(page).click();
   const otherRow = page.locator(".vibe-build-result .vibe-other-results .vibe-result-row").first();
   await otherRow.locator("summary").click();
-  await expect(otherRow.getByText("Passed", { exact: true })).toBeVisible();
+  await expect(otherRow.getByText("Pass", { exact: true })).toBeVisible();
   const reply = otherRow.locator(".vibe-markdown").first();
   await expect.soft(reply).toHaveCSS("font-size", "16px");
   await expect.soft(reply).toHaveCSS("line-height", "24px");
   await page.getByRole("tab", { name: "Agent", exact: true }).click();
   for (const width of [390, 1440, 2560]) {
     await page.setViewportSize({ width, height: 900 });
-    await expect(page.locator(".vibe-project-identity :is(h1, h2)")).toHaveCSS("font-size", width <= 600 ? "20px" : "28px");
+    await expect(page.locator(".vibe-project-identity :is(h1, h2)")).toHaveCSS("font-size", "28px");
     await expect(page.getByRole("heading", { name: "Agent instructions", exact: true })).toHaveCSS("font-size", "16px");
     await expect(page.getByRole("heading", { name: "Agent instructions", exact: true })).toHaveCSS("line-height", "22px");
     await expect(page.locator(".vibe-instructions-text")).toHaveCSS("font-size", "16px");

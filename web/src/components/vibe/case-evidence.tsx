@@ -123,6 +123,7 @@ export function CaseEvidence({
   return (
     <details
       className="group vibe-result-row"
+      data-verdict={summary.verdict || "UNKNOWN"}
       open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
@@ -148,9 +149,9 @@ export function CaseEvidence({
         </span>
         <span className={`vibe-verdict-word text-xs ${summary.verdict === "PASS" ? "vibe-verdict-pass" : summary.verdict === "FAIL" ? "vibe-verdict-issue" : "text-builder-fg-muted"}`}>
           {summary.verdict === "PASS"
-            ? "Passed"
+            ? "Pass"
             : summary.verdict === "FAIL"
-              ? "Issue found"
+              ? "Issue"
               : summary.error?.code === "not_evaluated"
                 ? "Not run"
                 : "Could not determine"}
@@ -161,7 +162,7 @@ export function CaseEvidence({
           aria-hidden="true"
         />
       </summary>
-      <div className="space-y-4 border-t border-[var(--vibe-border)] p-4">
+      <div className="vibe-result-details space-y-4">
         {loading && (
           <p role="status" className="text-sm vibe-muted">
             Loading saved evidence…
@@ -180,13 +181,13 @@ export function CaseEvidence({
               </p>
             )}
             <div className="vibe-example-evidence">
-              <div><p className="vibe-evidence-label">We gave it</p>{recorded && customerMessages.length ? <div className="vibe-recorded-chat">{customerMessages.map(message => <div className="vibe-recorded-bubble" data-role="user" key={message.id}><strong>Customer</strong><p>{message.content}</p></div>)}</div> : compactPreview || concise ? <EvidenceExcerpt text={input} label="input" /> : <SafeMarkdown>{input}</SafeMarkdown>}</div>
-              <div><p className="vibe-evidence-label">It replied</p>{reply ? <div className="vibe-example-reply"><EvidenceExcerpt text={reply} label="reply" /></div> : <p>No reply was recorded.</p>}</div>
-              <div><p className="vibe-evidence-label">It should</p><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div>
+              <div className="vibe-evidence-field"><p className="vibe-evidence-label">We gave it</p><div className="vibe-evidence-content">{recorded && customerMessages.length ? <div className="vibe-recorded-chat">{customerMessages.map(message => <div className="vibe-recorded-bubble" data-role="user" key={message.id}><strong>Customer</strong><p>{message.content}</p></div>)}</div> : compactPreview || concise ? <EvidenceExcerpt text={input} label="input" /> : <SafeMarkdown>{input}</SafeMarkdown>}</div></div>
+              <div className="vibe-evidence-field"><p className="vibe-evidence-label">It replied</p><div className="vibe-evidence-content">{reply ? <div className="vibe-example-reply"><EvidenceExcerpt text={reply} label="reply" /></div> : <p>No reply was recorded.</p>}</div></div>
+              <div className="vibe-evidence-field"><p className="vibe-evidence-label">It should</p><div className="vibe-evidence-content"><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div></div>
             </div>
             {finding && (
-              <div>
-                <p className="mb-1 text-xs vibe-muted">
+              <div className="vibe-evidence-field">
+                <p className="vibe-evidence-label">
                   {finding.verdict === "FAIL"
                     ? "What needs attention"
                     : finding.verdict === "PASS"
@@ -194,9 +195,11 @@ export function CaseEvidence({
                       : "What is still unknown"}
                   {excerpt && " · excerpt"}
                 </p>
+                <div className="vibe-evidence-content">
                 <SafeMarkdown>{visibleExplanation}</SafeMarkdown>
                 {excerpt && <details className="mt-2"><summary className="cursor-pointer text-sm">Read complete explanation</summary><SafeMarkdown>{explanation}</SafeMarkdown></details>}
                 <GroundedFinding result={evidence} check={finding} showExpectation={false} />
+                </div>
               </div>
             )}
             {!compactPreview && prompt && (

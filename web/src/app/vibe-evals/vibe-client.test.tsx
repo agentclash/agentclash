@@ -269,6 +269,13 @@ it.each(["build", "test"] as const)("the browser journey fixture mounts the %s p
   expect(header.querySelector('button[aria-label="Guide"]')).not.toBeNull();
   expect(header.querySelector('button[aria-label="Details"]')).not.toBeNull();
   expect(header.querySelector('[role="tablist"][aria-label="Workspace views"]')).not.toBeNull();
+  for (const name of ["agent", "tests", "results"]) {
+    const tab = header.querySelector(`#vibe-tab-${name}`)!;
+    expect(tab.getAttribute("aria-controls")).toBe("vibe-workspace-panel");
+    expect(tab.classList.contains("vibe-project-tab")).toBe(true);
+    expect(tab.classList.contains("vibe-button")).toBe(false);
+  }
+  expect(header.querySelector('[aria-label="Guide"]')?.classList.contains("vibe-project-guide")).toBe(true);
 });
 
 it.each([["journey", 50000000], ["core journey", 0]] as const)("admits the %s fixture quote only after explicit consent", async (_journey, cost) => {
@@ -2033,7 +2040,7 @@ it("cites exact chat messages and prepares a disputed rule without silently chan
 it("requests a suggested change on demand with the selected evidence baseline", async () => {
   recordedResult();
   await render();
-  await click("Suggest a change");
+  await click("Suggest a fix");
   expect(posts()).toHaveLength(1);
   expect(posts()[0].body).toMatchObject({
     kind: "message",

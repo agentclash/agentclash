@@ -94,6 +94,13 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();
   await expect(page.getByRole("article", { name: "Run results" })).toContainText("2 passed · 1 failed");
+  const runResults = page.getByRole("article", { name: "Run results" });
+  await expect(runResults.locator(".vibe-result-bar")).toHaveAttribute("aria-hidden", "true");
+  await expect(runResults.locator('.vibe-result-segment[data-status="pass"]')).toHaveCount(2);
+  await expect(runResults.locator('.vibe-result-segment[data-status="fail"]')).toHaveCount(1);
+  await expect(runResults.locator(".vibe-result-counts")).toContainText("2 passed · 1 failed");
+  await expect(runResults.locator(".vibe-results-actions .vibe-button-primary")).toHaveText("Suggest a fix");
+  await expect(runResults.locator(".vibe-results-actions").getByRole("button", { name: "Run tests again", exact: true })).toBeVisible();
   state = await evidence(page, sessionID!);
   const baseline = state.session.operations.at(-1)!;
   expect(baseline.state).toBe("COMPLETED");

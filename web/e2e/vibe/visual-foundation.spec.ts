@@ -185,8 +185,8 @@ test("results: an ink primary, clay and sage status with a glyph and a word, and
   const fake = await toResults(page);
   const results = page.getByRole("tabpanel", { name: "Results", exact: true });
   await otherResults(page).click();
-  const issue = results.locator(".vibe-build-result summary").filter({ hasText: "Issue found" }).first();
-  const passed = results.locator(".vibe-build-result summary").filter({ hasText: "Passed" }).first();
+  const issue = results.locator(".vibe-build-result summary").filter({ hasText: "Issue" }).first();
+  const passed = results.locator(".vibe-build-result summary").filter({ hasText: "Pass" }).first();
   await expect(passed).toBeVisible();
   const title = page.locator(".vibe-project-identity :is(h1, h2)");
   const outcome = results.locator(".vibe-results-outcome").first();
@@ -202,9 +202,9 @@ test("results: an ink primary, clay and sage status with a glyph and a word, and
     await expect(primary, scheme).toHaveCSS("color", onInk[scheme]);
     // Each status colour sits on a glyph and on a word, never alone.
     await expect(issue.locator("svg").first(), scheme).toHaveCSS("color", clay[scheme]);
-    await expect(issue.getByText("Issue found", { exact: true }), scheme).toHaveCSS("color", clay[scheme]);
+    await expect(issue.getByText("Issue", { exact: true }), scheme).toHaveCSS("color", clay[scheme]);
     await expect(passed.locator("svg").first(), scheme).toHaveCSS("color", sage[scheme]);
-    await expect(passed.getByText("Passed", { exact: true }), scheme).toHaveCSS("color", sage[scheme]);
+    await expect(passed.getByText("Pass", { exact: true }), scheme).toHaveCSS("color", sage[scheme]);
     await expect(title, scheme).toHaveCSS("font-family", /Instrument[ _]Serif/);
     await expect(title, scheme).toHaveCSS("font-size", "28px");
     await expect(outcome, scheme).toHaveCSS("font-family", /Instrument[ _]Serif/);
@@ -212,22 +212,22 @@ test("results: an ink primary, clay and sage status with a glyph and a word, and
     expect(await boundary(page.getByRole("combobox", { name: "Filter tests" })), `${scheme} filter select`).toBeGreaterThanOrEqual(3);
     // Increased contrast deepens clay and sage and raises the control boundary.
     await settle(page, scheme, { contrast: "more" });
-    await expect(issue.getByText("Issue found", { exact: true }), `${scheme} more contrast`).toHaveCSS("color", clayMore[scheme]);
-    await expect(passed.getByText("Passed", { exact: true }), `${scheme} more contrast`).toHaveCSS("color", sageMore[scheme]);
+    await expect(issue.getByText("Issue", { exact: true }), `${scheme} more contrast`).toHaveCSS("color", clayMore[scheme]);
+    await expect(passed.getByText("Pass", { exact: true }), `${scheme} more contrast`).toHaveCSS("color", sageMore[scheme]);
     expect(await boundary(page.getByRole("combobox", { name: "Filter tests" })), `${scheme} more contrast filter select`).toBeGreaterThanOrEqual(4.5);
   }
   await page.emulateMedia({ forcedColors: "active" });
-  await expect(issue.getByText("Issue found", { exact: true })).toBeVisible();
-  await expect(passed.getByText("Passed", { exact: true })).toBeVisible();
-  await expect(issue.locator("svg").first()).toHaveCSS("color", await css(issue.getByText("Issue found", { exact: true }), "color"));
-  await expect(passed.locator("svg").first()).toHaveCSS("color", await css(passed.getByText("Passed", { exact: true }), "color"));
+  await expect(issue.getByText("Issue", { exact: true })).toBeVisible();
+  await expect(passed.getByText("Pass", { exact: true })).toBeVisible();
+  await expect(issue.locator("svg").first()).toHaveCSS("color", await css(issue.getByText("Issue", { exact: true }), "color"));
+  await expect(passed.locator("svg").first()).toHaveCSS("color", await css(passed.getByText("Pass", { exact: true }), "color"));
   await page.emulateMedia({ forcedColors: "none" });
-  // Phones keep Geist 600 20 for the project name: the serif is for room, not for every width.
+  // Project identity keeps its display role on phones and wraps within the header.
   await page.setViewportSize({ width: 390, height: 844 });
   await settle(page, "light");
-  await expect(title).toHaveCSS("font-family", /Geist/);
-  await expect(title).toHaveCSS("font-size", "20px");
-  await expect(title).toHaveCSS("font-weight", "600");
+  await expect(title).toHaveCSS("font-family", /Instrument[ _]Serif/);
+  await expect(title).toHaveCSS("font-size", "28px");
+  await expect(title).toHaveCSS("font-weight", "400");
   expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
 });
 

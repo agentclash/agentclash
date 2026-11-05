@@ -189,7 +189,7 @@ it("shows the outcome before filtering result rows without changing whole-run to
  expect(container.querySelector("h2")!.compareDocumentPosition(select!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
  await act(async()=>{select!.value="passing";select!.dispatchEvent(new Event("change",{bubbles:true}));});
  expect(container.querySelector("h2")!.textContent).toBe(heading);
- expect(container.querySelector("h2 + p")!.textContent).toBe("1 passed · 1 failed");
+ expect(container.querySelector(".vibe-result-counts")!.textContent).toBe("1 passed · 1 failed · $0.00");
  expect(container.textContent).not.toContain("needs attention.");
  expect(container.textContent).not.toContain("The purchase age was asked twice");
  expect(container.textContent).toContain("The return window was respected");
@@ -246,7 +246,7 @@ it("leads with one reply and keeps complete evidence behind a single accessible 
   const visibleReplies = [...leading.querySelectorAll(".vibe-example-reply")].filter(reply => !reply.closest("[hidden]"));
   expect(visibleReplies).toHaveLength(1);
   expect(visibleReplies[0].textContent).toContain("How many days ago did you buy it?");
-  expect(visibleReplies[0].previousElementSibling?.textContent).toBe("It replied");
+  expect(visibleReplies[0].closest(".vibe-evidence-field")?.querySelector(".vibe-evidence-label")?.textContent).toBe("It replied");
   expect(button("Show full conversation").getAttribute("aria-expanded")).toBe("false");
   const fullEvidence = document.getElementById(
     button("Show full conversation").getAttribute("aria-controls")!,
@@ -366,9 +366,8 @@ it("copies an honest prompt and dispatches the new-answer callback only after a 
   expect(nextAnswer).not.toHaveBeenCalled();
   expect(improve).not.toHaveBeenCalled();
   expect(retest).not.toHaveBeenCalled();
-  expect(button("Test new replies").className).toContain(
-    "vibe-button-primary",
-  );
+  expect(button("Test new replies").className).toContain("vibe-button-secondary");
+  expect(button("Suggest a fix").className).toContain("vibe-button-primary");
   await click("Test new replies");
   expect(nextAnswer).toHaveBeenCalledTimes(1);
 });
@@ -526,7 +525,10 @@ it.each(["initial", "rechecked", "stopped", "incomplete", "empty", "failed"])(
     );
     if (kind === "rechecked") op.source!.comparison = "rechecked";
     if (kind === "stopped") op.state = "CANCELLED";
-    if (kind === "incomplete") op.scorecard!.incomplete_cases = 1;
+    if (kind === "incomplete") {
+      op.scorecard!.incomplete_cases = 1;
+      op.results[0] = { ...op.results[0], expected_checks: 2 };
+    }
     await render(
       op,
       kind === "initial" ? undefined : operation([passing]),
@@ -598,21 +600,20 @@ it("offers mixed failed and unassessed checks in the unresolved filter and exact
  const op=operation([failure,mixed,passing,waiting]);
  op.scorecard={...op.scorecard!,incomplete_cases:2,checks_expected:5,checks_evaluated:3};
  await render(op);
- expect(container.textContent).toContain("1 passed · 2 failed · 2 unresolved");
+ expect(container.textContent).toContain("1 passed · 1 failed · 2 unresolved");
  expect(container.querySelector("h2")!.textContent).toBe("2 tests failed");
- expect(container.textContent).toContain("can also be counted as passed or failed");
  const select=container.querySelector<HTMLSelectElement>('[aria-label="Filter tests"]')!;
  await act(async()=>{select.value="failing";select.dispatchEvent(new Event("change",{bubbles:true}))});
  expect(container.textContent).toContain("Partially assessed");
  expect(container.textContent).toContain(failure.title);
  expect(container.textContent).not.toContain("Awaiting assessment");
- expect(container.textContent).toContain("1 passed · 2 failed · 2 unresolved");
+ expect(container.textContent).toContain("1 passed · 1 failed · 2 unresolved");
  await act(async()=>{select.value="unresolved";select.dispatchEvent(new Event("change",{bubbles:true}))});
  expect(container.textContent).toContain("Partially assessed");
  expect(container.textContent).not.toContain(failure.title);
  expect(container.textContent).toContain("Awaiting assessment");
  expect(container.querySelector("h2")!.textContent).toBe("2 tests failed");
- expect(container.textContent).toContain("1 passed · 2 failed · 2 unresolved");
+ expect(container.textContent).toContain("1 passed · 1 failed · 2 unresolved");
  const retry=vi.fn();
  await act(async()=>root.render(<ResultRecoveryControls operation={op} busy={false} onReload={()=>{}} onRetry={retry} onFullRun={()=>{}}/>));
  expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(2);
@@ -633,18 +634,18 @@ it.each([
   else expect(container.querySelector('[aria-label="Result recovery"]')).toBeNull();
 });
 
-it("keeps one primary action on a failed check and moves Suggest a change into the action row", async () => {
+it("keeps one primary action on a failed check and moves Suggest a fix into the action row", async () => {
   const op = operation([failure]);
   op.source = { kind: "prompt", artifact_id: "suite-one", label: "Agent instructions" };
   await act(async () => root.render(<VibeScorecard operation={op} loadEvidence={async () => failure} onImprove={improve} onRetest={retest} onSave={save} busy={false} />));
-  expect(button("Suggest a change").closest("details")).toBeNull();
-  expect([...container.querySelectorAll(".vibe-button-primary")].map(b => b.textContent?.trim())).toEqual(["Suggest a change"]);
+  expect(button("Suggest a fix").closest("details")).toBeNull();
+  expect([...container.querySelectorAll(".vibe-button-primary")].map(b => b.textContent?.trim())).toEqual(["Suggest a fix"]);
   expect(button("Copy fix prompt").className).toContain("vibe-button-secondary");
   // "Run tests again" already reruns the same tests when there are no new replies.
   expect(container.textContent).not.toContain("Run the same tests again");
   await click("Run tests again");
   expect(retest).toHaveBeenCalledOnce();
-  await click("Suggest a change");
+  await click("Suggest a fix");
   expect(improve).toHaveBeenCalledOnce();
   expect(button("Save this result").closest("details")).not.toBeNull();
 });
@@ -757,7 +758,7 @@ it("puts the Improve finding and Suggest a fix before a single More disclosure",
   await render(operation([passing, failure]), undefined, true, true);
   const fix = button("Suggest a fix"); expect(fix).toBeDefined(); expect(fix.closest("details")).toBeNull();
   expect([...container.querySelectorAll(".vibe-button-primary")].map(b => b.textContent?.trim())).toEqual(["Suggest a fix"]);
-  expect(button("Run tests again").closest("details")?.querySelector("summary")?.textContent).toBe("More");
+  expect(button("Run tests again").closest(".vibe-results-actions")).not.toBeNull();
   expect(container.textContent).toContain("Grading model:");
   expect(container.querySelector('[aria-label="Leading finding"]')).not.toBeNull();
   await click("Suggest a fix"); expect(improve).toHaveBeenCalledOnce();
@@ -808,7 +809,7 @@ it("shows other results separately from More with a passed glyph and word in the
   const other = container.querySelector(".vibe-other-results")!;
   expect(other?.querySelector("summary")?.textContent).toBe("Other results · 1");
   expect(other.closest("details")?.parentElement?.closest("details")).toBeNull();
-  expect(other.querySelector(".vibe-verdict-word")?.textContent).toBe("Passed");
+  expect(other.querySelector(".vibe-verdict-word")?.textContent).toBe("Pass");
   expect(other.querySelector("svg.vibe-verdict-pass")).not.toBeNull();
   expect(other.querySelector(".vibe-result-row")?.hasAttribute("open")).toBe(false);
   expect(button("Suggest a fix").querySelector("svg")).not.toBeNull();
@@ -840,7 +841,7 @@ it.each(["prompt", "provided_conversations"] as const)("exposes one stable More 
   const more = container.querySelectorAll("details.vibe-results-more");
   expect(more).toHaveLength(1);
   expect(more[0].querySelector(":scope > summary")?.textContent).toBe("More");
-  expect(button("Run tests again").closest("details")).toBe(more[0]);
+  expect(button("Run tests again").closest("details")).toBeNull();
   expect(button("Suggest a fix").closest("details")).toBeNull();
   expect(more[0].contains(container.querySelector(".vibe-other-results"))).toBe(false);
 });
@@ -858,12 +859,14 @@ it.each([[0, "Your agent passed 0 of 1 test"], [1, "Your agent passed all 1 test
   expect(container.querySelector(".vibe-results-outcome")?.textContent).toBe(headline);
 });
 
-it("P5: puts the Improve primary between the leading finding and Other results", async () => {
+it("puts the Improve action row before the individual results", async () => {
   await render(operation([failure, passing]), undefined, true, true);
   const finding = container.querySelector('[aria-label="Leading finding"]')!;
   const primary = button("Suggest a fix");
-  expect(finding.nextElementSibling).toBe(primary);
-  expect(primary.nextElementSibling).toBe(container.querySelector(".vibe-other-results"));
+  const actions = primary.closest(".vibe-results-actions")!;
+  expect(actions.nextElementSibling).toBe(container.querySelector('[aria-label="Individual results"]'));
+  expect(finding.nextElementSibling).toBe(container.querySelector(".vibe-other-results"));
+  expect(button("Run tests again").parentElement).toBe(actions);
   expect(container.querySelector('[aria-label="Individual results"]')?.contains(container.querySelector(".vibe-other-results"))).toBe(true);
 });
 it("P5: Ask Guide shares the bottom evidence action row", async () => {
@@ -902,4 +905,80 @@ it.each([false, true])("fix8 uses one evidence layout for passed and failed rows
   }
   const actions = ["Ask Guide about this test", "Show full conversation", "Change expected result", "Grade the same replies again"];
   for (const row of rows) expect([...row.querySelectorAll(".vibe-evidence-actions button")].map(node => node.textContent!.trim())).toEqual(actions);
+});
+
+it("shows decorative per-test segments and one visible count equivalent above the actions", async () => {
+  const op = operation([passing, failure, { ...passing, case_key: "second-pass" }]);
+  op.actual_cost_nano_usd = 31_000_000;
+  await render(op, undefined, true, true);
+  const bar = container.querySelector(".vibe-result-bar")!;
+  expect(bar.getAttribute("aria-hidden")).toBe("true");
+  expect([...bar.children].map(segment => segment.getAttribute("data-status"))).toEqual(["pass", "fail", "pass"]);
+  expect(container.querySelector(".vibe-result-counts")?.textContent).toBe("2 passed · 1 failed · $0.031");
+  expect(container.querySelectorAll(".vibe-result-counts")).toHaveLength(1);
+  expect(container.querySelector(".vibe-results-more")?.textContent).not.toContain("2 passed · 1 failed");
+  expect(bar.closest(".vibe-result-summary")!.compareDocumentPosition(button("Suggest a fix")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(button("Run tests again").className).toContain("vibe-button-secondary");
+});
+
+it("includes unresolved tests in the bar and counts without inventing cost or duration", async () => {
+  const unknown: CaseResult = { ...failure, case_key: "unknown", verdict: "UNKNOWN", checks: [] };
+  const op = operation([passing, failure, unknown]);
+  op.actual_cost_nano_usd = null;
+  await render(op, undefined, true, true);
+  expect([...container.querySelectorAll(".vibe-result-segment")].map(segment => segment.getAttribute("data-status"))).toEqual(["pass", "fail", "unresolved"]);
+  expect(container.querySelector(".vibe-result-counts")?.textContent).toBe("1 passed · 1 failed · 1 unresolved");
+});
+
+it("keeps incomplete grades muted even when their provisional verdict passed", async () => {
+  const op = operation([{ ...passing, expected_checks: 2 }]);
+  await render(op, undefined, true, true);
+  expect(container.querySelector(".vibe-result-segment")?.getAttribute("data-status")).toBe("unresolved");
+  expect(container.querySelector(".vibe-result-counts")?.textContent).toBe("0 passed · 0 failed · 1 unresolved · $0.00");
+});
+
+it("uses Suggest a fix for the Build scorecard with one primary and working actions", async () => {
+  await act(async () => root.render(<VibeScorecard operation={operation([failure])} buildJourney loadEvidence={async () => failure} onImprove={improve} onRetest={retest} busy={false} />));
+  expect([...container.querySelectorAll(".vibe-button-primary")].map(button => button.textContent?.trim())).toEqual(["Suggest a fix"]);
+  await click("Suggest a fix");
+  expect(improve).toHaveBeenCalledOnce();
+  await click("Run tests again");
+  expect(retest).toHaveBeenCalledOnce();
+});
+
+it("represents missing test results as unresolved segments", async () => {
+  const op = operation([passing]);
+  op.scorecard = { ...op.scorecard!, total: 3, unknown: 2 };
+  op.actual_cost_nano_usd = null;
+  await render(op, undefined, true, true);
+  expect([...container.querySelectorAll(".vibe-result-segment")].map(segment => segment.getAttribute("data-status"))).toEqual(["pass", "unresolved", "unresolved"]);
+  expect(container.querySelector(".vibe-result-counts")?.textContent).toBe("1 passed · 0 failed · 2 unresolved");
+});
+
+
+it.each([false, true])("counts incomplete and missing slots in the warning and bar (testJourney=%s)", async testJourney => {
+  const op = operation([passing, { ...passing, case_key: "unfinished", expected_checks: 2 }]);
+  // Deliberately retain provisional PASS counts with no aggregate incomplete count.
+  op.scorecard = { ...op.scorecard!, total: 3 };
+  op.actual_cost_nano_usd = null;
+  await act(async () => root.render(<VibeScorecard operation={op} testJourney={testJourney} loadEvidence={async key => op.results.find(result => result.case_key === key)!} onImprove={improve} onRetest={retest} onSave={save} busy={false} />));
+  expect([...container.querySelectorAll(".vibe-result-segment")].map(segment => segment.getAttribute("data-status"))).toEqual(["pass", "unresolved", "unresolved"]);
+  expect(container.querySelector(".vibe-result-counts")?.textContent).toBe("1 passed · 0 failed · 2 unresolved");
+  expect(container.textContent).toContain(testJourney ? "2 unresolved. Some grading is incomplete." : "2 results are unresolved.");
+  expect(container.querySelector("h2")?.textContent).toBe("Some replies still need a closer look");
+  const saveButtons = [...container.querySelectorAll("button")].filter(button => /Keep these tests|Save this result/.test(button.textContent || ""));
+  if (testJourney) expect(saveButtons).toHaveLength(0);
+  else for (const button of saveButtons) {
+    expect(button.className).not.toContain("vibe-button-primary");
+    expect(button.closest("details")).not.toBeNull();
+  }
+});
+
+it("treats a missing result as incomplete even when aggregate counts report no unknowns", async () => {
+  const op = operation([passing]);
+  op.scorecard = { ...op.scorecard!, total: 2 };
+  await render(op);
+  expect(container.querySelector(".vibe-result-counts")?.textContent).toBe("1 passed · 0 failed · 1 unresolved · $0.00");
+  expect(container.textContent).toContain("1 result is unresolved.");
+  expect(container.querySelector("h2")?.textContent).toBe("Some replies still need a closer look");
 });
