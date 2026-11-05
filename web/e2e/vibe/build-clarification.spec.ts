@@ -1,6 +1,6 @@
 import { resultCopy } from "./entry-model";
 import { expect, test } from "@playwright/test";
-import { fakeVibe, models } from "./entry-fake";
+import { fakeVibe, models, telemetryScripts } from "./entry-fake";
 import { actionSession } from "./interaction-fixture";
 
 for (const width of [390, 1440]) {
@@ -25,8 +25,6 @@ for (const width of [390, 1440]) {
     expect(fake.posts.some(post => post.path.endsWith("/actions") || post.path.endsWith("/build-quote"))).toBe(false);
     expect(fake.unknown).toEqual([]);
     expect(fake.errors).toEqual([]);
-    // The app shell requests these dev scripts; fakeVibe blocks them.
-    const telemetryScripts = ["GET https://va.vercel-scripts.com/v1/script.debug.js", "GET https://va.vercel-scripts.com/v1/speed-insights/script.debug.js"];
     expect(fake.external.filter(request => !telemetryScripts.includes(request))).toEqual([]);
   });
 }

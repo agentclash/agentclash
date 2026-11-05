@@ -8,6 +8,9 @@ import path from "node:path";
 import type { Page } from "@playwright/test";
 import { defaultModels, type Artifact, type CaseResult, type Operation, type Models, type RunQuote, type Session } from "../../src/lib/vibe";
 
+// The app shell requests these dev scripts; fakeVibe blocks them.
+export const telemetryScripts = ["GET https://va.vercel-scripts.com/v1/script.debug.js", "GET https://va.vercel-scripts.com/v1/speed-insights/script.debug.js"];
+
 export const models = defaultModels;
 export const fakeConfig = {
   enabled: true,
@@ -145,6 +148,7 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
     const name = p === "/sessions" ? "/sessions" : p.endsWith("/messages") ? `/messages:${body.kind}` : `/${p.split("/").at(-1)}`;
     const f = failures[`${method} ${name}`] ?? failures[`${method} ${name.split(":")[0]}`];
     if (f) return route.fulfill({ headers, ...fail(f) });
+    if (method === "POST" && p === "/enquiries") return json({ id: "contact-receipt", status: "received", created_at: "2026-11-05T12:00:00Z" }, 201);
     if (method === "DELETE") { sessions.delete(id!); return json({ status: "deleted" }); }
     if (method === "POST" && p === "/sessions") {
       const created = project(body.id, body.door, body.workspace_id);

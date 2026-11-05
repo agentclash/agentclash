@@ -179,6 +179,11 @@ func (s *Store) Run(ctx context.Context, logger *slog.Logger) {
 	}
 }
 func (s *Store) deliverOne(ctx context.Context) error {
+	// Keep receipts and request hashes for retries, but bound contact PII even
+	// when delivery is unconfirmed or an older accepted row still has content.
+	if _, err := s.DB.Exec(ctx, `UPDATE vibe_enquiries SET content='{}'::jsonb WHERE session_id IS NULL AND content<>'{}'::jsonb AND (status='provider_accepted' OR created_at<now()-interval '30 days')`); err != nil {
+		return err
+	}
 	// Resend remembers keys for 24h. Stop well inside that window when an
 	// acknowledgement is uncertain; never blindly send it again days later.
 	tag, err := s.DB.Exec(ctx, `UPDATE vibe_enquiries SET status='needs_review' WHERE status IN ('sending','received') AND (first_attempt_at<now()-interval '20 hours' OR transport_id<>$1)`, s.TransportID)
@@ -191,25 +196,35 @@ func (s *Store) deliverOne(ctx context.Context) error {
 	var id uuid.UUID
 	var content []byte
 	var lease time.Time
-	err = s.DB.QueryRow(ctx, `UPDATE vibe_enquiries SET status='sending',attempts=attempts+1,first_attempt_at=COALESCE(first_attempt_at,now()),lease_until=now()+interval '60 seconds' WHERE id=(SELECT e.id FROM vibe_enquiries e JOIN vibe_sessions s ON s.id=e.session_id WHERE s.deleted_at IS NULL AND ((e.status='received' AND e.next_attempt_at<=now()) OR (e.status='sending' AND e.lease_until<now())) ORDER BY e.created_at FOR UPDATE OF e SKIP LOCKED LIMIT 1) RETURNING id,content,lease_until`).Scan(&id, &content, &lease)
+	err = s.DB.QueryRow(ctx, `UPDATE vibe_enquiries SET status='sending',attempts=attempts+1,first_attempt_at=COALESCE(first_attempt_at,now()),lease_until=now()+interval '60 seconds' WHERE id=(SELECT e.id FROM vibe_enquiries e LEFT JOIN vibe_sessions s ON s.id=e.session_id WHERE (e.session_id IS NULL OR s.deleted_at IS NULL) AND (e.session_id IS NOT NULL OR e.content<>'{}'::jsonb) AND ((e.status='received' AND e.next_attempt_at<=now()) OR (e.status='sending' AND e.lease_until<now())) ORDER BY e.created_at FOR UPDATE OF e SKIP LOCKED LIMIT 1) RETURNING id,content,lease_until`).Scan(&id, &content, &lease)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	var r Request
+	var r struct {
+		Request
+		Kind string `json:"kind"`
+		Work string `json:"work"`
+	}
 	if err = json.Unmarshal(content, &r); err != nil {
 		return err
 	}
 	var active bool
-	if err = s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_enquiries e JOIN vibe_sessions s ON s.id=e.session_id WHERE e.id=$1 AND e.status='sending' AND e.lease_until=$2 AND s.deleted_at IS NULL)`, id, lease).Scan(&active); err != nil {
+	if err = s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_enquiries e LEFT JOIN vibe_sessions s ON s.id=e.session_id WHERE e.id=$1 AND e.status='sending' AND e.lease_until=$2 AND (e.session_id IS NULL OR s.deleted_at IS NULL))`, id, lease).Scan(&active); err != nil {
 		return err
 	}
 	if !active {
 		return nil
 	}
-	providerID, sendErr := s.Sender.SendMessage(ctx, email.Message{To: s.Recipient, ReplyTo: r.Email, Subject: "AgentClash project enquiry", Text: "Name: " + r.Name + "\nCompany: " + r.Company + "\n\nUser-reviewed project summary:\n" + r.Summary, IdempotencyKey: "vibe-enquiry/" + id.String()})
+	subject := "AgentClash project enquiry"
+	text := "Name: " + r.Name + "\nCompany: " + r.Company + "\n\nUser-reviewed project summary:\n" + r.Summary
+	if r.Kind == "contact" {
+		subject = "AgentClash: agents for a team"
+		text = "Company: " + r.Company + "\n\nWork to automate:\n" + strings.TrimSpace(r.Work)
+	}
+	providerID, sendErr := s.Sender.SendMessage(ctx, email.Message{To: s.Recipient, ReplyTo: r.Email, Subject: subject, Text: text, IdempotencyKey: "vibe-enquiry/" + id.String()})
 	if sendErr != nil {
 		_, err = s.DB.Exec(ctx, `UPDATE vibe_enquiries SET status='received',next_attempt_at=now()+interval '10 minutes' WHERE id=$1 AND status='sending' AND lease_until=$2`, id, lease)
 		if err != nil {
@@ -217,6 +232,6 @@ func (s *Store) deliverOne(ctx context.Context) error {
 		}
 		return fmt.Errorf("enquiry %s acknowledgement unconfirmed", id)
 	}
-	_, err = s.DB.Exec(ctx, `UPDATE vibe_enquiries SET status='provider_accepted',provider_id=$3 WHERE id=$1 AND status='sending' AND lease_until=$2`, id, lease, providerID)
+	_, err = s.DB.Exec(ctx, `UPDATE vibe_enquiries SET status='provider_accepted',provider_id=$3,content=CASE WHEN session_id IS NULL THEN '{}'::jsonb ELSE content END WHERE id=$1 AND status='sending' AND lease_until=$2`, id, lease, providerID)
 	return err
 }

@@ -81,6 +81,7 @@ func (h *VibeHandler) Routes() http.Handler {
 	h.registerReportSnapshots(r)
 	h.registerCanonicalResults(r)
 	r.Get("/config", h.config)
+	r.Post("/enquiries", h.createContactEnquiry)
 	r.Post("/sessions/{sessionID}/enquiries", h.createEnquiry)
 	r.Get("/sessions/{sessionID}/enquiries/{enquiryID}", h.getEnquiry)
 	r.Post("/sessions/{sessionID}/inputs", h.createInput)
@@ -318,7 +319,7 @@ func (h *VibeHandler) config(w http.ResponseWriter, r *http.Request) {
 			models = append(models, p)
 		}
 	}
-	contact := map[string]any{"email": "", "available": false}
+	contact := map[string]any{"email": "", "available": false, "direct": h.Enquiries.Available()}
 	if h.Enquiries.Available() {
 		contact["email"] = h.Enquiries.Recipient
 		contact["available"] = h.Enquiries.Available()
