@@ -175,7 +175,7 @@ test("Improve fix loop reaches the compared result in 3 clicks", async ({ page }
   await expect.poll(() => new URL(page.url()).searchParams.get("agent")).toBe("v1-fix");
   await expect(tab(page, "Agent")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("button", { name: "Review latest version", exact: true })).toHaveCount(0);
-  await expect(suggested.locator(":scope > details")).toHaveJSProperty("open", true);
+  await expect(suggested.locator(".vibe-prompt-change > details")).toHaveJSProperty("open", true);
   const changes = suggested.getByLabel("Instruction changes", { exact: true });
   await expect(changes).toBeVisible();
   await expect(changes).toContainText("Decline every return after 30 days.");

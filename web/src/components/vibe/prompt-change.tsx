@@ -1,64 +1,102 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Copy } from "lucide-react";
-import { instructionDiff, diffContext } from "./instruction-diff";
+import { lineDiff, type Change } from "./instruction-diff";
 import { VibeButton } from "./vibe-button";
+
+// Retain at most three context lines on each side of a change.
+function foldedLines(lines: Change[]): (Change | { folded: number })[] {
+  const out: (Change | { folded: number })[] = [];
+  for (let i = 0; i < lines.length;) {
+    if (lines[i].kind !== "same") { out.push(lines[i++]); continue; }
+    let end = i;
+    while (end < lines.length && lines[end].kind === "same") end++;
+    const noChanges = i === 0 && end === lines.length;
+    const head = i > 0 || noChanges ? Math.min(3, end - i) : 0;
+    const tail = end < lines.length || noChanges ? Math.min(3, end - i - head) : 0;
+    for (let j = i; j < i + head; j++) out.push(lines[j]);
+    const folded = end - i - head - tail;
+    if (folded) out.push({ folded });
+    for (let j = end - tail; j < end; j++) out.push(lines[j]);
+    i = end;
+  }
+  return out;
+}
 
 export function PromptChange({
   before,
   after,
   defaultOpen = false,
+  title = "Proposed change",
+  beforeVersion,
+  afterVersion,
+  actions,
 }: {
   before: string;
   after: string;
   defaultOpen?: boolean;
+  title?: string;
+  beforeVersion?: number;
+  afterVersion?: number;
+  actions?: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [copied, setCopied] = useState(false);
   const [issue, setIssue] = useState("");
-  const changes = instructionDiff(before, after);
+  const changes = useMemo(() => foldedLines(lineDiff(before, after)), [before, after]);
   return (
-    <details className="vibe-panel text-sm" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-      <summary>Review the instruction change</summary>
-      <div className="space-y-4 border-t border-[var(--vibe-border)] p-4">
-        <p className="whitespace-pre-wrap text-sm [overflow-wrap:anywhere]" aria-label="Instruction changes">
-          {changes.map((change, i) => change.kind === "removed" ? (
-            <del key={i} className="vibe-diff-removed"><span className="sr-only">Removed: </span>{change.text}</del>
-          ) : change.kind === "added" ? (
-            <ins key={i} className="vibe-diff-added"><span className="sr-only">Added: </span>{change.text}</ins>
-          ) : <span key={i}>{diffContext(change.text, i === 0, i === changes.length - 1)}</span>)}
-        </p>
-        <details>
-          <summary className="cursor-pointer vibe-muted">Full updated instructions</summary>
-          <pre className="mt-3 whitespace-pre-wrap font-sans [overflow-wrap:anywhere]">{after}</pre>
-        </details>
-        <p className="vibe-muted">
-          Your earlier version and results are kept. Running a comparison tests
-          these instructions here; it does not change your live app.
-        </p>
-        <VibeButton
-          variant="quiet"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(after);
-              setCopied(true);
-              setIssue("");
-            } catch {
-              setIssue("Select and copy the full updated instructions above.");
-            }
-          }}
-        >
-          <Copy />
-          {copied ? "Copied instructions" : "Copy updated instructions"}
-        </VibeButton>
-        {issue && (
-          <p role="status" className="vibe-muted">
-            {issue}
+    <div className="vibe-prompt-change">
+      <details open={open} onToggle={event => setOpen(event.currentTarget.open)}>
+        <summary className="vibe-prompt-change-heading">
+          <span>{title}</span>
+          {beforeVersion !== undefined && afterVersion !== undefined && <span className="vibe-prompt-change-versions">v{beforeVersion} → v{afterVersion}</span>}
+        </summary>
+        <div className="vibe-line-diff" aria-label="Instruction changes">
+          {changes.map((change, i) => "folded" in change ? (
+            <div key={i} className="vibe-diff-fold">{change.folded} unchanged {change.folded === 1 ? "line" : "lines"}</div>
+          ) : (
+            <div key={i} className={`vibe-diff-line vibe-diff-line-${change.kind}`}>
+              <span className="vibe-diff-marker" aria-hidden="true">{change.kind === "added" ? "+" : change.kind === "removed" ? "−" : ""}</span>
+              {change.kind === "removed" ? <del className="vibe-diff-line-text"><span className="sr-only">Removed: </span>{change.text}</del>
+                : change.kind === "added" ? <ins className="vibe-diff-line-text"><span className="sr-only">Added: </span>{change.text}</ins>
+                : <span className="vibe-diff-line-text">{change.text}</span>}
+            </div>
+          ))}
+        </div>
+        <div className="vibe-prompt-change-more">
+          <details>
+            <summary>Full updated instructions</summary>
+            <pre>{after}</pre>
+          </details>
+          <p className="vibe-muted">
+            Your earlier version and results are kept. Running a comparison tests
+            these instructions here; it does not change your live app.
           </p>
-        )}
-      </div>
-    </details>
+          <VibeButton
+            variant="quiet"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(after);
+                setCopied(true);
+                setIssue("");
+              } catch {
+                setIssue("Select and copy the full updated instructions above.");
+              }
+            }}
+          >
+            <Copy />
+            {copied ? "Copied instructions" : "Copy updated instructions"}
+          </VibeButton>
+          {issue && (
+            <p role="status" className="vibe-muted">
+              {issue}
+            </p>
+          )}
+        </div>
+      </details>
+      {actions != null && <footer className="vibe-prompt-change-actions">{actions}</footer>}
+    </div>
   );
 }
 

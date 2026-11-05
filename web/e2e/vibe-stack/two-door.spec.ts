@@ -278,7 +278,7 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  const updated=await patch.json();
  await page.goto(`/vibe-evals?session=${original.session.id}&agent=${updated.document.artifacts.at(-1).id}&view=build`);
  await openView(page,'Tests');
- await page.getByRole('button',{name:'Apply change and rerun',exact:true}).click();
+ await page.getByRole('button',{name:'Apply and run 3 tests',exact:true}).click();
  await page.getByRole('button',{name:'Start run',exact:true}).click();
  // Capture the immutable baseline only after the last case and operation finish.
  await expect.poll(async()=> {const o=(await evidence(page)).session.operations.at(-1);return o?.state==='COMPLETED'?o.scorecard?.failed:null;}).toBe(1);
@@ -297,11 +297,11 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  await expect(page.getByRole('tab',{name:'Agent',exact:true})).toHaveAttribute('aria-selected','true');
  await expect(page.getByRole('button',{name:'Review latest version',exact:true})).toHaveCount(0);
  const suggested=page.getByRole('region',{name:'Suggested change',exact:true});
- await expect(suggested.locator(':scope > details')).toHaveJSProperty('open',true);
+ await expect(suggested.locator('.vibe-prompt-change > details')).toHaveJSProperty('open',true);
  const changes=suggested.getByLabel('Instruction changes',{exact:true});
  await expect(changes).toBeVisible();
  await expect(changes).toContainText('Only unopened');
- const rerun=suggested.getByRole('button',{name:'Apply change and rerun',exact:true});
+ const rerun=suggested.getByRole('button',{name:'Apply and run 3 tests',exact:true});
  await expect(rerun).toBeVisible();
  await rerun.click();
  await expect(page.getByRole('dialog')).toContainText('up to');

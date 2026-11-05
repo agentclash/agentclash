@@ -51,7 +51,7 @@ import { EvaluationEntry, type RecentProject } from "./evaluation-entry";
 import { evaluationIdentity } from "./evaluation-navigation";
 import { BuildWorkspace } from "./build-workspace";
 import { Message } from "./vibe-message";
-import { buildProgress, instructionChangeBaseline } from "@/lib/vibe-build-timeline";
+import { buildProgress, buildVersion, instructionChangeBaseline } from "@/lib/vibe-build-timeline";
 import { WEB_EVENTS } from "@/lib/analytics/events";
 import { captureBuildEvent } from "@/lib/vibe-build-analytics";
 import "./workspace.css";
@@ -363,7 +363,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
   }
   const suiteContents = p.artifact?.kind === "test_suite" ? (
     <div className="space-y-4" data-proposal-id={p.artifact.id}>
-      {promptChanged && <PromptChange key={`instructions:${p.artifact.id}`} before={parent!.agent_prompt} after={p.artifact.agent_prompt} defaultOpen={buildJourney} />}
+      {promptChanged && <PromptChange key={`instructions:${p.artifact.id}`} before={parent!.agent_prompt} after={p.artifact.agent_prompt} defaultOpen={buildJourney} title={p.artifact.accepted ? "Instruction change" : "Proposed change"} beforeVersion={p.session ? buildVersion(p.session, parent!) : undefined} afterVersion={p.session ? buildVersion(p.session, p.artifact) : undefined} />}
       <TestSuitePanel inferenceUnavailable={p.inferenceUnavailable} selectedCase={p.selectedCase} onSelectCase={p.onSelectCase} projectID={p.session?.id} primary={primary === "tests"} key={`tests:${p.artifact.id}`} artifact={p.artifact} busy={p.busy} blocked={p.dirty} editError={p.feedbackTarget === "edit" ? p.actionError : undefined} runNotice={runFeedback}
         buildJourney={buildJourney}
         parent={parent}
@@ -771,6 +771,9 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                       key={`instructions:${p.artifact.id}`}
                       before={parent!.agent_prompt}
                       after={p.artifact.agent_prompt}
+                      title={p.artifact.accepted ? "Instruction change" : "Proposed change"}
+                      beforeVersion={p.session ? buildVersion(p.session, parent!) : undefined}
+                      afterVersion={p.session ? buildVersion(p.session, p.artifact) : undefined}
                     />
                   )}
                 {!p.quickChecking &&

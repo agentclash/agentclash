@@ -19,7 +19,7 @@ export { exampleAgentDescription } from "./improve-inputs";
 import { InstructionsHelp } from "./improve-inputs";
 import { useImprovePrice, priceLabel, ImproveRunNotice } from "./improve-run-quote";
 
-export const rerunLabel = (buildJourney: boolean) => buildJourney ? "Apply change and rerun" : "Test this change";
+export const rerunLabel = (buildJourney: boolean, count: number) => buildJourney ? `Apply and run ${testCount(count)}` : "Test this change";
 
 export function TestSuitePanel({
   mode = "combined", onAgent, onAskCase, editError, runNotice,
@@ -146,7 +146,7 @@ export function TestSuitePanel({
                 ? pendingPolicy
                   ? "Run previous tests"
                   : comparison
-                  ? rerunLabel(buildJourney)
+                  ? rerunLabel(buildJourney, cases.length)
                   : buildJourney && parent ? "Update and run" : `Run ${testCount(cases.length)}`
                 : preparingOnly ? "Keep these tests" : buildJourney && rules.length ? "Build from saved rules" : "Add your agent", ready && !buildJourney ? price : undefined)}
               <ArrowRight />
