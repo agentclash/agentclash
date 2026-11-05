@@ -38,3 +38,33 @@ export function diffContext(text: string, first: boolean, last: boolean) {
   if (parts.length <= 24) return text;
   return `${first ? "… " : parts.slice(0, 12).join("") + " … "}${last ? "" : parts.slice(-12).join("")}`;
 }
+
+// One entry per line, including blank lines and a final newline. Trim shared
+// edges before LCS and bound the table for unusually large pasted instructions.
+export function lineDiff(before: string, after: string): Change[] {
+  const a = before === "" ? [] : before.split("\n");
+  const b = after === "" ? [] : after.split("\n");
+  let start = 0, end = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  while (end < a.length - start && end < b.length - start && a[a.length - end - 1] === b[b.length - end - 1]) end++;
+  const out: Change[] = [];
+  for (let i = 0; i < start; i++) out.push({ kind: "same", text: a[i] });
+  const old = a.slice(start, a.length - end), next = b.slice(start, b.length - end);
+  if (old.length * next.length > 1_000_000) {
+    for (const text of old) out.push({ kind: "removed", text });
+    for (const text of next) out.push({ kind: "added", text });
+  } else {
+    const width = next.length + 1, table = new Uint32Array((old.length + 1) * width);
+    for (let i = old.length - 1; i >= 0; i--)
+      for (let j = next.length - 1; j >= 0; j--)
+        table[i * width + j] = old[i] === next[j] ? 1 + table[(i + 1) * width + j + 1] : Math.max(table[(i + 1) * width + j], table[i * width + j + 1]);
+    let i = 0, j = 0;
+    while (i < old.length || j < next.length) {
+      if (i < old.length && j < next.length && old[i] === next[j]) { out.push({ kind: "same", text: old[i++] }); j++; }
+      else if (j < next.length && (i === old.length || table[i * width + j + 1] > table[(i + 1) * width + j])) out.push({ kind: "added", text: next[j++] });
+      else out.push({ kind: "removed", text: old[i++] });
+    }
+  }
+  for (let i = a.length - end; i < a.length; i++) out.push({ kind: "same", text: a[i] });
+  return out;
+}

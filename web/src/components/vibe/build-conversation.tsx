@@ -100,7 +100,7 @@ export function BuildConversation({ session, artifact, busy, primary, onPreviewO
           {current && !busy && <VibeButton variant="quiet" onClick={() => openTrial()}>Try this agent</VibeButton>}
 
           {pendingChange && !selected && <>
-            {parent?.agent_prompt && entry.artifact.agent_prompt && parent.agent_prompt !== entry.artifact.agent_prompt && <PromptChange before={parent.agent_prompt} after={entry.artifact.agent_prompt} defaultOpen />}
+            {parent?.agent_prompt && entry.artifact.agent_prompt && parent.agent_prompt !== entry.artifact.agent_prompt && <PromptChange before={parent.agent_prompt} after={entry.artifact.agent_prompt} defaultOpen title={entry.artifact.accepted ? "Instruction change" : "Proposed change"} beforeVersion={buildVersion(session, parent)} afterVersion={entry.version} />}
             <VibeButton disabled={busy} onClick={() => onReviewArtifact(entry.artifact.id)}>Review update</VibeButton>
           </>}
           {selected && !associated && <div className="vibe-build-proposal">{proposal}</div>}

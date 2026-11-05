@@ -3246,8 +3246,8 @@ async function rerunFixOnAgent() {
     return path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
   };
   await render();
-  button("Apply change and rerun").focus();
-  await click("Apply change and rerun");
+  button("Apply and run 3 tests").focus();
+  await click("Apply and run 3 tests");
   await click("Start run"); await frame();
   await publish([...session.operations, retest({ state: "RUNNING", scorecard: undefined, results: [] })]);
   return { finish: () => publish([run(runID, "artifact-one"), retest()]) };
@@ -3403,7 +3403,7 @@ it("offers See the result as the primary on Tests after these tests ran, and Run
   expect(params().get("run")).toBe(runID);
 });
 
-it.each([["build", "Apply change and rerun"], ["test", "Test this change"]] as const)("selects Guide's fix on the %s Agent view with the diff open and the rerun next to it, and runs nothing", async (door, rerun) => {
+it.each([["build", "Apply and run 3 tests"], ["test", "Test this change"]] as const)("selects Guide's fix on the %s Agent view with the diff open and the rerun next to it, and runs nothing", async (door, rerun) => {
   readyTests(door);
   session.operations = [run(runID, "artifact-one")];
   harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
@@ -3427,8 +3427,10 @@ it.each([["build", "Apply change and rerun"], ["test", "Test this change"]] as c
   expect(params().get("run")).toBeNull();
   expect(params().get("view")).toBe("agent");
   expect([...container.querySelectorAll("button")].some(b => b.textContent === "Review latest version")).toBe(false);
-  const change = container.querySelector<HTMLDetailsElement>('[aria-label="Suggested change"] details')!;
-  expect(change.open).toBe(true);
+  const change = container.querySelector('[aria-label="Suggested change"] .vibe-prompt-change')!;
+  expect(change.querySelector<HTMLDetailsElement>("details")?.open).toBe(true);
+  expect(change.querySelector("footer button")?.textContent).toBe(rerun);
+  expect(change.querySelector("summary")?.textContent).toContain("v1 → v2");
   expect(change.textContent).toContain("Never promise a refund.");
   expect(posts()).toHaveLength(1);
   await click(rerun);
