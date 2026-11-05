@@ -8,7 +8,7 @@ import { resultCopy } from "./entry-model";
 import { expect, test, type Page } from "@playwright/test";
 import { agentReply, description, expectation, fakeVibe, instructions, packFile, transcript, type Fake } from "./entry-fake";
 import { flowMeter, type FlowMeter, census, writeRecord } from "./flow-meter";
-import { composer, doorButton, doorReady, entryReady, sendButton, sourceButton, runTestsButton, testChangeButton, addAgentInstructions, buildResult, improvePrimary, repliesInput, rulesInput, startComposer, switchDoorButton, buildOptions, improveOptions, startScreen } from "./entry-model";
+import { composer, doorButton, doorReady, entryReady, sendButton, sourceButton, runTestsButton, testChangeButton, addAgentInstructions, buildResult, improvePrimary, repliesInput, rulesInput, startComposer, switchDoorButton, buildOptions, startScreen } from "./entry-model";
 
 test.use({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
 test.describe.configure({ timeout: 120_000 });
@@ -19,8 +19,9 @@ type Budget = { clicks: number; texts: number; files: number; decisions: number 
 // column opens with them and its controls count in the main zone (12 before PR 1, with an empty Guide).
 // Lazy creation is merged: measure the direct first-input paths; keep explicit run consent.
 // "build start" is 6, one over the plan target of 5: the sixth is the required data-use link.
+// Improve has nine controls with the door switch now visible in the footer.
 // Entry: three paths (an agent, an idea, work to automate) and the sample result.
-const controlBudget: Record<string, number> = { entry: 4, "build start": 6, "improve start": 8, "imported tests": 13, cost: 4 };
+const controlBudget: Record<string, number> = { entry: 4, "build start": 6, "improve start": 9, "imported tests": 13, cost: 4 };
 const tab = (page: Page, name: "Agent" | "Tests" | "Results") => page.getByRole("tab", { name, exact: true });
 const runResults = (page: Page) => page.getByRole("article", { name: "Run results" });
 const runDone = (page: Page) => expect(page.locator(".vibe-project-header")).toContainText("Run 1: Completed", { timeout: 30_000 });
@@ -337,7 +338,7 @@ test("door navigation keeps both drafts and makes no project before input is com
   await expect(page.locator(".vibe-entry-intro")).not.toHaveAttribute("data-fresh");
   await doorButton(page, "improve").click(); await doorReady(page, "improve");
   await startComposer(page, "improve").fill(instructions);
-  await improveOptions(page).click();
+  await expect(switchDoorButton(page, "improve")).toBeVisible();
   await switchDoorButton(page, "improve").click();
   await doorReady(page, "build"); await expect(composer(page)).toHaveValue(description);
   await page.reload(); await doorReady(page, "build"); await expect(composer(page)).toHaveValue(description);
@@ -355,7 +356,7 @@ for (const door of ["build", "improve"] as const) test(`${door} start follows br
   await expect(doorButton(page, door)).toBeFocused();
   await page.goForward(); await doorReady(page, door);
   await page.reload(); await doorReady(page, door);
-  await page.getByRole("button", { name: door === "build" ? "All projects" : "Back", exact: true }).click();
+  await page.getByRole("button", { name: "All projects", exact: true }).click();
   await entryReady(page); await expect(doorButton(page, door)).toBeFocused();
   expect(fake.posts).toEqual([]);
   expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
@@ -375,7 +376,7 @@ for (const door of ["build", "improve"] as const) test(`New project returns from
 });
 
 
-test("every Improve segment keeps at most eight enabled main controls", async ({ page }) => {
+test("every Improve source keeps at most nine enabled main controls", async ({ page }) => {
   const { fake } = await open(page, "improve-segment-controls");
   await doorButton(page, "improve").click(); await doorReady(page, "improve");
   const segments: Record<string, { empty: number; populated: number }> = {};
@@ -385,10 +386,10 @@ test("every Improve segment keeps at most eight enabled main controls", async ({
     const empty = snapshot.controls.mainEnabled;
     expect(snapshot.rows.filter(row => row.tag === "button" && ["Instructions", "Real replies", "Test pack"].includes(row.name))).toHaveLength(1);
     if (source === "instructions") {
-      await expect(startScreen(page).getByRole("combobox", { name: "Which model does your agent use?" })).toBeVisible();
+      await expect(startScreen(page).getByRole("combobox", { name: "Model your agent uses" })).toBeVisible();
       await expect(startScreen(page).getByRole("button", { name: "Use sample instructions", exact: true })).toBeVisible();
     } else {
-      await expect(startScreen(page).getByRole("combobox", { name: "Which model does your agent use?" })).toHaveCount(0);
+      await expect(startScreen(page).getByRole("combobox", { name: "Model your agent uses" })).toHaveCount(0);
       await expect(startScreen(page).getByRole("button", { name: "Use sample instructions", exact: true })).toHaveCount(0);
     }
     if (source === "instructions") await startComposer(page, "improve").fill(instructions);

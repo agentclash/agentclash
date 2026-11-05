@@ -60,9 +60,9 @@ it("U4: quiet text aligns with its column and keeps 44px targets", async () => {
     expect(computed.minWidth).toBe("44px");
   }
 });
-it("U5: quiet buttons stay plain at rest with a hover/focus underline", async () => {
+it("U5: quiet buttons keep the sample and footer switch underlined at rest", async () => {
   await draw(<ImproveStart {...improve} />);
-  for (const button of node.querySelectorAll(".vibe-button-quiet")) expect(getComputedStyle(button).textDecoration).toBe("none");
+  for (const button of node.querySelectorAll(".vibe-button-quiet")) expect(getComputedStyle(button).textDecoration).toBe(button.matches(".vibe-start-switch, .vibe-improve-sample") ? "underline" : "none");
   expect(css).toContain('.vibe-button-quiet:is(:hover, :focus-visible) { text-decoration: underline; }');
 });
 it.each(["build", "improve"] as const)("W1: %s keeps the shared Data use link underlined at rest", async door => {
@@ -128,7 +128,7 @@ it("U16: the trial follows the result action area by the existing 32px spacing t
 });
 it("U8: formats raw provider IDs in both model selects without changing submitted values", async () => {
   await draw(<ImproveStart {...improve} />);
-  expect(node.querySelector('option[value="openai/gpt-4.1-mini"]')!.textContent).toBe("GPT-4.1 mini · OpenAI");
+  expect(node.querySelector('option[value="openai/gpt-4.1-mini"]')!.textContent).toBe("GPT-4.1 mini · openai/gpt-4.1-mini");
   await draw(<ModelSelect label="Agent" value="openai/gpt-4.1-mini" models={[{ ...improve.models[0], input_nano_per_token: 0, output_nano_per_token: 0 }, { id: "anthropic/claude-sonnet", name: "anthropic/claude-sonnet", input_nano_per_token: 0, output_nano_per_token: 0 }]} onChange={noop} />);
   expect(node.querySelector("select")!.value).toBe("openai/gpt-4.1-mini");
   expect(node.querySelector("option")!.textContent).toBe("GPT-4.1 mini · OpenAI");

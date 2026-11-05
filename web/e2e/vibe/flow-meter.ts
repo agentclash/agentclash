@@ -52,7 +52,7 @@ export function census(page: Page): Promise<Census> {
     }
     const rows = [...grouped.values()].map(el => {
       const box = el.getBoundingClientRect();
-      return { zone: zone(el), first: first(el), tag: el.tagName.toLowerCase(), name: text(el.getAttribute("aria-label") || (el as HTMLElement).innerText || el.getAttribute("placeholder")).slice(0, 80),
+      return { zone: zone(el), first: first(el), tag: el.tagName.toLowerCase(), name: text(el.getAttribute("aria-labelledby")?.split(/\s+/).map(id => document.getElementById(id)?.textContent || "").join(" ") || el.getAttribute("aria-label") || (el as HTMLElement).innerText || el.getAttribute("placeholder")).slice(0, 80),
         disabled: (el as HTMLButtonElement).disabled === true || el.getAttribute("aria-disabled") === "true", primary: el.classList.contains("vibe-button-primary"), inline: inline(el), w: Math.round(box.width), h: Math.round(box.height) };
     });
     const firstRows = rows.filter(row => row.first);

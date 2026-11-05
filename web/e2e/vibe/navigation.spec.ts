@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { project } from "./entry-fake";
 import { defaultModels, type Session } from "../../src/lib/vibe";
-import { chooseDoor, composer, doorButton, doorReady, entryHeading, improveSource, newProjectChoices, projectStartHeading, sourceButton, otherResults, improveOptions, startComposer, startScreen, improvePrimary, projectReady } from "./entry-model";
+import { chooseDoor, composer, doorButton, doorReady, entryHeading, improveSource, newProjectChoices, projectStartHeading, sourceButton, otherResults, startComposer, startScreen, improvePrimary, projectReady } from "./entry-model";
 
 function evaluation(id: string): Session {
   return { id, revision: 1, event_cursor: 1, anonymous: true, operations: [],
@@ -205,7 +205,7 @@ test("sidebar creation and cancellation preserve the draft and never start a run
   await expect(page.locator('[data-evaluation-id="first"]')).toBeVisible();
   expect(control.posts).toEqual([]);
   await page.getByRole("textbox", { name: "Agent instructions" }).fill("Separate door draft");
-  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page.getByRole("button", { name: "All projects", exact: true }).click();
   await chooseDoor(page, "improve");
   await expect(page.getByRole("textbox", { name: "Agent instructions" })).toHaveValue("Separate door draft");
   await page.locator('[data-evaluation-id="first"]').click();
@@ -298,8 +298,8 @@ test("plain-language source choices explain test packs and let an empty choice c
   await doorReady(page, "improve");
   await improveSource(page, "import");
   await expect(page.getByText("A test pack holds tests. Add your agent’s instructions after import.", { exact: true })).toBeVisible();
-  await improveOptions(page).click();
-  await page.getByRole("button", { name: "Build an agent instead", exact: true }).click();
+  await expect(page.getByRole("button", { name: "No agent yet? Build one", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "No agent yet? Build one", exact: true }).click();
   await doorReady(page, "build");
   expect(control.posts).toEqual([]);
   expect(control.errors).toEqual([]);

@@ -21,10 +21,7 @@
 .vibe-build-more-content > section, .vibe-build-next-actions > section { min-width: 0; max-width: 100%; }
 .vibe-build-evidence-action { margin-top: var(--vibe-space-3); }
 @media (max-width: 420px) { .vibe-build-next-primary > .vibe-project-enquiry { width: 100%; } }
-.vibe-build-start.vibe-start-page { box-sizing: border-box; width: min(100%, calc(760px + 2 * var(--vibe-gutter))); min-width: 0; margin-inline: auto; padding: calc(var(--vibe-space-7) - var(--vibe-space-3)) var(--vibe-gutter) calc(2 * var(--vibe-space-6)); display: grid; gap: var(--vibe-space-6); }
-.vibe-build-start > header { margin-bottom: calc(-1 * var(--vibe-space-3)); }
-.vibe-build-intro { display: grid; gap: var(--vibe-space-3); }
-.vibe-build-intro > p, .vibe-build-start > p { margin: 0; }
+.vibe-build-start > p { margin: 0; }
 .vibe-build-intro > p:last-child { color: var(--vibe-text-2); font-size: var(--vibe-font-body); line-height: var(--vibe-leading-body); }
 .vibe-build-eyebrow { font-family: var(--vibe-font-data); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); letter-spacing: .08em; text-transform: uppercase; color: var(--vibe-text-3); }
 .vibe-build-start-form { min-width: 0; padding: 0; border: 0; background: transparent; box-shadow: none; display: grid; gap: var(--vibe-space-6); }
@@ -59,12 +56,7 @@
 .vibe-build-next-steps h3, .vibe-build-next-steps p { margin: 0; font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-build-next-steps h3 { font-weight: 600; }
 .vibe-build-next-steps p { color: var(--vibe-text-2); }
-.vibe-build-start-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: var(--vibe-space-4) var(--vibe-space-5); padding-top: var(--vibe-space-2); }
-.vibe-workspace .vibe-build-start-footer .vibe-data-use-notice { flex: 1 1 320px; max-width: 440px; margin: 0; color: var(--vibe-text-3); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); }
-.vibe-build-start-footer .vibe-data-use-notice a { display: inline-flex; align-items: center; min-height: 40px; color: var(--vibe-text-2); }
 @media (max-width: 600px) {
-  .vibe-build-start.vibe-start-page { padding: var(--vibe-space-5) var(--vibe-space-4) var(--vibe-space-6); gap: var(--vibe-space-5); }
-  .vibe-build-start > header { margin-bottom: 0; }
   .vibe-build-start-form { gap: var(--vibe-space-5); }
   .vibe-workspace .vibe-build-start-card > textarea { padding-inline: var(--vibe-space-4); }
   /* Keep both example chips on one row at 390 px with room to spare: the group name "Example tasks" replaces the visible "Try". */
@@ -74,11 +66,8 @@
   .vibe-build-start-submit { width: 100%; margin: 0; }
   .vibe-build-next-steps { grid-template-columns: minmax(0, 1fr); }
   .vibe-build-next { padding-top: var(--vibe-space-2); }
-  .vibe-build-start-footer { flex-direction: column; }
-  .vibe-workspace .vibe-build-start-footer .vibe-data-use-notice { flex: auto; }
 }
 @media (max-width: 600px), (any-pointer: coarse) { .vibe-build-key-hint { display: none; } }
-@media (pointer: coarse) { .vibe-build-start-footer .vibe-data-use-notice a { min-height: 44px; } }
 .vibe-build-stages { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 0; margin: 8px 0; list-style: none; font-size: 12px; }
 .vibe-build-stages li:not(:last-child)::after { content: " →"; }
 .vibe-build-stages [aria-current="step"] { font-weight: 600; text-decoration: none; }

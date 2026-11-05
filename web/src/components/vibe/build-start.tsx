@@ -25,10 +25,10 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
   const unavailable = p.busy || reading;
   const send = () => { if (!reason && !unavailable) p.onStart(p.draft.trim()); };
   useEffect(() => { if (ready) input.current?.focus(); }, [ready]);
-  return <section className="vibe-build-start vibe-start-page" onKeyDown={event => { if (event.key === "Escape" && !unavailable) p.onBack(); }}>
-    <header><VibeButton variant="quiet" className="vibe-build-back" disabled={unavailable} onClick={p.onBack}><ChevronLeft aria-hidden="true" />All projects</VibeButton></header>
-    <div className="vibe-build-intro">
-      <p className="vibe-build-eyebrow">Build an agent</p>
+  return <section className="vibe-build-start vibe-start-page vibe-start-layout" onKeyDown={event => { if (event.key === "Escape" && !unavailable) p.onBack(); }}>
+    <header><VibeButton variant="quiet" className="vibe-start-back" disabled={unavailable} onClick={p.onBack}><ChevronLeft aria-hidden="true" />All projects</VibeButton></header>
+    <div className="vibe-build-intro vibe-start-intro">
+      <p className="vibe-start-eyebrow">Build an agent</p>
       <h1 className="vibe-start-title"><label htmlFor={`${id}-task`}>What task should the agent handle?</label></h1>
       <p id={`${id}-helper`}>A few sentences: what comes in, what a good reply does, and any rules.</p>
     </div>
@@ -72,9 +72,9 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
         <li><span className="vibe-build-step-number" aria-hidden="true">03</span><h3>The tests run</h3><p>You see each reply, what passed and what to fix.</p></li>
       </ol>
     </section>
-    <footer className="vibe-build-start-footer">
+    <footer className="vibe-start-footer">
       <VibeDataUseNotice />
-      <VibeButton variant="quiet" className="vibe-build-switch" disabled={unavailable} onClick={p.onSwitchDoor}>Have an agent already? Improve it</VibeButton>
+      <VibeButton variant="quiet" className="vibe-start-switch" disabled={unavailable} onClick={p.onSwitchDoor}>Have an agent already? Improve it</VibeButton>
     </footer>
   </section>;
 }

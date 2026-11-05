@@ -825,7 +825,7 @@ it("offers distinct instructions and recorded-reply intake", async () => {
   const start = <ImproveStart mode="instructions" onMode={vi.fn()} drafts={{ instructions: "", conversations: "", rules: "" }} onDraft={vi.fn()} models={[]} signedIn={false} busy={false} onWriteTests={vi.fn()} onSaveReplies={vi.fn()} onImportPack={vi.fn()} onOther={vi.fn()} onSwitchDoor={vi.fn()} onBack={vi.fn()} />;
   await render({ startScreen: start });
   expect(container.querySelectorAll("h1")).toHaveLength(1);
-  expect([...container.querySelectorAll('[role="radio"]')].map(node => node.textContent)).toEqual(["Instructions", "Real replies", "Test pack"]);
+  expect([...container.querySelectorAll('[role="radio"]')].map(node => document.getElementById(node.getAttribute("aria-labelledby")!)?.textContent)).toEqual(["Instructions", "Real replies", "Test pack"]);
   expect(container.querySelector('textarea')?.labels?.[0]?.textContent).toBe("Agent instructions");
   expect(container.querySelector(".vibe-composer-dock")).toBeNull();
 });

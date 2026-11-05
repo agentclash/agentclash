@@ -185,7 +185,7 @@ it("PR7 puts a file error beside Attach a file and associates a start error with
 
 it("introduces the task and explains three ordered steps under What happens next", async () => {
   await render();
-  expect(node.querySelector(".vibe-build-eyebrow")?.textContent).toBe("Build an agent");
+  expect(node.querySelector(".vibe-start-eyebrow")?.textContent).toBe("Build an agent");
   expect(document.getElementById(input().getAttribute("aria-describedby")!)?.textContent).toBe("A few sentences: what comes in, what a good reply does, and any rules.");
   const heading = node.querySelector("h2")!;
   expect(heading.textContent).toBe("What happens next");
