@@ -3,10 +3,10 @@ import { contactEmailLink, VIBE_CONTACT_EMAIL, vibeContact } from "./vibe-contac
 
 it("always gives an email address, and prefers the address from the API", () => {
   expect(VIBE_CONTACT_EMAIL).toBe("hello@tryagentclash.com");
-  expect(vibeContact(undefined)).toEqual({ available: false, email: "hello@tryagentclash.com" });
-  expect(vibeContact({ available: false, email: "" })).toEqual({ available: false, email: "hello@tryagentclash.com" });
-  expect(vibeContact({ available: false, email: "   " })).toEqual({ available: false, email: "hello@tryagentclash.com" });
-  expect(vibeContact({ available: true, email: " team@example.test " })).toEqual({ available: true, email: "team@example.test" });
+  expect(vibeContact(undefined)).toEqual({ direct: false, available: false, email: "hello@tryagentclash.com" });
+  expect(vibeContact({ direct: false, available: false, email: "" })).toEqual({ direct: false, available: false, email: "hello@tryagentclash.com" });
+  expect(vibeContact({ direct: false, available: false, email: "   " })).toEqual({ direct: false, available: false, email: "hello@tryagentclash.com" });
+  expect(vibeContact({ available: true, email: " team@example.test " })).toEqual({ direct: false, available: true, email: "team@example.test" });
 });
 
 it("encodes the subject and body of a mail link, and refuses a link that is too long", () => {
@@ -15,4 +15,11 @@ it("encodes the subject and body of a mail link, and refuses a link that is too 
   expect(contactEmailLink("hello@tryagentclash.com", "Agents for our team")).toBe("mailto:hello%40tryagentclash.com?subject=Agents%20for%20our%20team");
   expect(contactEmailLink("hello@tryagentclash.com", "Agents for our team", "x".repeat(2000))).toBeUndefined();
   expect(contactEmailLink("", "Agents for our team", "text")).toBeUndefined();
+});
+
+it("enables direct contact only when the API explicitly advertises both capabilities", () => {
+  expect(vibeContact({ available: true, direct: true }).direct).toBe(true);
+  expect(vibeContact({ available: false, direct: true }).direct).toBe(false);
+  expect(vibeContact({ available: true }).direct).toBe(false);
+  expect(vibeContact({ available: true, direct: false }).direct).toBe(false);
 });

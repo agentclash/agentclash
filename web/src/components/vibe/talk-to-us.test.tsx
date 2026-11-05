@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { VibeConnection } from "@/lib/vibe-connection";
 import { TalkToUs } from "./talk-to-us";
 
 let node: HTMLDivElement, root: Root;
@@ -53,4 +55,133 @@ it("explains a failed copy when the Clipboard API is absent, and keeps the statu
   const copy = [...popup().querySelectorAll("button")].find(b => b.textContent === "Copy")!;
   await act(async () => { copy.click(); });
   expect(status.textContent).toBe("Copy is not available here. Select the text and copy it yourself.");
+});
+
+const token = vi.fn(async () => "visitor-token");
+async function renderDirect(open = true) {
+  await act(async () => root.render(<VibeConnection.Provider value={{ token, contact: { email: "team@example.test", available: true, direct: true } }}><TalkToUs open={open} onOpenChange={onOpenChange} email="team@example.test" /></VibeConnection.Provider>));
+}
+const submit = () => popup().querySelector('button[type="submit"]') as HTMLButtonElement;
+async function submitDirect() { await act(async () => { popup().querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); }); }
+
+it("requires valid work and email before sending direct contact", async () => {
+  const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+  await renderDirect();
+  const email = popup().querySelector('input[type="email"]') as HTMLInputElement;
+  expect(email.required).toBe(true);
+  expect(email.autocomplete).toBe("email");
+  await submitDirect();
+  expect(fetch).not.toHaveBeenCalled();
+  await type("What work should agents take on?", "Automate returns");
+  await type("Work email", "invalid");
+  await submitDirect();
+  expect(popup().querySelector('[role="alert"]')?.textContent).toContain("valid email");
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it("posts contact details with auth, retries the same ID and body, and focuses the receipt", async () => {
+  const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: "temporary_unavailable", message: "Connection lost" } }), { status: 503 })).mockResolvedValue(new Response(JSON.stringify({ id: "receipt", status: "received" }), { status: 201 }));
+  vi.stubGlobal("fetch", fetch);
+  await renderDirect();
+  await type("What work should agents take on?", "Automate returns");
+  await type("Work email", "visitor@example.test");
+  await type("Company (optional)", "Northwind");
+  const honeypot = popup().querySelector('input[name="website"]') as HTMLInputElement;
+  expect(honeypot.tabIndex).toBe(-1);
+  expect(honeypot.getAttribute("aria-hidden")).toBe("true");
+  await submitDirect();
+  expect(popup().querySelector('[role="alert"]')?.textContent).toContain("Connection lost");
+  expect(popup().querySelector('a[href="mailto:team@example.test"]')).not.toBeNull();
+  expect((popup().querySelector('input[type="email"]') as HTMLInputElement).value).toBe("visitor@example.test");
+  await submitDirect();
+  expect(fetch).toHaveBeenCalledTimes(2);
+  const [url, init] = fetch.mock.calls[0];
+  expect(url).toMatch(/\/v1\/vibe\/enquiries$/);
+  expect(new Headers(init.headers).get("Authorization")).toBe("Bearer visitor-token");
+  expect(init.method).toBe("POST");
+  const body = JSON.parse(init.body);
+  expect(body).toEqual({ client_id: expect.stringMatching(/^[0-9a-f-]{36}$/), work: "Automate returns", email: "visitor@example.test", company: "Northwind", website: "" });
+  expect(fetch.mock.calls[1][1].body).toBe(init.body);
+  const receipt = popup().querySelector('.vibe-enquiry-receipt[role="status"]')!;
+  expect(receipt.textContent).toBe("Sent. We will reply to visitor@example.test.");
+  expect(document.activeElement).toBe(receipt);
+  const close = [...popup().querySelectorAll("button")].find(b => b.textContent === "Close")!;
+  await act(async () => close.click());
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+  await renderDirect(false); await renderDirect();
+  await type("What work should agents take on?", "Next task"); await type("Work email", "visitor@example.test");
+  await submitDirect();
+  expect(JSON.parse(fetch.mock.calls[2][1].body).client_id).not.toBe(body.client_id);
+});
+
+it("disables direct send while awaiting the response", async () => {
+  let resolve!: (value: Response) => void;
+  const fetch = vi.fn(() => new Promise<Response>(done => { resolve = done; }));
+  vi.stubGlobal("fetch", fetch);
+  await renderDirect();
+  await type("What work should agents take on?", "Automate returns"); await type("Work email", "visitor@example.test");
+  await submitDirect();
+  expect(submit().disabled).toBe(true);
+  await submitDirect(); expect(fetch).toHaveBeenCalledTimes(1);
+  await act(async () => resolve(new Response(JSON.stringify({ id: "receipt", status: "received" }), { status: 201 })));
+  expect(popup().textContent).toContain("Sent. We will reply to visitor@example.test.");
+});
+
+it("allows correction after a definite rejection and keeps the same dialog ID", async () => {
+  const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: "invalid_request", message: "Use another reply address", admission: "rejected" } }), { status: 400 })).mockResolvedValue(new Response(JSON.stringify({ id: "receipt", status: "received" }), { status: 201 }));
+  vi.stubGlobal("fetch", fetch);
+  await renderDirect();
+  await type("What work should agents take on?", "Automate returns"); await type("Work email", "visitor@example.test");
+  await submitDirect();
+  expect(popup().querySelector('[role="alert"]')?.textContent).toBe("Use another reply address");
+  expect((popup().querySelector('input[type="email"]') as HTMLInputElement).disabled).toBe(false);
+  await type("Work email", "corrected@example.test"); await submitDirect();
+  const first = JSON.parse(fetch.mock.calls[0][1].body), second = JSON.parse(fetch.mock.calls[1][1].body);
+  expect(second.client_id).toBe(first.client_id);
+  expect(second.email).toBe("corrected@example.test");
+  expect(popup().querySelector('.vibe-enquiry-receipt')?.textContent).toContain("corrected@example.test");
+});
+
+it("keeps the mailto flow when direct contact is unavailable", async () => {
+  await act(async () => root.render(<VibeConnection.Provider value={{ token, contact: { email: "team@example.test", available: false, direct: true } }}><TalkToUs open onOpenChange={onOpenChange} email="team@example.test" /></VibeConnection.Provider>));
+  expect(send().getAttribute("href")).toBe("mailto:team%40example.test?subject=Agents%20for%20our%20team");
+  expect(popup().querySelector('input[type="email"]')).toBeNull();
+});
+
+
+it("keeps the draft and mailto mode when config arrives while the dialog is open", async () => {
+  async function config(direct: boolean, open = true) {
+    await act(async () => root.render(<VibeConnection.Provider value={{ token, contact: { email: "team@example.test", available: true, direct } }}><TalkToUs open={open} onOpenChange={onOpenChange} email="team@example.test" /></VibeConnection.Provider>));
+  }
+  await config(false, false);
+  await config(false);
+  await type("What work should agents take on?", "Automate returns");
+  await type("Company (optional)", "Northwind");
+  await config(true);
+  expect((popup().querySelector("textarea") as HTMLTextAreaElement).value).toBe("Automate returns");
+  expect(send().getAttribute("href")).toContain("body=Automate%20returns%0A%0ACompany%3A%20Northwind");
+  expect(popup().querySelector('input[type="email"]')).toBeNull();
+  await config(true, false);
+  await config(true);
+  expect(popup().querySelector('input[type="email"]')).not.toBeNull();
+  expect((popup().querySelector("textarea") as HTMLTextAreaElement).value).toBe("Automate returns");
+  expect((popup().querySelector('input[autocomplete="organization"]') as HTMLInputElement).value).toBe("Northwind");
+});
+
+
+it("wraps a receipt containing a 64-character reply local part", async () => {
+  const style = document.createElement("style");
+  style.textContent = readFileSync("src/components/vibe/project-enquiry.css", "utf8");
+  document.head.append(style);
+  try {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "receipt", status: "received" }), { status: 201 })));
+    await renderDirect();
+    const email = `${"a".repeat(64)}@example.test`;
+    await type("What work should agents take on?", "Automate returns");
+    await type("Work email", email);
+    await submitDirect();
+    const receipt = popup().querySelector(".vibe-enquiry-receipt")!;
+    expect(receipt.textContent).toContain(email);
+    expect(getComputedStyle(receipt).overflowWrap).toBe("anywhere");
+  } finally { style.remove(); }
 });

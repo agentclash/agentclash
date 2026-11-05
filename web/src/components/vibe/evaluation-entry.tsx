@@ -47,7 +47,7 @@ export function EvaluationEntry({ busy, navigationBlocked = busy, onDoor, notice
         <span id={`vibe-door-${door}-outcome`} className="vibe-entry-path-text" aria-hidden="true">{text}</span>
         <span className="vibe-entry-path-action" aria-hidden="true">{action}<ArrowRight size={16} /></span>
       </button>)}
-      {/* Contact is never blocked by the connection state: it only opens the visitor's mail app. */}
+      {/* Contact stays available regardless of the model connection state. */}
       <button id="vibe-path-work" type="button" className="vibe-entry-path" data-tone="brass" aria-labelledby="vibe-path-work-title" aria-describedby="vibe-path-work-text vibe-path-work-email" onClick={() => setTalking(true)}>
         <span className="vibe-entry-path-icon" aria-hidden="true"><BriefcaseBusiness size={20} /></span>
         <span id="vibe-path-work-title" className="vibe-entry-path-title">I have work to automate</span>

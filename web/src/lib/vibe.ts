@@ -270,7 +270,7 @@ export type VibeConfig = {
  material_build?: boolean;
  availability?: { guest: { available: boolean; reason_code?: string }; workspace: { available: boolean; reason_code?: string } };
  pdf_uploads?: boolean;
- contact?: { email: string; available: boolean };
+ contact?: { email: string; available: boolean; direct?: boolean };
   two_door?: boolean;
   interaction_actions?: boolean;
   grading_recheck?: boolean;

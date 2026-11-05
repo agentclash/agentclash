@@ -2,11 +2,11 @@
 // one, people can still email the team, so the contact call to action never disappears.
 export const VIBE_CONTACT_EMAIL = "hello@tryagentclash.com";
 
-export type VibeContact = { email: string; available: boolean };
+export type VibeContact = { email: string; available: boolean; direct: boolean };
 
 /** The contact that the UI shows: the API form when it is available, and always an email address. */
-export function vibeContact(contact?: { email?: string; available?: boolean } | null): VibeContact {
-  return { available: !!contact?.available, email: contact?.email?.trim() || VIBE_CONTACT_EMAIL };
+export function vibeContact(contact?: { email?: string; available?: boolean; direct?: boolean } | null): VibeContact {
+  return { direct: contact?.direct === true && contact?.available === true, available: !!contact?.available, email: contact?.email?.trim() || VIBE_CONTACT_EMAIL };
 }
 
 // Mail apps and browsers drop very long mailto links, so a long body falls back to the address only.

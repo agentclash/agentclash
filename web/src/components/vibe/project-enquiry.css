@@ -44,9 +44,22 @@
 .vibe-talk-heading { display:flex; flex-direction:column; gap:var(--vibe-space-2); min-width:0; padding-right:36px; }
 .vibe-talk-heading [data-slot="dialog-title"] { font-family:var(--font-display),ui-serif,Georgia,serif; font-size:1.875rem; line-height:2.125rem; font-weight:400; letter-spacing:-0.01em; outline:none; }
 .vibe-talk-heading [data-slot="dialog-description"] { color:var(--vibe-text-2); font-size:var(--vibe-font-callout); line-height:1.375rem; }
+.vibe-talk-dialog .vibe-textarea::placeholder { color:var(--vibe-text-2); opacity:1; }
+.vibe-talk-dialog .vibe-enquiry-receipt { overflow-wrap:anywhere; }
 .vibe-talk-dialog .vibe-enquiry-field textarea { min-height:120px; }
 .vibe-talk-send.vibe-button { width:100%; }
 .vibe-talk-note { color:var(--vibe-text-2); font-size:var(--vibe-font-footnote); line-height:var(--vibe-leading-footnote); text-align:center; }
 .vibe-talk-direct { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:var(--vibe-space-2); color:var(--vibe-text-2); font-size:var(--vibe-font-callout); line-height:var(--vibe-leading-callout); overflow-wrap:anywhere; }
+.vibe-talk-direct a { display:inline-flex; align-items:center; min-height:40px; }
 .vibe-talk-direct .vibe-button { min-height:40px; }
 .vibe-talk-status { flex-basis:100%; color:var(--vibe-text-2); font-size:var(--vibe-font-footnote); line-height:var(--vibe-leading-footnote); text-align:center; }
+.vibe-talk-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--vibe-space-3); }
+.vibe-talk-fields input { min-height:48px; }
+.vibe-contact-honeypot { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
+@media (max-width:479px) { .vibe-talk-fields { grid-template-columns:1fr; } }
+.vibe-talk-dialog[data-slot="dialog-content"][data-direct] { padding:calc(var(--vibe-space-5) + var(--vibe-space-1)); }
+.vibe-talk-dialog[data-direct] .vibe-talk-heading [data-slot="dialog-title"] { padding-right:0; }
+.vibe-direct-contact { gap:var(--vibe-space-3); }
+.vibe-contact-form > .vibe-talk-send { margin-top:var(--vibe-space-3); }
+@media (max-width:479px) { .vibe-talk-dialog[data-slot="dialog-content"][data-direct] { padding:var(--vibe-space-4); } }
+@media (pointer:coarse) { .vibe-talk-direct a { min-height:44px; } .vibe-talk-dialog[data-direct] .vibe-button:not(.vibe-talk-send) { min-height:44px; } }
