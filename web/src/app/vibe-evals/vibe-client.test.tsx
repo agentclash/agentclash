@@ -2103,13 +2103,13 @@ it("keeps the V1 entry visible through the page while configuration loads, fails
     return json([]);
   };
   const entry = () => {
-    expect(container.textContent).toContain("What would you like to evaluate?");
+    expect(container.textContent).toContain("AI agents you can trust with real work.");
     expect(container.textContent).not.toContain("What should your agent do?");
     expect(container.querySelector('[aria-label="Projects sidebar"]')).toBeNull();
     expect(container.querySelector(".vibe-entry-topbar")).not.toBeNull();
     expect(composer()).toBeNull();
     return [...container.querySelectorAll<HTMLButtonElement>("button")]
-      .filter(b => /Build an agent|Improve an existing agent/.test(b.textContent || ""));
+      .filter(b => /I have an idea|I have an agent/.test(b.textContent || ""));
   };
   await render(<VibePage />);
   const doors = entry();
@@ -2499,7 +2499,7 @@ it("puts the workspace picker on the entry screen and focuses it from the sideba
   expect(picker.hasAttribute("aria-describedby")).toBe(false);
   expect(sidebar.textContent).toContain("Workspace Two");
   expect(button("Change workspace")).toBeTruthy();
-  expect([...container.querySelectorAll<HTMLButtonElement>("button")].filter(b => /Build an agent|Improve an existing agent/.test(b.textContent || "")).every(b => !b.disabled)).toBe(true);
+  expect([...container.querySelectorAll<HTMLButtonElement>("button")].filter(b => /I have an idea|I have an agent/.test(b.textContent || "")).every(b => !b.disabled)).toBe(true);
   expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
 });
 
@@ -2524,7 +2524,7 @@ it("automatically chooses the only workspace without a picker or inference", asy
   await render();
   expect(container.querySelector('select[aria-label="Workspace for new projects"]')).toBeNull();
   expect(container.querySelector(".vibe-sidebar-workspace")?.textContent).toContain("Workspace One");
-  expect([...container.querySelectorAll<HTMLButtonElement>(".vibe-entry-doors button")].every(button => !button.disabled)).toBe(true);
+  expect([...container.querySelectorAll<HTMLButtonElement>(".vibe-entry-paths button")].every(button => !button.disabled)).toBe(true);
   expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
 });
 
@@ -2563,7 +2563,7 @@ it.each(["guest", "workspace-a"])("starts a new workspace project independently 
   const choice = container.querySelector<HTMLSelectElement>('select[aria-label="Workspace for new projects"]')!;
   expect([...choice.options].some(o => o.value === "workspace-b")).toBe(true);
   await act(async () => { choice.value = "workspace-b"; choice.dispatchEvent(new Event("change", { bubbles: true })); });
-  const door = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.includes("Build an agent"))!;
+  const door = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.includes("I have an idea"))!;
   expect(door.disabled).toBe(false);
   await act(async () => door.click());
   expect(requests.filter(r => r.path === "/sessions" && r.method === "POST")).toHaveLength(0);
@@ -2889,11 +2889,15 @@ it("explains unavailable evaluation entry before its disabled choices while keep
   respond = async path => path === "/config" ? json({ enabled: true, two_door: true, defaults: defaultModels, models: [], availability: { guest: { available: false }, workspace: { available: false } } }) : json([]);
   await render();
   const reason = [...container.querySelectorAll('[role="status"]')].find(node => node.textContent === "No approved models are available.")!;
-  const choices = container.querySelector(".vibe-entry-doors")!;
+  const choices = container.querySelector(".vibe-entry-paths")!;
   expect(reason).toBeTruthy();
   expect(reason.compareDocumentPosition(choices) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect([...choices.querySelectorAll("button")].every(button => button.disabled)).toBe(true);
-  expect(button("Read a sample test")).toBeTruthy();
+  const doors = [...choices.querySelectorAll<HTMLButtonElement>('button[id^="vibe-door-"]')];
+  expect(doors).toHaveLength(2);
+  expect(doors.every(button => button.disabled)).toBe(true);
+  // Contact only opens the visitor's mail app, so it stays available.
+  expect(choices.querySelector<HTMLButtonElement>("#vibe-path-work")?.disabled).toBe(false);
+  expect(button("See a sample result")).toBeTruthy();
   expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
 });
 
@@ -2921,7 +2925,7 @@ async function enterDoor(door: "build" | "test", config: Record<string, unknown>
   const base = respond;
   respond = async (path, options) => path === "/config" ? json({ ...(await (await base(path, options)).json()), ...config }) : base(path, options);
   await render();
-  const choice = [...container.querySelectorAll<HTMLButtonElement>(".vibe-entry-doors button")].find(b => b.textContent?.includes(door === "build" ? "Build an agent" : "Improve an existing agent"))!;
+  const choice = [...container.querySelectorAll<HTMLButtonElement>(".vibe-entry-paths button")].find(b => b.textContent?.includes(door === "build" ? "I have an idea" : "I have an agent"))!;
   choice.focus();
   await act(async () => { choice.click(); await new Promise(resolve => setTimeout(resolve, 0)); });
   expect(container.textContent).toContain(door === "build" ? "What task should the agent handle?" : "How do you want to test your agent?");
@@ -3028,7 +3032,8 @@ it.each([
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(document.activeElement).toBe(document.getElementById(`vibe-door-${door}`));
   });
-  expect(container.querySelector("h1")?.textContent).toBe("What would you like to evaluate?");
+  // Another project remains, so the entry offers it first ("Continue").
+  expect(container.querySelector("h1")?.textContent).toBe(other ? "Welcome back." : "AI agents you can trust with real work.");
   expect(requests.filter(r => r.method === "DELETE")).toEqual([expect.objectContaining({ path: `/sessions/${session.id}`, query: "?revision=1" })]);
 });
 
@@ -3629,7 +3634,7 @@ it("keeps the Build estimate out of the chooser and shows one h1 there", async (
   expect(shown('[aria-label="Build estimate"]')).toHaveLength(0);
   await click("Back"); await frame();
   expect(shown('[aria-label="Build estimate"]')).toHaveLength(0);
-  expect(visibleH1().map(h1 => h1.textContent)).toEqual(["What would you like to evaluate?"]);
+  expect(visibleH1().map(h1 => h1.textContent)).toEqual(["AI agents you can trust with real work."]);
   expect(document.activeElement?.id).toBe("vibe-door-build");
   expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
 });
@@ -3942,7 +3947,7 @@ it("PR4 shows the configured first-build ceiling for a signed-in user", async ()
 
 it("PR4 opens the sample in one sheet without creating a project", async () => {
   harness.params = new URLSearchParams(); respond = async path => path === "/config" ? twoDoorConfig() : json([]);
-  await render(); await click("Read a sample test");
+  await render(); await click("See a sample result");
   expect(dialogNames()).toEqual(["Sample: a return policy assistant"]);
   expect(document.body.textContent).toContain("opened items are ineligible");
   expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
@@ -4025,21 +4030,25 @@ it.each(["build", "test"] as const)("PR4 navigates the %s start with a stale Nex
   expect(visibleH1().map(h => h.textContent)).toEqual([heading]);
   expect(document.activeElement).toBe(door === "build" ? composer() : visibleH1()[0]);
   await click("Back"); await frame();
-  expect(visibleH1().map(h => h.textContent)).toEqual(["What would you like to evaluate?"]);
+  expect(visibleH1().map(h => h.textContent)).toEqual(["AI agents you can trust with real work."]);
   expect(document.activeElement).toBe(buttonByDoor(door));
   expect(requests.filter(r => r.method === "POST" && r.path === "/sessions")).toEqual([]);
 });
 
-it("PR4 renders three whole Build preview steps with a short accessible door name", async () => {
+it("renders three paths with short accessible names and no prices or steps on the first screen", async () => {
   harness.params = new URLSearchParams();
   const previous = respond; respond = async (path, options) => path === "/config" ? twoDoorConfig() : previous(path, options);
   await render();
   const door = buttonByDoor("build");
   expect(door.getAttribute("aria-labelledby")).toBe("vibe-door-build-title");
-  expect(document.getElementById(door.getAttribute("aria-labelledby")!)?.textContent).toBe("Build an agent");
-  const steps = [...door.querySelectorAll("ol > li")];
-  expect(steps.map(step => step.textContent)).toEqual(["01Describe the task", "02We draft the agent", "03Three tests run"]);
-  expect(steps.map(step => step.querySelector("b")?.textContent)).toEqual(["01", "02", "03"]);
+  expect(document.getElementById(door.getAttribute("aria-labelledby")!)?.textContent).toBe("I have an idea");
+  expect(document.getElementById(buttonByDoor("test").getAttribute("aria-labelledby")!)?.textContent).toBe("I have an agent");
+  const paths = container.querySelector(".vibe-entry-paths")!;
+  expect([...paths.querySelectorAll(".vibe-entry-path-title")].map(title => title.textContent)).toEqual(["I have an agent", "I have an idea", "I have work to automate"]);
+  // Steps, prices and times belong to the screen of each path.
+  expect(paths.querySelector("ol")).toBeNull();
+  expect(paths.textContent).not.toMatch(/\$\d|min\b/);
+  expect(paths.querySelector("#vibe-path-work")?.textContent).toContain("hello@tryagentclash.com");
 });
 
 
@@ -4220,7 +4229,7 @@ it.each([["build", "drawer"], ["test", "drawer"], ["build", "sidebar"], ["test",
   if (surface === "sidebar") { signedInWorkspace(); await render(); }
   else await click("Open projects");
   await click("New project");
-  expect(visibleH1().map(h => h.textContent)).toEqual(["What would you like to evaluate?"]);
+  expect(visibleH1().map(h => h.textContent)).toEqual(["AI agents you can trust with real work."]);
   expect(params().get("start")).toBeNull();
   await act(async () => buttonByDoor(door).click());
   expect(door === "build" ? composer().value : textarea("Agent instructions")?.value).toBe("Keep the uncommitted input.");
@@ -4266,7 +4275,7 @@ it("lets a signed-in user explicitly choose a workspace before either new-projec
   await render();
   const choice = container.querySelector<HTMLSelectElement>('select[aria-label="Workspace for new projects"]')!;
   expect(choice.value).toBe("");
-  const doors = [...container.querySelectorAll<HTMLButtonElement>("button")].filter(button => /Build an agent|Improve an existing agent/.test(button.textContent || ""));
+  const doors = [...container.querySelectorAll<HTMLButtonElement>("button")].filter(button => /I have an idea|I have an agent/.test(button.textContent || ""));
   expect(doors.every(button => button.disabled)).toBe(true);
   await act(async () => { choice.value = "workspace-one"; choice.dispatchEvent(new Event("change", { bubbles: true })); });
   expect(doors.every(button => !button.disabled)).toBe(true);
@@ -5012,7 +5021,7 @@ it("PR7 always shows the two-door entry even if an old config says false", async
   respond = async path => path === "/config" ? json({ ...(await twoDoorConfig().json()), two_door: false }) : json([]);
   await render(); expect(container.querySelector(".vibe-entry-page")).not.toBeNull();
   expect(container.querySelector("textarea")).toBeNull();
-  expect([...container.querySelectorAll("button")].some(node => node.textContent?.includes("Build an agent"))).toBe(true);
+  expect([...container.querySelectorAll("button")].some(node => node.textContent?.includes("I have an idea"))).toBe(true);
 });
 
 it("PR7 shows a rejected Guide send beside the composer once", async () => {

@@ -13,6 +13,8 @@
   --vibe-overlay: rgba(18,17,15,.45);
   --vibe-shadow-2: 0 8px 24px rgba(28,26,22,.1); --vibe-shadow-3: 0 24px 64px rgba(28,26,22,.16);
   --vibe-diff-add-bg: #e3efd6; --vibe-diff-add-fg: #2f5219; --vibe-diff-del-bg: #f8e1d8; --vibe-diff-del-fg: #8a2e1d; --vibe-selection: #e8dcbc;
+  /* Brass is only for contact with the AgentClash team (the agency offer), never for a status. */
+  --vibe-brass: #765820; --vibe-brass-tint: #f3ead6; --vibe-on-brass: #ffffff; --vibe-brass-border: #8c6d30;
   /* Earlier names, kept as aliases of the roles above. They resolve on this element, so the
      dark block below only sets the roles. */
   --vibe-fg: var(--vibe-text-1); --vibe-muted: var(--vibe-text-2); --vibe-border: var(--vibe-separator);
@@ -42,12 +44,12 @@
   --vibe-overlay: rgba(18,17,15,.6);
   --vibe-shadow-2: 0 8px 24px rgba(0,0,0,.4); --vibe-shadow-3: 0 24px 64px rgba(0,0,0,.55);
   --vibe-diff-add-bg: #2f3c27; --vibe-diff-add-fg: #d2e6bc; --vibe-diff-del-bg: #482f27; --vibe-diff-del-fg: #f0c7b4; --vibe-selection: #443d2e;
+  --vibe-brass: #e3cb94; --vibe-brass-tint: #262115; --vibe-on-brass: #12110f; --vibe-brass-border: #9d8a5f;
   color-scheme: dark;
 }
-/* The loading fallback renders before the route sets data-appearance, so it follows the system
-   appearance with the same canvas colours (and the theme-color in page.tsx). */
-.vibe-route-fallback { min-height: 100dvh; background: #faf8f5; }
-@media (prefers-color-scheme: dark) { .vibe-route-fallback { background: #12110f; } }
+/* The loading fallback renders before the route sets data-appearance. Dark is the default
+   appearance, so the fallback uses the dark canvas (and the theme-color in page.tsx). */
+.vibe-route-fallback { min-height: 100dvh; background: #12110f; }
 .vibe-portal { background: transparent; }
 .vibe-workspace :is([data-slot="dialog-overlay"], [data-slot="sheet-overlay"]) { background: var(--vibe-overlay); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
 .vibe-workspace :is([data-slot="popover-content"], [data-slot="dropdown-menu-content"]) { background: var(--vibe-elevated); box-shadow: var(--vibe-shadow-2); border: 1px solid var(--vibe-border); }
@@ -56,6 +58,7 @@
   --vibe-text-1: inherit; --vibe-text-2: inherit; --vibe-text-3: inherit; --vibe-text-4: inherit; --vibe-separator: inherit; --vibe-control-border: inherit;
   --vibe-ink: inherit; --vibe-on-ink: inherit; --vibe-ink-hover: inherit; --vibe-ink-pressed: inherit; --vibe-focus: inherit;
   --vibe-issue: inherit; --vibe-issue-tint: inherit; --vibe-on-issue: inherit; --vibe-pass: inherit; --vibe-pass-tint: inherit; --vibe-caution: inherit;
+  --vibe-brass: inherit; --vibe-brass-tint: inherit; --vibe-on-brass: inherit; --vibe-brass-border: inherit;
   --vibe-fg: inherit; --vibe-muted: inherit; --vibe-border: inherit; --vibe-hover: inherit; --vibe-active: inherit;
   --vibe-accent: inherit; --vibe-accent-hover: inherit; --vibe-accent-pressed: inherit; --vibe-on-accent: inherit;
   color-scheme: inherit;
@@ -94,9 +97,8 @@
 .vibe-results-more { margin-top: var(--vibe-space-5); }
 .vibe-results-more > summary { width: fit-content; min-height: 44px; padding-block: var(--vibe-space-3); color: var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); cursor: pointer; }
 .vibe-results-more-body { display: grid; gap: var(--vibe-space-5); min-width: 0; margin-top: var(--vibe-space-3); }
-.vibe-results-contact { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--vibe-space-3); margin-top: var(--vibe-space-5); padding: var(--vibe-space-4); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); background: var(--vibe-surface); }
+.vibe-results-contact { margin-top: var(--vibe-space-5); }
 .vibe-results-contact[hidden] { display: none; }
-.vibe-results-contact > p { margin: 0; font-weight: 500; }
 .vibe-results-more-body > .vibe-build-next-actions { margin-block: 0; padding-block: 0; border-top: 0; }
 .vibe-results-more-body > details { margin-top: 0; }
 .vibe-empty-state { display: grid; justify-items: start; gap: var(--vibe-space-3); }
@@ -226,11 +228,13 @@
   .vibe-workspace[data-appearance] {
     --vibe-text-2: rgba(28,26,22,.86); --vibe-text-3: rgba(28,26,22,.86); --vibe-separator: rgba(28,26,22,.7); --vibe-control-border: rgba(28,26,22,.7);
     --vibe-issue: #8e3520; --vibe-pass: #1f5530; --vibe-caution: #6e4700;
+    --vibe-brass: #5e451a; --vibe-brass-border: #5e451a;
     --vibe-diff-add-fg: var(--vibe-fg); --vibe-diff-del-fg: var(--vibe-fg); --vibe-selection: color-mix(in srgb, var(--vibe-focus) 35%, var(--vibe-bg));
   }
   .vibe-workspace[data-appearance="dark"] {
     --vibe-text-2: rgba(237,233,225,.88); --vibe-text-3: rgba(237,233,225,.88); --vibe-separator: rgba(237,233,225,.66); --vibe-control-border: rgba(237,233,225,.66);
     --vibe-issue: #ffb39e; --vibe-pass: #a8ddb3; --vibe-caution: #f0cc85;
+    --vibe-brass: #f0dcab; --vibe-brass-border: #c9b383;
   }
 }
 .vibe-reply-body[data-collapsed="true"] { max-height: 24rem; overflow: hidden; }

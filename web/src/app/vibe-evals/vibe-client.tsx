@@ -11,7 +11,9 @@ import {CanonicalResults} from "@/components/vibe/canonical-results";
 import { SDKReportImportForm } from "@/components/vibe/sdk-report-import";
 import { SDKReports } from "@/components/vibe/sdk-reports";
 
-import {projectTitle} from "@/lib/vibe-project";
+import {projectTitle, recentProjectSummary} from "@/lib/vibe-project";
+import { vibeContact } from "@/lib/vibe-contact";
+import type { RecentProject } from "@/components/vibe/evaluation-entry";
 import {suiteCases} from "@/components/vibe/test-suite-cases";
 import { ExportDialog } from "@/components/vibe/export-dialog";
 import { VibeAppearance } from "@/components/vibe/appearance";
@@ -74,6 +76,9 @@ export function VibeClient() {
   const visibleStart = startDoor || (emptyProject ? session.document.evaluation?.door === "build" ? "build" : "improve" : undefined);
   const sourceForProject = source?.projectID === session?.id ? source?.kind : undefined;
   const [feedbackTarget, setFeedbackTarget] = useState<"project" | "guide" | "edit" | "run" | "trial" | "recorded">("project");
+  // The entry screen offers the latest active project first, when no project is open.
+  const latestContext = contexts.find(context => !context.archived_at && !discardedContextIDs.current.has(context.id));
+  const recentProject: RecentProject | undefined = latestContext && { title: projectTitle(latestContext), ...recentProjectSummary(latestContext), onOpen: () => { setFeedbackTarget("project"); void switchContext(latestContext.id); } };
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [utilitySheet, setUtilitySheet] = useState(false);
   // One dialog at a time: Settings closes, then the dialog it asked for opens.
@@ -130,7 +135,7 @@ return (
             <VibeButton variant="primary" disabled={busy || !(runQuote?.kind === "message" ? inferenceAvailable : runInferenceAvailable) || !runQuoteCurrent} onClick={() => { if (!runQuote || !isRunQuoteCurrent()) return; const q=runQuote; setRunQuote(undefined); void submit(q.kind,q.content || "",q.baseline,{...q.extra,...(q.extra.cycle_id ? {} : {run_quote_id:q.quote.id})}); }}>Start run</VibeButton>
           </div></DialogContent>
       </Dialog>
-      <VibeConnection.Provider value={{ token, contact: config?.contact }}><ImproveRunProvider now={serverNow} admitted={runQuote} creditError={improveCreditError} onClearError={() => { setError(""); if (runQuoteState === "failure" && !busy) void requestRun(improveBaseline, artifact?.conversation_evaluation?.evidence_set_id, undefined, undefined, recordedUpdate?.artifactID === artifact?.id ? artifact?.id : undefined); }} session={session} artifact={artifact} models={models} baseline={improveBaseline} onCredits={() => setCreditsOpen(true)}><EvaluationNavigation signInReturnPath={startDoor ? `/vibe-evals?start=${startDoor}` : undefined} actorScope={authUser?.id || "guest"} archiveMode={archiveMode} onArchiveMode={setArchiveMode} onMetadata={metadata} workspace={choosingWorkspace && workspaces.length > 0 ? { name: workspaceName, onChange: () => workspaceSelect.current?.focus() } : undefined} accountLabel={authLoading ? "Loading account…" : authUser ? authUser.email || "Signed in account" : "Guest · private to this browser"} listStatus={contextList.status} onRetryList={contextList.retry} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
+      <VibeConnection.Provider value={{ token, contact: vibeContact(config?.contact) }}><ImproveRunProvider now={serverNow} admitted={runQuote} creditError={improveCreditError} onClearError={() => { setError(""); if (runQuoteState === "failure" && !busy) void requestRun(improveBaseline, artifact?.conversation_evaluation?.evidence_set_id, undefined, undefined, recordedUpdate?.artifactID === artifact?.id ? artifact?.id : undefined); }} session={session} artifact={artifact} models={models} baseline={improveBaseline} onCredits={() => setCreditsOpen(true)}><EvaluationNavigation signInReturnPath={startDoor ? `/vibe-evals?start=${startDoor}` : undefined} actorScope={authUser?.id || "guest"} archiveMode={archiveMode} onArchiveMode={setArchiveMode} onMetadata={metadata} workspace={choosingWorkspace && workspaces.length > 0 ? { name: workspaceName, onChange: () => workspaceSelect.current?.focus() } : undefined} accountLabel={authLoading ? "Loading account…" : authUser ? authUser.email || "Signed in account" : "Guest · private to this browser"} listStatus={contextList.status} onRetryList={contextList.retry} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
         choosing={newEvaluation} disabled={!config || pending || uncertain}
         onDeleted={id => {
           discardedContextIDs.current.add(id);
@@ -159,7 +164,7 @@ return (
         onCancelNew={() => setNewEvaluation(false)}
         savedWorkOpen={savedWorkOpen}
         onSavedWorkOpenChange={setSavedWorkOpen}
-        onDoor={door => void chooseDoor(door)}
+        onDoor={door => void chooseDoor(door)} recentProject={recentProject}
         contextControl={activeContext && <p className="vibe-context-label" aria-label="Active project" title={`${activeContext.title} · ${activeContext.scope}`}>
           <span className="vibe-context-dot" aria-hidden="true" /><span className="vibe-context-title">{activeContext.title}</span><span>· {activeContext.scope}</span>
         </p>}

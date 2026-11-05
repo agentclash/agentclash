@@ -38,7 +38,7 @@ it("hides the contact CTA when neither form nor recipient is configured", async 
 });
 
 it("offers direct email without collecting contact fields when the form is unavailable", async () => {
-  await render(false, session, "team@example.test"); await click("Discuss this with AgentClash");
+  await render(false, session, "team@example.test"); await click("Talk to us about this agent");
   expect(popup()!.textContent).toContain("The contact form isn’t available");
   expect(popup()!.querySelectorAll("input")).toHaveLength(0);
   expect(popup()!.querySelector('a[href^="mailto:"]')).toBeTruthy();
@@ -47,19 +47,19 @@ it("offers direct email without collecting contact fields when the form is unava
 
 it("restores reviewed edits after close, reopen and reload without refreshing from newer props", async () => {
   sessionStorage.setItem(storageKey, JSON.stringify(draft));
-  await render(); await click("Discuss this with AgentClash");
+  await render(); await click("Talk to us about this agent");
   expect(popup()!.querySelector("textarea")!.value).toBe(draft.summary);
-  await close(); await render(true, { ...session, revision: 9 }); await click("Discuss this with AgentClash");
+  await close(); await render(true, { ...session, revision: 9 }); await click("Talk to us about this agent");
   expect(popup()!.querySelector("textarea")!.value).toBe(draft.summary);
   expect(new URL(popup()!.querySelector("a")!.href).searchParams.get("body")).toBe(draft.summary);
   await act(async () => root.unmount()); root = createRoot(node);
-  await render(true, { ...session, revision: 9 }); await click("Discuss this with AgentClash");
+  await render(true, { ...session, revision: 9 }); await click("Talk to us about this agent");
   expect(popup()!.querySelector("textarea")!.value).toBe(draft.summary);
   expect(vi.mocked(vibeFetch)).not.toHaveBeenCalled();
 });
 
 it("shows validation only after submit and preserves the draft after a 4xx", async () => {
-  await render(); await click("Discuss this with AgentClash");
+  await render(); await click("Talk to us about this agent");
   expect(popup()!.querySelector('[role="alert"]')).toBeNull();
   await submit();
   expect(popup()!.querySelector('[role="alert"]')!.textContent).toContain("valid email");
@@ -69,7 +69,7 @@ it("shows validation only after submit and preserves the draft after a 4xx", asy
   // Use the stored draft for a server-side validation failure without changing request identity.
   sessionStorage.setItem(storageKey, JSON.stringify(draft));
   await act(async () => root.unmount()); root = createRoot(node);
-  await render(); await click("Discuss this with AgentClash");
+  await render(); await click("Talk to us about this agent");
   vi.mocked(vibeFetch).mockRejectedValueOnce(new VibeError("invalid_request", "Please review the email.", 400, "rejected"));
   await submit();
   expect(popup()!.querySelector('[role="alert"]')!.textContent).toContain("Please review the email.");
@@ -80,7 +80,7 @@ it("shows validation only after submit and preserves the draft after a 4xx", asy
 it("reuses the exact body after a lost acknowledgement and reload", async () => {
   sessionStorage.setItem(storageKey, JSON.stringify(draft));
   vi.mocked(vibeFetch).mockRejectedValueOnce(new Error("Connection lost"));
-  await render(); await click("Discuss this with AgentClash"); await submit();
+  await render(); await click("Talk to us about this agent"); await submit();
   const first = vi.mocked(vibeFetch).mock.calls[0];
   expect(first[0]).toBe("/sessions/project/enquiries");
   const body = first[2]!.body as string;
@@ -89,7 +89,7 @@ it("reuses the exact body after a lost acknowledgement and reload", async () => 
   await close();
   expect(vi.mocked(vibeFetch)).toHaveBeenCalledTimes(1);
   await act(async () => root.unmount()); root = createRoot(node);
-  await render(); await click("Discuss this with AgentClash");
+  await render(); await click("Talk to us about this agent");
   expect(popup()!.querySelector("textarea")!.disabled).toBe(true);
   vi.mocked(vibeFetch).mockResolvedValueOnce({ id: "receipt", status: "received" });
   await submit();
@@ -105,7 +105,7 @@ it("does not truncate long summaries into an email URL", () => {
 it("keeps the original enquiry after a lost acknowledgement followed by rejected authentication", async () => {
  sessionStorage.setItem(storageKey,JSON.stringify(draft));
  vi.mocked(vibeFetch).mockRejectedValueOnce(new Error("Lost acknowledgement"));
- await render();await click("Discuss this with AgentClash");await submit();
+ await render();await click("Talk to us about this agent");await submit();
  const body=vi.mocked(vibeFetch).mock.calls[0][2]!.body;
  vi.mocked(vibeFetch).mockRejectedValueOnce(new VibeError("forbidden","Sign in again",403,"rejected"));await submit();
  expect(sessionStorage.getItem(storageKey)).toBe(body);

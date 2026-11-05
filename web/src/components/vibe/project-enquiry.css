@@ -23,3 +23,30 @@
   .vibe-enquiry-optional { grid-template-columns:1fr; }
   .vibe-enquiry-field textarea { min-height:150px; }
 }
+
+/* Brass is only for contact with the AgentClash team: the agency offer and its address. */
+.vibe-talk-eyebrow { font-family:var(--font-mono),monospace; font-size:var(--vibe-font-footnote); line-height:var(--vibe-leading-footnote); letter-spacing:.08em; text-transform:uppercase; color:var(--vibe-brass); }
+.vibe-workspace .vibe-button.vibe-button-brass { min-height:48px; padding-inline:22px; border-color:var(--vibe-brass); background:var(--vibe-brass); color:var(--vibe-on-brass); font-size:var(--vibe-font-body); line-height:var(--vibe-leading-body); font-weight:600; text-decoration:none; }
+/* Brass owns its hover and pressed colours, so generic secondary states never replace them. */
+.vibe-workspace .vibe-button.vibe-button-brass:hover:not(:disabled) { border-color:var(--vibe-brass); background:color-mix(in srgb, var(--vibe-brass) 86%, var(--vibe-fg)); color:var(--vibe-on-brass); }
+.vibe-workspace .vibe-button.vibe-button-brass:active:not(:disabled) { border-color:var(--vibe-brass); background:color-mix(in srgb, var(--vibe-brass) 76%, var(--vibe-fg)); color:var(--vibe-on-brass); }
+.vibe-workspace .vibe-button.vibe-button-brass:focus-visible { outline:2px solid var(--vibe-brass); outline-offset:3px; }
+.vibe-work-with-us { display:flex; flex-wrap:wrap; align-items:center; gap:var(--vibe-space-4) var(--vibe-space-6); padding:var(--vibe-space-5) 28px; border:1px solid var(--vibe-brass-border); border-radius:var(--vibe-radius-lg); background:var(--vibe-brass-tint); }
+.vibe-work-with-us-copy { flex:1 1 280px; min-width:0; display:flex; flex-direction:column; gap:6px; }
+.vibe-workspace .vibe-work-with-us h3 { font-family:var(--font-display),ui-serif,Georgia,serif; font-size:1.75rem; line-height:2.125rem; font-weight:400; letter-spacing:-0.01em; }
+.vibe-work-with-us-copy > p:last-child { color:var(--vibe-text-2); font-size:var(--vibe-font-callout); line-height:1.375rem; }
+.vibe-work-with-us-actions { display:flex; flex-direction:column; align-items:center; gap:10px; max-width:100%; }
+.vibe-work-with-us-actions .vibe-project-enquiry { display:contents; }
+.vibe-work-with-us-email { color:var(--vibe-text-2); font-size:var(--vibe-font-footnote); line-height:var(--vibe-leading-footnote); overflow-wrap:anywhere; text-align:center; }
+.vibe-work-with-us-email a, .vibe-talk-direct a { font-family:var(--font-mono),monospace; color:var(--vibe-fg); text-decoration:underline; text-underline-offset:3px; text-decoration-color:color-mix(in srgb, var(--vibe-brass) 60%, transparent); }
+@media(max-width:600px) { .vibe-work-with-us { padding:var(--vibe-space-4); } .vibe-work-with-us-actions { width:100%; } .vibe-work-with-us-actions .vibe-button { width:100%; } }
+.vibe-talk-dialog[data-slot="dialog-content"] { display:flex; flex-direction:column; gap:var(--vibe-space-5); width:min(560px,calc(100vw - 32px)); max-width:none; max-height:calc(100dvh - 32px); overflow-y:auto; overscroll-behavior:contain; }
+.vibe-talk-heading { display:flex; flex-direction:column; gap:var(--vibe-space-2); min-width:0; padding-right:36px; }
+.vibe-talk-heading [data-slot="dialog-title"] { font-family:var(--font-display),ui-serif,Georgia,serif; font-size:1.875rem; line-height:2.125rem; font-weight:400; letter-spacing:-0.01em; outline:none; }
+.vibe-talk-heading [data-slot="dialog-description"] { color:var(--vibe-text-2); font-size:var(--vibe-font-callout); line-height:1.375rem; }
+.vibe-talk-dialog .vibe-enquiry-field textarea { min-height:120px; }
+.vibe-talk-send.vibe-button { width:100%; }
+.vibe-talk-note { color:var(--vibe-text-2); font-size:var(--vibe-font-footnote); line-height:var(--vibe-leading-footnote); text-align:center; }
+.vibe-talk-direct { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:var(--vibe-space-2); color:var(--vibe-text-2); font-size:var(--vibe-font-callout); line-height:var(--vibe-leading-callout); overflow-wrap:anywhere; }
+.vibe-talk-direct .vibe-button { min-height:40px; }
+.vibe-talk-status { flex-basis:100%; color:var(--vibe-text-2); font-size:var(--vibe-font-footnote); line-height:var(--vibe-leading-footnote); text-align:center; }

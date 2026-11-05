@@ -13,8 +13,8 @@ test("selected copy survives private cleanup with independent member/viewer navi
     page.on("request", r => { if (r.url().startsWith(api) && r.headers().authorization)
         ownerToken = r.headers().authorization; });
     await login(page);
-    await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled(); await expect(page.getByLabel("Workspace for new projects")).toHaveCount(0);
-    await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+    await expect(page.getByRole("button", { name: /I have an idea/ })).toBeEnabled(); await expect(page.getByLabel("Workspace for new projects")).toHaveCount(0);
+    await page.getByRole("button", { name: /I have an agent/ }).click();
     await expect(page).toHaveURL(/start=improve/);
     await page.request.post(`${api}/__fixture/control`, { data: { reset_calls: true } });
     const before = { calls: [] };

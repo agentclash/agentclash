@@ -13,6 +13,7 @@ import {
   CircleHelp,
   FolderCog,
   House,
+  Mail,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -28,6 +29,9 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { ClashMark } from "@/components/marketing/clash-mark";
+import { useVibeConnection } from "@/lib/vibe-connection";
+import { VIBE_CONTACT_EMAIL } from "@/lib/vibe-contact";
+import { TalkToUs } from "./talk-to-us";
 import { terminal, type Session } from "@/lib/vibe";
 import { workingBuildArtifact, buildVersion } from "@/lib/vibe-build-timeline";
 import { DeleteProject } from "./delete-project";
@@ -77,6 +81,8 @@ type Props = {
 export function EvaluationNavigation(p: Props) {
   const life = useVibeEvidenceOwner(p.actorScope, p.session?.id);
   const [deleting, setDeleting] = useState<Session>();
+  const [talking, setTalking] = useState(false);
+  const contactEmail = useVibeConnection().contact?.email || VIBE_CONTACT_EMAIL;
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => setCollapsed(sidebarPreference()), []);
   const [search, setSearch] = useState("");
@@ -282,6 +288,11 @@ export function EvaluationNavigation(p: Props) {
             </VibeButton>
           </div>
         )}
+        {/* The agency offer stays one step away on every screen, with the address in view. */}
+        <button type="button" className="vibe-sidebar-contact" aria-describedby={mobile ? "vibe-contact-email-mobile" : "vibe-contact-email"} onClick={() => navigate(() => setTalking(true), mobile)}>
+          <span className="vibe-sidebar-contact-icon" aria-hidden="true"><Mail size={14} /></span>
+          <span className="vibe-sidebar-contact-copy"><span>Talk to us</span><small id={mobile ? "vibe-contact-email-mobile" : "vibe-contact-email"}>{contactEmail}</small></span>
+        </button>
         <Link href="/"><House aria-hidden="true" />Home</Link>
         <details>
           <summary><CircleHelp aria-hidden="true" />Help<ChevronRight className="vibe-chevron" aria-hidden="true" /></summary>
@@ -426,6 +437,7 @@ export function EvaluationNavigation(p: Props) {
     </>
   );
   return <>
+    <TalkToUs open={talking} onOpenChange={setTalking} email={contactEmail} />
     {deleting && p.onDeleted && (
       <DeleteProject
         session={deleting}

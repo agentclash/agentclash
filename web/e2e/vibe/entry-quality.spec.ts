@@ -4,7 +4,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { description, fakeVibe } from "./entry-fake";
 import { axe, census, focused, labelInName, seriousOrCritical, tabsTo, writeRecord, type AxeViolation, type Census } from "./flow-meter";
-import { chooseDoor, composer, doorButton, doorReady, entryReady, improveSource, repliesInput, sendButton, startComposer, startCopy } from "./entry-model";
+import { chooseDoor, composer, contactPath, doorButton, followSystemAppearance, doorReady, entryReady, improveSource, repliesInput, sendButton, startComposer, startCopy } from "./entry-model";
 
 const states = ["S0", "S1", "S1t", "S2", "S2i", "S2r"] as const;
 const schemes = ["light", "dark"] as const;
@@ -34,6 +34,7 @@ function check(id: keyof typeof baseline, state: State, actual: unknown, target:
 }
 
 async function settle(page: Page, scheme: Scheme) {
+  await followSystemAppearance(page);
   await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
   await expect(page.locator("main.vibe-workspace")).toHaveAttribute("data-appearance", scheme);
   await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
@@ -104,27 +105,24 @@ for (const { label, viewport, touch } of viewports) test.describe(label, () => {
     await context.close();
   });
 
-  test("Build preview stacks single-line numbered steps at every width and keeps a short door name", async ({ page }) => {
+  test("Three paths keep short names, share one action line and stack on a phone", async ({ page }) => {
     await page.setViewportSize(viewport);
     const fake = await fakeVibe(page);
     await page.goto("/vibe-evals"); await entryReady(page);
-    const door = doorButton(page, "build");
-    await expect(door).toHaveAccessibleName("Build an agent");
-    await expect(door).toHaveAccessibleDescription("Turn a task into an agent and three tests. Next: Describe the task");
-    const steps = door.locator("ol > li");
-    await expect(steps).toHaveText(["01Describe the task", "02We draft the agent", "03Three tests run"]);
-    const layout = await steps.evaluateAll(items => items.map(item => {
-      const box = item.getBoundingClientRect(), number = item.querySelector("b")!, label = document.createRange();
-      label.selectNodeContents(item.lastChild!);
-      return { x: box.x, y: box.y, labelLines: label.getClientRects().length, whiteSpace: getComputedStyle(item).whiteSpace, numerals: getComputedStyle(number).fontVariantNumeric };
-    }));
-    for (const item of layout) {
-      expect(item.whiteSpace).toBe("nowrap"); expect(item.labelLines).toBe(1);
-      expect(item.numerals).toContain("tabular-nums");
-    }
-    expect(layout.map(item => item.x)).toEqual([layout[0].x, layout[0].x, layout[0].x]);
-    expect(layout[1].y).toBeGreaterThan(layout[0].y); expect(layout[2].y).toBeGreaterThan(layout[1].y);
-    expect(await door.locator("ol").evaluate(list => getComputedStyle(list).gridTemplateColumns.split(" ").length)).toBe(1);
+    await expect(doorButton(page, "build")).toHaveAccessibleName("I have an idea");
+    await expect(doorButton(page, "build")).toHaveAccessibleDescription("Describe a task. We draft an agent and test it for you.");
+    await expect(doorButton(page, "improve")).toHaveAccessibleName("I have an agent");
+    await expect(contactPath(page)).toBeEnabled();
+    await expect(contactPath(page)).toContainText("@");
+    const paths = page.locator(".vibe-entry-path");
+    await expect(paths).toHaveCount(3);
+    // Prices, times and step lists belong to the screen of each path.
+    await expect(page.locator(".vibe-entry-paths ol")).toHaveCount(0);
+    const boxes = await paths.evaluateAll(items => items.map(item => { const box = item.getBoundingClientRect(); return { x: box.x, y: box.y }; }));
+    if (viewport.width > 600) expect(new Set(boxes.map(box => box.y)).size).toBe(1);
+    else { expect(new Set(boxes.map(box => box.x)).size).toBe(1); expect(boxes[1].y).toBeGreaterThan(boxes[0].y); expect(boxes[2].y).toBeGreaterThan(boxes[1].y); }
+    const actions = await page.locator(".vibe-entry-path-action").evaluateAll(items => items.map(item => ({ y: Math.round(item.getBoundingClientRect().y), shown: getComputedStyle(item).display !== "none" })));
+    if (viewport.width > 600) { expect(actions.every(action => action.shown)).toBe(true); expect(new Set(actions.map(action => action.y)).size).toBe(1); }
     expect(fake.posts).toEqual([]); expect(fake.errors).toEqual([]);
   });
 

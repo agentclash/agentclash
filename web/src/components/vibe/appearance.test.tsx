@@ -28,8 +28,13 @@ function choose(value: string) {
   act(() => { const select = container.querySelector("select")!; select.value = value; select.dispatchEvent(new Event("change", { bubbles: true })); });
 }
 
-it("keeps the browser bar in sync with system changes and explicit appearance, then restores each meta", () => {
+it("is dark by default, keeps the browser bar in sync with explicit and system appearance, then restores each meta", () => {
   act(() => root.render(<VibeAppearance><AppearanceControl /></VibeAppearance>));
+  // Dark is the default, also on a light system, until the visitor chooses another appearance.
+  expect(container.querySelector("main")?.getAttribute("data-appearance")).toBe("dark");
+  expect(container.querySelector("select")?.value).toBe("dark");
+  expect(colors()).toEqual(["#12110f", "#12110f"]);
+  choose("system");
   expect(colors()).toEqual(["#faf8f5", "#faf8f5"]);
   act(() => { dark = true; systemChanged(); });
   expect(colors()).toEqual(["#12110f", "#12110f"]);
@@ -46,8 +51,15 @@ it("keeps the browser bar in sync with system changes and explicit appearance, t
 });
 
 it("uses the saved appearance for the browser bar on mount", () => {
-  localStorage.setItem("vibe-appearance", "dark");
+  localStorage.setItem("vibe-appearance", "light");
   act(() => root.render(<VibeAppearance><AppearanceControl /></VibeAppearance>));
-  expect(container.querySelector("main")?.getAttribute("data-appearance")).toBe("dark");
-  expect(colors()).toEqual(["#12110f", "#12110f"]);
+  expect(container.querySelector("main")?.getAttribute("data-appearance")).toBe("light");
+  expect(colors()).toEqual(["#faf8f5", "#faf8f5"]);
+});
+
+it("keeps a saved System choice instead of the dark default", () => {
+  localStorage.setItem("vibe-appearance", "system");
+  act(() => root.render(<VibeAppearance><AppearanceControl /></VibeAppearance>));
+  expect(container.querySelector("select")?.value).toBe("system");
+  expect(container.querySelector("main")?.getAttribute("data-appearance")).toBe("light");
 });

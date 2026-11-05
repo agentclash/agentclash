@@ -90,14 +90,24 @@ it("U9: the free trial uses muted sans metadata", async () => {
   expect(price.fontSize).toBe("var(--vibe-font-footnote)");
   expect(price.color).toBe("var(--vibe-muted)");
 });
-it("P1: entry steps form a single column with single-line labels at every width", async () => {
+it("P1: the entry shows three paths in one row, and one column on a phone", async () => {
   await draw(<EvaluationEntry busy={false} />);
-  const steps = node.querySelector(".vibe-door-steps")!;
-  expect(steps.children).toHaveLength(3);
-  expect(getComputedStyle(steps).display).toBe("grid");
-  expect(getComputedStyle(steps).gridTemplateColumns).toBe("minmax(0,1fr)");
-  for (const step of steps.children) expect(getComputedStyle(step).whiteSpace).toBe("nowrap");
-  expect(style.textContent).toContain('.vibe-door-steps { grid-template-columns:minmax(0,1fr); }');
+  const paths = node.querySelector(".vibe-entry-paths")!;
+  expect(paths.querySelectorAll(".vibe-entry-path")).toHaveLength(3);
+  expect(getComputedStyle(paths).display).toBe("grid");
+  expect(getComputedStyle(paths).gridTemplateColumns).toBe("repeat(3,minmax(0,1fr))");
+  expect(style.textContent).toContain(".vibe-entry-paths, .vibe-entry-intro[data-returning] .vibe-entry-paths { grid-template-columns:minmax(0,1fr);");
+  expect(node.querySelector(".vibe-door-steps")).toBeNull();
+});
+it("P1b: Continue reopens saved work while new projects are blocked", async () => {
+  const onOpen = vi.fn();
+  await draw(<EvaluationEntry busy navigationBlocked={false} recent={{ title: "Shop returns assistant", detail: "1 of 3 tests failed in the last run.", tone: "issue", onOpen }} />);
+  expect(node.querySelector("h1")?.textContent).toBe("Welcome back.");
+  expect([...node.querySelectorAll<HTMLButtonElement>('button[id^="vibe-door-"]')].every(door => door.disabled)).toBe(true);
+  const resume = [...node.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Continue")!;
+  expect(resume.disabled).toBe(false);
+  await act(async () => resume.click());
+  expect(onOpen).toHaveBeenCalledOnce();
 });
 it("U16: the trial follows the result action area by the existing 32px spacing token", () => {
   expect(css).toContain('article:has(> .vibe-build-result) + .vibe-prototype-trial { margin-block-start: var(--vibe-space-6); }');

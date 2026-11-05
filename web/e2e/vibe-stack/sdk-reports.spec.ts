@@ -14,8 +14,8 @@ async function evidence(page:Page,id:string){const value=await (await page.reque
 test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrade and reviewed promotion",async({page})=>{
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
  await page.goto("/auth/login?returnTo=%2Fvibe-evals");await page.getByRole("button",{name:"Continue with AgentClash"}).click();
- await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled(); await expect(page.getByLabel("Workspace for new projects")).toHaveCount(0);
- await page.getByRole("button",{name:/Improve an existing agent/}).click();
+ await expect(page.getByRole("button", { name: /I have an idea/ })).toBeEnabled(); await expect(page.getByLabel("Workspace for new projects")).toHaveCount(0);
+ await page.getByRole("button",{name:/I have an agent/}).click();
  await page.getByRole("radio",{name:"Test pack",exact:true}).click();
  const importTests=page.getByRole("button",{name:"Choose a file",exact:true});await expect(importTests).toBeEnabled();
  const chooseTests=page.waitForEvent("filechooser");await importTests.click();await (await chooseTests).setFiles({name:"sdk-tests.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(blueprint))});

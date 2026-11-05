@@ -47,7 +47,7 @@ import { useComposerAutosize } from "./use-composer-autosize";
 import { sendOnEnter } from "./composer-keyboard";
 import { VibeScorecard } from "./scorecard";
 import { TestSuitePanel, exampleAgentDescription } from "./test-suite-panel";
-import { EvaluationEntry } from "./evaluation-entry";
+import { EvaluationEntry, type RecentProject } from "./evaluation-entry";
 import { evaluationIdentity } from "./evaluation-navigation";
 import { BuildWorkspace } from "./build-workspace";
 import { Message } from "./vibe-message";
@@ -71,6 +71,8 @@ export type EvaluationWorkspaceProps = {
   contextNavigationBlocked?: boolean;
   entryBlocked?: boolean;
   entryNotice?: ReactNode;
+  /** The latest project, for the "Continue" row when no project is open. */
+  recentProject?: RecentProject;
   onCancelNew?: () => void;
   savedWorkOpen?: boolean;
   onSavedWorkOpenChange?: (open: boolean) => void;
@@ -168,7 +170,7 @@ function EntryWorkspace({ p }: { p: EvaluationWorkspaceProps }) {
     <div className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto" ref={heading} aria-label="New project choices" onKeyDown={event => { if (event.key === "Escape" && p.newEvaluation && !p.contextNavigationBlocked) back(); }}>
       <div className="vibe-column vibe-entry-page">
         {p.newEvaluation && p.session && <VibeButton variant="quiet" className="vibe-back-button" disabled={p.contextNavigationBlocked} onClick={back}>Back to your project</VibeButton>}
-        <EvaluationEntry busy={!!p.contextNavigationBlocked || !!p.entryBlocked} onDoor={p.onDoor} notice={p.entryNotice} />
+        <EvaluationEntry busy={!!p.contextNavigationBlocked || !!p.entryBlocked} navigationBlocked={!!p.contextNavigationBlocked} onDoor={p.onDoor} notice={p.entryNotice} recent={p.session ? undefined : p.recentProject} />
         {p.notice}
       </div>
     </div>

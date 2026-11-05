@@ -37,7 +37,7 @@ async function openContact(page: Page) {
   await page.getByRole("tab", {name:"Results", exact:true}).click();
   await expect(page.getByRole("article", { name: "Agent test results" })).toHaveAttribute("data-run-id", "check");
   await expect(page.getByRole("combobox", {name:"Result history"})).toHaveCount(0);
-  const opener = page.getByRole("button", { name: "Discuss this with AgentClash" }).first();
+  const opener = page.getByRole("button", { name: "Talk to us about this agent" }).first();
   await opener.scrollIntoViewIfNeeded();
   await opener.click();
   const dialog = page.getByRole("dialog");
@@ -50,14 +50,6 @@ test("unconfigured and direct-email modes do not collect contact details or send
     const posts: string[] = [];
     await installFixture(page, mode, posts);
     await page.setViewportSize({ width: 320, height: 740 });
-    if (mode === "unconfigured") {
-      await page.goto("/vibe-evals?session=contact-fixture");
-      await page.getByRole("tab", {name:"Results", exact:true}).click();
-      await expect(page.getByRole("article", { name: "Agent test results" })).toHaveAttribute("data-run-id", "check");
-      await expect(page.getByRole("combobox", {name:"Result history"})).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Discuss this with AgentClash" })).toHaveCount(0);
-      expect(posts).toHaveLength(0); await page.unrouteAll(); continue;
-    }
     const { opener, dialog } = await openContact(page);
     await expect(dialog.getByLabel("Your email")).toHaveCount(0);
     await expect(dialog.getByLabel("Name (optional)")).toHaveCount(0);
@@ -67,6 +59,9 @@ test("unconfigured and direct-email modes do not collect contact details or send
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
     await expect(opener).toBeFocused();
+    // Without an API address, the team address (lib/vibe-contact) keeps the contact available.
+    const address = mode === "unconfigured" ? "hello@tryagentclash.com" : "fixture@example.test";
+    await expect(page.locator(".vibe-work-with-us-email").getByRole("link", { name: address, exact: true })).toHaveAttribute("href", `mailto:${address}`);
     expect(posts).toHaveLength(0);
     await page.unrouteAll();
   }

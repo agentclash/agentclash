@@ -5,11 +5,12 @@ import "./workspace.css";
 import "./project-workspace.css";
 import "./vibe-type.css";
 type Appearance = "system" | "light" | "dark";
-const AppearanceContext = createContext<{ value: Appearance; setValue: (value: Appearance) => void }>({ value: "system", setValue: () => {} });
+const AppearanceContext = createContext<{ value: Appearance; setValue: (value: Appearance) => void }>({ value: "dark", setValue: () => {} });
 const preferenceQuery = "(prefers-color-scheme: dark)";
+// Dark is the default. A saved Light, Dark or System choice wins over the default.
 function readAppearance(): Appearance {
-  try { const value = localStorage.getItem("vibe-appearance"); if (value === "light" || value === "dark") return value; } catch { /* Optional preference storage. */ }
-  return "system";
+  try { const value = localStorage.getItem("vibe-appearance"); if (value === "light" || value === "dark" || value === "system") return value; } catch { /* Optional preference storage. */ }
+  return "dark";
 }
 function subscribeAppearance(notify: () => void) { window.addEventListener("storage", notify); return () => window.removeEventListener("storage", notify); }
 function subscribeSystem(notify: () => void) {
@@ -18,7 +19,7 @@ function subscribeSystem(notify: () => void) {
   return () => media.removeEventListener("change", notify);
 }
 export function VibeAppearance({ children }: { children: ReactNode }) {
-  const saved = useSyncExternalStore(subscribeAppearance, readAppearance, () => "system" as Appearance);
+  const saved = useSyncExternalStore(subscribeAppearance, readAppearance, () => "dark" as Appearance);
   const [choice, setValue] = useState<Appearance>();
   const value = choice || saved;
   const systemDark = useSyncExternalStore(subscribeSystem, () => typeof matchMedia === "function" && matchMedia(preferenceQuery).matches, () => false);

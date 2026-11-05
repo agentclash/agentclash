@@ -8,6 +8,7 @@ import { terminal, type Artifact, type CaseResult, type Operation, type Session 
 import { CaseEvidence } from "./case-evidence";
 import { EvaluationOutcome } from "./evaluation-outcome";
 import { ProjectEnquiry } from "./project-enquiry";
+import { WorkWithUs } from "./work-with-us";
 import { VibeButton } from "./vibe-button";
 
 function passedAll(operation?: Operation) {
@@ -26,11 +27,10 @@ export function ResultContact({ session, artifact, operation, busy }: { session:
   const recorded = !!artifact.conversation_evaluation;
   const eligible = recorded ? !!score && score.passed + score.failed > 0
     : artifact.kind === "task_brief" || passedAll(operation) || !!score?.failed || !!score?.unknown;
-  // ProjectEnquiry renders nothing without a contact form or email, so the card would be empty.
+  // The client always supplies an email (lib/vibe-contact). Without a provider there is no contact.
   if (!contact?.available && !contact?.email) return null;
   return <section className="vibe-results-contact" aria-label="Talk to AgentClash" hidden={!terminal(operation.state) || !eligible || (!recorded && (busy || operation.state === "CANCELLED"))}>
-    <p>Want help to build this for your business?</p>
-    <ProjectEnquiry key={`${session.id}:${artifact.id}`} session={session} artifact={artifact} operation={operation} secondary />
+    <WorkWithUs><ProjectEnquiry key={`${session.id}:${artifact.id}`} session={session} artifact={artifact} operation={operation} brass /></WorkWithUs>
   </section>;
 }
 
