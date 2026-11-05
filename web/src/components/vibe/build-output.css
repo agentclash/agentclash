@@ -67,7 +67,10 @@
   .vibe-build-start > header { margin-bottom: 0; }
   .vibe-build-start-form { gap: var(--vibe-space-5); }
   .vibe-workspace .vibe-build-start-card > textarea { padding-inline: var(--vibe-space-4); }
-  .vibe-build-example-chips { padding-inline: var(--vibe-space-3); }
+  /* Keep both example chips on one row at 390 px with room to spare: the group name "Example tasks" replaces the visible "Try". */
+  .vibe-build-example-chips { padding-inline: var(--vibe-space-2); }
+  .vibe-build-example-chips > span { display: none; }
+  .vibe-build-example-chips .vibe-example-chip { padding-inline: var(--vibe-space-2); }
   .vibe-build-start-submit { width: 100%; margin: 0; }
   .vibe-build-next-steps { grid-template-columns: minmax(0, 1fr); }
   .vibe-build-next { padding-top: var(--vibe-space-2); }
