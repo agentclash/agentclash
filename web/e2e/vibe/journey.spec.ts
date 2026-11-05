@@ -87,7 +87,7 @@ test("new conversations use the server's free model defaults", async ({
   await page.goto("/vibe-evals");
   await entryReady(page);
   await chooseDoor(page, "improve");
-  const model = page.getByRole("combobox", { name: "Which model does your agent use?", exact: true });
+  const model = page.getByRole("combobox", { name: "Model your agent uses", exact: true });
   await expect(model).toHaveValue(id);
   await expect(model).toContainText("Liquid (free)");
   await expect(

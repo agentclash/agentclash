@@ -205,7 +205,7 @@ test.describe("H11 Back from an Improve source panel keeps the drafts", () => {
     await improveSource(page, "instructions");
     const box = startComposer(page, "improve");
     await box.fill(instructions);
-    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.getByRole("button", { name: "All projects", exact: true }).click();
     await chooseDoor(page, "improve");
     await doorReady(page, "improve");
     await expect(composer(page)).toHaveValue(instructions);
@@ -225,7 +225,7 @@ test.describe("H11 Back from an Improve source panel keeps the drafts", () => {
     await improveSource(page, "recorded");
     await repliesInput(page).fill(transcript);
     await rulesInput(page).fill(expectation);
-    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.getByRole("button", { name: "All projects", exact: true }).click();
     await chooseDoor(page, "improve");
     await doorReady(page, "improve");
     await sourceButton(page, "instructions").click();

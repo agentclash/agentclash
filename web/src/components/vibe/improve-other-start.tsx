@@ -14,7 +14,7 @@ export function ImproveOtherStart(p: { source: ImproveSource; projects: Session[
   const projects = p.projects.filter(row => row.workspace_id === p.workspace && row.document.artifacts.some(artifact => artifact.kind === "test_suite"));
   const chat = p.source === "chat";
   const send = () => { if (!p.busy && !p.blockedReason && p.draft.trim()) p.onSend(); };
-  return <section className="vibe-start-page vibe-improve-start" onKeyDown={event => { if (event.key === "Escape" && !p.busy) p.onBack(); }}>
+  return <section className="vibe-start-page vibe-start-layout vibe-improve-start" onKeyDown={event => { if (event.key === "Escape" && !p.busy) p.onBack(); }}>
     <header><VibeButton variant="quiet" disabled={p.busy} onClick={p.onBack}>Back</VibeButton></header>
     <h1 ref={heading} tabIndex={-1}>{chat ? "Describe your agent" : p.source === "live_app" ? "Connect a live app" : "Import an SDK report"}</h1>
     {chat ? <form className="vibe-improve-form" onSubmit={event => { event.preventDefault(); send(); }}>

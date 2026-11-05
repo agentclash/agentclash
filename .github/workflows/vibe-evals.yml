@@ -125,7 +125,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VIBE_BROWSER_OWNERSHIP_LOG: /tmp/vibe-ownership.jsonl
-    timeout-minutes: 20
+    # The mocked suite takes 15 to 20 minutes on a hosted runner; 20 left no margin.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: web

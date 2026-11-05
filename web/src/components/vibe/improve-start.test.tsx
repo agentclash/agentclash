@@ -19,15 +19,77 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); node.remove(); vi.unstubAllGlobals(); });
 const draw = async (p: Partial<Props> = {}) => act(async () => root.render(<Harness {...p} />));
-const button = (name: string) => [...node.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.trim() === name)!;
+const button = (name: string) => [...node.querySelectorAll<HTMLButtonElement>("button")].find(b => (b.hasAttribute("aria-labelledby") ? document.getElementById(b.getAttribute("aria-labelledby")!)?.textContent : b.textContent)?.trim() === name)!;
 async function click(name: string) { await act(async () => button(name).click()); }
 async function type(label: string, value: string) {
   const area = [...node.querySelectorAll<HTMLTextAreaElement>("textarea")].find(a => a.labels?.[0]?.textContent?.startsWith(label))!;
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(area, value); area.dispatchEvent(new Event("input", { bubbles: true })); });
 }
+it("names each radio by its title, describes it separately and keeps one tab stop", async () => {
+  await draw();
+  const group = node.querySelector('[role="radiogroup"][aria-label="Agent source"]')!;
+  const radios = [...group.querySelectorAll<HTMLButtonElement>('[role="radio"]')];
+  expect(radios).toHaveLength(3);
+  const descriptions = ["Paste the prompt your agent uses", "Paste conversations it already had", "Import a pack from AgentClash"];
+  for (const [index, title] of ["Instructions", "Real replies", "Test pack"].entries()) {
+    const radio = radios[index];
+    expect(document.getElementById(radio.getAttribute("aria-labelledby")!)?.textContent).toBe(title);
+    expect(document.getElementById(radio.getAttribute("aria-describedby")!)?.textContent).toBe(descriptions[index]);
+    expect(radio.querySelector(".vibe-improve-source-icons")?.getAttribute("aria-hidden")).toBe("true");
+    await click(title);
+    expect(radios.filter(radio => radio.tabIndex === 0)).toEqual([radio]);
+    expect(radios.filter(radio => radio.getAttribute("aria-checked") === "true")).toEqual([radio]);
+  }
+});
+it("selects and focuses sources with all arrows, wrapping, Home and End", async () => {
+  await draw();
+  button("Instructions").focus();
+  for (const [key, selected] of [
+    ["ArrowRight", "Real replies"], ["ArrowDown", "Test pack"], ["ArrowRight", "Instructions"],
+    ["ArrowLeft", "Test pack"], ["ArrowUp", "Real replies"], ["End", "Test pack"], ["Home", "Instructions"],
+  ]) {
+    await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })));
+    expect(document.activeElement).toBe(button(selected));
+    expect(button(selected).getAttribute("aria-checked")).toBe("true");
+    expect(node.querySelectorAll('[role="radio"][tabindex="0"]')).toHaveLength(1);
+  }
+});
+it("keeps the sample beside the label, privacy help below the input and real IDs in native options", async () => {
+  await draw({ models: [{ id: "openai/gpt-4.1-mini", name: "GPT-4.1 mini" }], drafts: { ...initial, model: "" } });
+  const sample = button("Use sample instructions");
+  expect(sample.parentElement?.querySelector("label")?.textContent).toBe("Agent instructions");
+  const input = node.querySelector("textarea")!;
+  const helper = input.nextElementSibling!;
+  expect(helper.textContent).toBe("Find these in your agent's system prompt or settings. Remove keys and customer data.");
+  expect(input.getAttribute("aria-describedby")).toBe(helper.id);
+  expect(helper.nextElementSibling?.querySelector("summary")?.textContent).toBe("Where do I find these?");
+  const select = node.querySelector("select")!;
+  expect(select.value).toBe("");
+  expect([...select.options].map(option => [option.value, option.textContent])).toEqual([
+    ["", "Use the selected model"], ["openai/gpt-4.1-mini", "GPT-4.1 mini · openai/gpt-4.1-mini"],
+  ]);
+  expect(node.querySelector(".vibe-improve-submit")?.textContent).toContain("You review the tests and see the price before anything runs.");
+  await click("Real replies");
+  expect(node.querySelector(".vibe-improve-submit")?.textContent).toContain("Save the replies, then review the grading price.");
+});
+it("keeps navigation, source selection and the switch disabled while busy", async () => {
+  await draw({ busy: true });
+  expect(button("All projects").disabled).toBe(true);
+  expect(button("No agent yet? Build one").disabled).toBe(true);
+  for (const radio of node.querySelectorAll<HTMLButtonElement>('[role="radio"]')) {
+    expect(radio.disabled).toBe(true);
+    await act(async () => radio.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+  }
+  expect(button("Instructions").getAttribute("aria-checked")).toBe("true");
+  await act(async () => node.querySelector("section")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(back).not.toHaveBeenCalled();
+  await draw();
+  await act(async () => node.querySelector("section")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(back).toHaveBeenCalledOnce();
+});
 it("shows one heading and the default labelled instructions with sample, model and source request", async () => {
   await draw(); expect(node.querySelectorAll("h1")).toHaveLength(1); expect(document.activeElement).toBe(node.querySelector("h1"));
-  expect(node.querySelector("h1")?.textContent).toBe("How do you want to test your agent?");
+  expect(node.querySelector("h1")?.textContent).toBe("What can you share about your agent?");
   expect(node.querySelector('[role="radiogroup"]')).not.toBeNull();
   expect(button("Instructions").getAttribute("aria-checked")).toBe("true");
   expect(button("Write 3 tests").disabled).toBe(true);
@@ -35,7 +97,7 @@ it("shows one heading and the default labelled instructions with sample, model a
   await click("Use sample instructions");
   expect(node.querySelector("textarea")!.value).toContain("returns");
   const model = node.querySelector("select")!;
-  expect(model.labels?.[0]?.textContent).toContain("Which model does your agent use?");
+  expect(model.labels?.[0]?.textContent).toContain("Model your agent uses");
   await act(async () => { model.value = "model-b"; model.dispatchEvent(new Event("change", { bubbles: true })); });
   await click("Write 3 tests"); expect(write).toHaveBeenCalledWith({ text: expect.stringContaining("returns"), model: "model-b" });
   const help = [...node.querySelectorAll("details")].find(d => d.querySelector("summary")?.textContent === "Where do I find these?")!;
@@ -84,13 +146,13 @@ it("puts import errors in the drop zone and supports choosing and dropping a fil
   await act(async () => zone.dispatchEvent(drop)); expect(pack).toHaveBeenCalledTimes(2);
   await draw({ mode: "pack", busy: true }); await act(async () => zone.dispatchEvent(drop)); expect(pack).toHaveBeenCalledTimes(2);
 });
-it("explains guest advanced paths and keeps Back and door switch reachable", async () => {
+it("explains guest advanced paths and keeps All projects and door switch reachable", async () => {
   await draw(); expect(node.textContent).toContain("Sign in to connect a live app"); expect(node.textContent).toContain("Sign in to import an SDK report");
   expect(button("Connect a live app")).toBeUndefined();
   expect(node.querySelector("a")?.getAttribute("href")).toBe("/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dimprove");
   await click("Describe it in chat"); expect(other).toHaveBeenCalledWith("chat");
-  await click("Back"); expect(back).toHaveBeenCalledOnce();
-  await click("Build an agent instead"); expect(switchDoor).toHaveBeenCalledOnce();
+  await click("All projects"); expect(back).toHaveBeenCalledOnce();
+  await click("No agent yet? Build one"); expect(switchDoor).toHaveBeenCalledOnce();
   await draw({ signedIn: true }); await click("Connect a live app"); await click("Import an SDK report");
   expect(other.mock.calls.slice(-2)).toEqual([["live_app"], ["sdk_report"]]);
 });
@@ -98,11 +160,13 @@ it("explains guest advanced paths and keeps Back and door switch reachable", asy
 
 it("P4: exposes the sample and friendly model while keeping only rare choices in disclosures", async () => {
   await draw({ drafts: { instructions: "Keep the policy", model: "model-a", conversations: "Customer: Hi\nAgent: Hello", rules: "Be helpful" } });
-  expect(button("Back").closest("header")).not.toBeNull();
+  expect(button("All projects").closest("header")).not.toBeNull();
   expect(button("Use sample instructions").closest("details")).toBeNull();
-  expect(button("Build an agent instead").closest("details")?.querySelector("summary")?.textContent).toBe("Other ways to bring your agent");
+  expect(button("No agent yet? Build one").closest("footer")).not.toBeNull();
+  expect(button("No agent yet? Build one").closest("details")).toBeNull();
+  expect(node.querySelector(".vibe-improve-other")?.textContent).not.toContain("Build an agent instead");
   expect(node.querySelector("select")?.closest("details")).toBeNull();
-  expect([...node.querySelectorAll("option")].map(option => option.textContent)).toContain("Model A");
+  expect([...node.querySelectorAll("option")].map(option => option.textContent)).toContain("Model A · model-a");
   const counts: number[] = [];
   for (const mode of ["Instructions", "Real replies", "Test pack"]) {
     await click(mode);
@@ -115,7 +179,7 @@ it("P4: exposes the sample and friendly model while keeping only rare choices in
     if (mode !== "Instructions") { expect(button("Use sample instructions")).toBeUndefined(); expect(node.querySelector("select")).toBeNull(); }
     counts.push(controls.length - 2);
   }
-  expect(counts).toEqual([8, 6, 4]);
+  expect(counts).toEqual([9, 7, 5]);
 });
 it("labels every Improve input and gives independent mounts unique field ids", async () => {
   await draw();
@@ -132,14 +196,14 @@ it("labels every Improve input and gives independent mounts unique field ids", a
   const areas = [...node.querySelectorAll("textarea")]; expect(new Set(areas.map(area => area.id)).size).toBe(2);
 });
 
-it("uses the display serif question and visible borders for every segment", async () => {
+it("uses the display serif question and visible borders for every source tile", async () => {
   const style = document.createElement("style"); style.textContent = (readFileSync("src/components/vibe/improve.css", "utf8") + readFileSync("src/components/vibe/project-workspace.css", "utf8")).replaceAll("var(--vibe-control-border)", "#765820"); document.head.append(style);
   try {
     await draw();
     expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-serif)");
     expect(getComputedStyle(node.querySelector("h1")!).fontWeight).toBe("400");
     for (const radio of node.querySelectorAll('[role="radio"]')) {
-      expect(getComputedStyle(radio).borderTopWidth).toBe("1px");
+      expect(getComputedStyle(radio).borderTopWidth).toBe("1.5px");
       expect(getComputedStyle(radio).borderTopStyle).toBe("solid");
     }
   } finally { style.remove(); }
@@ -164,5 +228,8 @@ it.each(["instructions", "replies", "pack"] as const)("PR7 connects %s feedback 
   expect(descriptions).toEqual(["Models are paused.", "Review this input."]);
   expect(node.querySelectorAll('[role="alert"]')).toHaveLength(1);
   expect(action.parentElement?.parentElement?.textContent).toContain("Review this input.");
-  for (const area of node.querySelectorAll("textarea")) expect(document.getElementById(area.getAttribute("aria-describedby")!)?.textContent).toBe("Review this input.");
+  for (const area of node.querySelectorAll("textarea")) {
+    const descriptions = area.getAttribute("aria-describedby")!.split(" ").map(id => document.getElementById(id)?.textContent);
+    expect(descriptions).toContain("Review this input.");
+  }
 });

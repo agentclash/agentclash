@@ -95,7 +95,7 @@ function button(name: string) {
     ...document.querySelectorAll<HTMLButtonElement>("button"),
   ].find(
     (b) =>
-      b.getAttribute("aria-label") === name || b.textContent?.trim() === name || b.textContent?.trim().startsWith(`${name} · up to $`),
+      b.getAttribute("aria-label") === name || document.getElementById(b.getAttribute("aria-labelledby") || "")?.textContent === name || b.textContent?.trim() === name || b.textContent?.trim().startsWith(`${name} · up to $`),
   );
   expect(found, `button: ${name}`).toBeTruthy();
   return found!;
@@ -2928,7 +2928,7 @@ async function enterDoor(door: "build" | "test", config: Record<string, unknown>
   const choice = [...container.querySelectorAll<HTMLButtonElement>(".vibe-entry-paths button")].find(b => b.textContent?.includes(door === "build" ? "I have an idea" : "I have an agent"))!;
   choice.focus();
   await act(async () => { choice.click(); await new Promise(resolve => setTimeout(resolve, 0)); });
-  expect(container.textContent).toContain(door === "build" ? "What task should the agent handle?" : "How do you want to test your agent?");
+  expect(container.textContent).toContain(door === "build" ? "What task should the agent handle?" : "What can you share about your agent?");
 }
 const visibleH1 = () => [...container.querySelectorAll("h1")].filter(h1 => !h1.closest("[hidden]"));
 
@@ -2940,7 +2940,7 @@ for (const door of ["build", "test"] as const) {
   it(`shows exactly one h1 on the ${door} start (B3)`, async () => {
     await enterDoor(door);
     expect(visibleH1()).toHaveLength(1);
-    expect(visibleH1()[0].textContent).toBe(door === "build" ? "What task should the agent handle?" : "How do you want to test your agent?");
+    expect(visibleH1()[0].textContent).toBe(door === "build" ? "What task should the agent handle?" : "What can you share about your agent?");
     expect(container.querySelector(".vibe-project-header")).toBeNull();
   });
   // D3: Build focuses its task input; Improve focuses its start heading.
@@ -3673,7 +3673,7 @@ it("preserves both Improve sources through switching, Back and refresh", async (
   await type("Be polite", "What a good reply must do");
   await click("Instructions");
   expect(textarea("Agent instructions")?.value).toBe("Keep these instructions.");
-  await click("Back"); await frame();
+  await click("All projects"); await frame();
   expect(document.activeElement?.id).toBe("vibe-door-test");
   await act(async () => buttonByDoor("test").click());
   await click("Real replies");
@@ -3892,7 +3892,7 @@ it("PR4 cleans up a failed first message and retains the door draft across a swi
   expect(composer().value).toBe("Keep this Build draft.");
   await click("Have an agent already? Improve it");
   await type("Independent instructions", "Agent instructions");
-  await click("Build an agent instead");
+  await click("No agent yet? Build one");
   expect(composer().value).toBe("Keep this Build draft.");
 });
 
@@ -4012,7 +4012,7 @@ it("PR4 uses the selected approved model for the first instructions", async () =
 it.each(["build", "test"] as const)("PR4 navigates the %s start with a stale Next snapshot, reloads and restores Back focus", async door => {
   harness.staleRouter = true;
   await enterDoor(door);
-  const heading = door === "build" ? "What task should the agent handle?" : "How do you want to test your agent?";
+  const heading = door === "build" ? "What task should the agent handle?" : "What can you share about your agent?";
   expect(harness.params.get("start")).toBeNull();
   expect(params().get("start")).toBe(door === "build" ? "build" : "improve");
   expect(visibleH1().map(h => h.textContent)).toEqual([heading]);
@@ -4029,7 +4029,7 @@ it.each(["build", "test"] as const)("PR4 navigates the %s start with a stale Nex
   await render();
   expect(visibleH1().map(h => h.textContent)).toEqual([heading]);
   expect(document.activeElement).toBe(door === "build" ? composer() : visibleH1()[0]);
-  await click(door === "build" ? "All projects" : "Back"); await frame();
+  await click("All projects"); await frame();
   expect(visibleH1().map(h => h.textContent)).toEqual(["AI agents you can trust with real work."]);
   expect(document.activeElement).toBe(buttonByDoor(door));
   expect(requests.filter(r => r.method === "POST" && r.path === "/sessions")).toEqual([]);
@@ -4303,7 +4303,7 @@ it("moves focus into each Improve source panel and back to its source button (D3
   const replies = container.querySelector<HTMLButtonElement>('[role="radio"]:nth-child(2)')!;
   await act(async () => replies.click());
   expect(textarea("Conversations")).toBeTruthy();
-  expect(container.querySelector("h1")?.textContent).toBe("How do you want to test your agent?");
+  expect(container.querySelector("h1")?.textContent).toBe("What can you share about your agent?");
   expect(requests.filter(r => r.method === "POST")).toEqual([]);
 });
 
@@ -4322,7 +4322,7 @@ it("shows busy only while the first Improve input makes the project", async () =
   await act(async () => held.resolve(json({ error: { code: "unavailable", message: "Start failed" } }, 503)));
   expect(button("Write 3 tests").getAttribute("aria-busy")).toBeNull();
   expect(button("Write 3 tests").disabled).toBe(false);
-  expect(container.textContent).toContain("How do you want to test your agent?");
+  expect(container.textContent).toContain("What can you share about your agent?");
 });
 
 it.each(["instructions", "replies"] as const)("keeps the full Improve %s start and all drafts after a rejected first input", async mode => {
@@ -4829,7 +4829,7 @@ it.each(["replies", "pack", "build"] as const)("hydrates a stored %s start draft
   expect(container.querySelector("[inert]")).toBeNull();
   if (mode === "build") expect(composer().value).toBe(value);
   else {
-    expect(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toBe(mode === "replies" ? "Real replies" : "Test pack");
+    expect(container.querySelector('[role="radio"][aria-checked="true"] .vibe-improve-source-title')?.textContent).toBe(mode === "replies" ? "Real replies" : "Test pack");
     if (mode === "replies") { expect(textarea("Conversations").value).toBe("Customer: Return?\nAgent: Within 30 days."); expect(textarea("What a good reply must do").value).toBe("Allow returns within 30 days."); }
     else expect(container.querySelector('[aria-label="Test pack file"]')).toBeTruthy();
   }
@@ -4848,7 +4848,7 @@ it("server renders start defaults without reading persisted or in-memory drafts"
   container.innerHTML = renderToString(<VibeClient />);
   root = createRoot(container);
   expect(reads.mock.calls).toEqual([]);
-  expect(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toBe("Instructions");
+  expect(container.querySelector('[role="radio"][aria-checked="true"] .vibe-improve-source-title')?.textContent).toBe("Instructions");
   expect(container.querySelector("[inert]")?.getAttribute("style")).toContain("visibility:hidden");
 });
 
@@ -4869,7 +4869,7 @@ it("hydrates a pending start notice only after restoring account drafts", async 
   expect(textarea("Conversations").value).toBe("Account replies");
   expect(button("Use it")).toBeTruthy();
   await click("Use it");
-  expect(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toBe("Test pack");
+  expect(container.querySelector('[role="radio"][aria-checked="true"] .vibe-improve-source-title')?.textContent).toBe("Test pack");
 });
 
 
@@ -4908,7 +4908,7 @@ it.each(["build", "test"] as const)("PR7 uses the new start for an empty existin
     : path.endsWith("/messages") ? json({ id: "existing-first", kind: "message", state: "RUNNING", billing: "RESERVED", models: defaultModels, results: [], max_cost_nano_usd: 0, actual_cost_nano_usd: 0 }, 202) : previous(path, options);
   await render();
   expect(container.querySelectorAll("h1")).toHaveLength(1);
-  expect(container.querySelector("h1")?.textContent).toBe(door === "build" ? "What task should the agent handle?" : "How do you want to test your agent?");
+  expect(container.querySelector("h1")?.textContent).toBe(door === "build" ? "What task should the agent handle?" : "What can you share about your agent?");
   expect(container.querySelector(".vibe-composer-dock")).toBeNull();
   expect(container.textContent).not.toContain("Requesting an estimate sends your draft");
   await type("Answer questions using our return policy.", door === "build" ? "Message Vibe Evals" : "Agent instructions");

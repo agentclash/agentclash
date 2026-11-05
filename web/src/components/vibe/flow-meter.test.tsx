@@ -39,9 +39,10 @@ it.each([false, true])("P2/P4: census of the actual starts retains budgets (popu
   // The Build budget applies before input; entering a task enables its primary.
   // The sixth control is the required data-use link (a notice, not a choice).
   expect((await measure()).controls.mainEnabled).toBe(populated ? 7 : 6);
-  for (const [mode, expected] of [["instructions", populated ? 8 : 7], ["replies", populated ? 6 : 5], ["pack", 4]] as const) {
+  // Improve now exposes the door switch in its footer in every mode.
+  for (const [mode, expected] of [["instructions", populated ? 9 : 8], ["replies", populated ? 7 : 6], ["pack", 5]] as const) {
     await act(async () => root.render(<ImproveStart mode={mode} onMode={noop} drafts={{ instructions: populated ? "Use my policy" : "", conversations: populated ? "Customer: Hi\nAgent: Hello" : "", rules: populated ? "Be helpful" : "" }} onDraft={noop} models={[{ id: "openai/gpt-4.1-mini", name: "openai/gpt-4.1-mini" }]} signedIn={false} busy={false} onWriteTests={noop} onSaveReplies={noop} onImportPack={noop} onOther={noop} onSwitchDoor={noop} onBack={noop} />));
     expect((await measure()).controls.mainEnabled, mode).toBe(expected);
-    expect(expected).toBeLessThanOrEqual(8);
+    expect(expected).toBeLessThanOrEqual(9);
   }
 });

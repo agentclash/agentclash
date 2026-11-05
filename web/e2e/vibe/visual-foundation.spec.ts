@@ -5,7 +5,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { Session } from "../../src/lib/vibe";
 import { description, fakeVibe, instructions, models, project } from "./entry-fake";
-import { chooseDoor, composer, doorButton, doorReady, entryHeading, followSystemAppearance, entryReady, sendButton, sourceButton, doorHeading, startScreen, startComposer, buildOptions, startCopy, otherResults, resultsMore } from "./entry-model";
+import { chooseDoor, composer, doorButton, doorReady, entryHeading, followSystemAppearance, entryReady, sendButton, sourceButton, doorHeading, startScreen, startComposer, buildOptions, startCopy, otherResults, resultsMore, describeInChat } from "./entry-model";
 
 type Scheme = "light" | "dark";
 const schemes = ["light", "dark"] as const;
@@ -386,6 +386,32 @@ test("review polish: shared start hierarchy, chip rows and vertical steps, align
       await expect(title).toHaveCSS("font-family", /Instrument[ _]Serif/);
       await expect(title).toHaveCSS("font-size", width === 390 ? "32px" : "42.88px");
       if (door === "improve") {
+        const sources = startScreen(page).getByRole("radiogroup", { name: "Agent source", exact: true });
+        const tiles = sources.getByRole("radio");
+        await expect(tiles).toHaveCount(3);
+        await expect(sources.locator('[tabindex="0"]')).toHaveCount(1);
+        for (const [name, description] of [
+          ["Instructions", "Paste the prompt your agent uses"],
+          ["Real replies", "Paste conversations it already had"],
+          ["Test pack", "Import a pack from AgentClash"],
+        ]) {
+          const radio = sources.getByRole("radio", { name, exact: true });
+          await expect(radio).toHaveAccessibleName(name);
+          await expect(radio).toHaveAccessibleDescription(description);
+          await expect(radio.getByText(description, { exact: true })).toBeVisible();
+        }
+        const positions = await tiles.evaluateAll(elements => elements.map(element => {
+          const { x, y } = element.getBoundingClientRect(); return { x, y };
+        }));
+        if (width > 600) expect(new Set(positions.map(position => position.y)).size).toBe(1);
+        else {
+          expect(new Set(positions.map(position => position.x)).size).toBe(1);
+          expect(positions[0].y).toBeLessThan(positions[1].y);
+          expect(positions[1].y).toBeLessThan(positions[2].y);
+        }
+        const footer = startScreen(page).locator("footer.vibe-start-footer");
+        await expect(footer.getByRole("button", { name: "No agent yet? Build one", exact: true })).toBeVisible();
+        await expect(startScreen(page).locator(".vibe-improve-other")).not.toContainText("Build an agent instead");
         const options = startScreen(page).locator(".vibe-improve-other > summary");
         const disclosure = options.locator("..");
         await expect(options).toHaveCSS("list-style-type", "none");
@@ -411,7 +437,7 @@ test("review polish: shared start hierarchy, chip rows and vertical steps, align
       for (const button of await quiet.all()) {
         await page.mouse.move(0, 0);
         await expect(button).toHaveCSS("padding-left", "0px");
-        await expect(button).toHaveCSS("text-decoration-line", (await button.getAttribute("class"))?.includes("vibe-build-switch") ? "underline" : "none");
+        await expect(button).toHaveCSS("text-decoration-line", (await button.getAttribute("class"))?.match(/vibe-start-switch|vibe-improve-sample/) ? "underline" : "none");
         expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
         await button.hover();
         await expect(button).toHaveCSS("text-decoration-line", "underline");
@@ -436,11 +462,31 @@ test("review polish: shared start hierarchy, chip rows and vertical steps, align
         for (const label of await labels.all()) { await expect(label).toHaveCSS("font-weight", "600"); await expect(label).toHaveCSS("font-size", "14px"); }
         expect(await startScreen(page).locator("option").allTextContents()).not.toEqual(expect.arrayContaining([models.target]));
       }
-      await startScreen(page).getByRole("button", { name: door === "build" ? "All projects" : "Back", exact: true }).click();
+      await startScreen(page).getByRole("button", { name: "All projects", exact: true }).click();
       await entryReady(page);
     }
   }
   expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
+});
+
+test("the secondary Improve screens keep the shared start column: centered on a wide screen, with gutters on a phone", async ({ page }) => {
+  await fakeVibe(page);
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/vibe-evals");
+    await entryReady(page, 30_000);
+    await chooseDoor(page, "improve"); await doorReady(page, "improve");
+    await describeInChat(page);
+    const column = page.locator(".vibe-start-page").filter({ has: page.getByRole("heading", { level: 1, name: startCopy.chat.heading, exact: true }) });
+    // Measure against the pane that holds the column: the sidebar takes the left part of a wide screen.
+    const { left, right, width: columnWidth } = await column.evaluate(element => {
+      const own = element.getBoundingClientRect(), pane = element.parentElement!.getBoundingClientRect();
+      return { left: own.left - pane.left, right: pane.right - own.right, width: own.width };
+    });
+    const heading = (await column.getByRole("heading", { level: 1 }).boundingBox())!;
+    expect(heading.x, `${width} heading gutter`).toBeGreaterThanOrEqual(16);
+    if (width > 600) { expect(columnWidth, `${width} column width`).toBeLessThanOrEqual(900); expect(Math.abs(left - right), `${width} centered`).toBeLessThanOrEqual(2); }
+  }
 });
 
 test("the Build result keeps 32px before the trial and one visible data-use notice as Guide opens and closes", async ({ page }) => {
