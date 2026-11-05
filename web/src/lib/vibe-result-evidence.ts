@@ -30,3 +30,14 @@ export function compareResultEvidence(current: Operation, baseline: Operation) {
  return {changed,unknown,controlled:!regraded&&!unknown.length&&changed.every(key=>key==="build")};
 }
 export const unresolvedCase = (result: CaseResult) => result.verdict==="UNKNOWN" || !!result.error || result.checks.some(check => !!check.error || !["PASS","FAIL"].includes(check.verdict)) || (result.expected_checks ?? result.checks.length)>result.checks.length;
+
+export function resultSlotStatus(results: CaseResult[], total: number) {
+ const counts = { pass: 0, fail: 0, unresolved: 0 };
+ const slots = Array.from({ length: total }, (_, index) => {
+  const result = results[index];
+  const status = !result || unresolvedCase(result) ? "unresolved" : result.verdict === "PASS" ? "pass" : "fail";
+  counts[status]++;
+  return status;
+ });
+ return { slots, counts };
+}

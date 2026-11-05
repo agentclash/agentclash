@@ -8,6 +8,7 @@ import { ModelSelect } from "./model-select";
 import { EvaluationEntry } from "./evaluation-entry";
 import { PrototypeTrial } from "./prototype-trial";
 import { VibeDataUseNotice } from "./vibe-data-use";
+import { ChevronRight } from "lucide-react";
 
 let node: HTMLDivElement, root: Root, style: HTMLStyleElement;
 const noop = vi.fn();
@@ -150,4 +151,69 @@ it("U15: the trial keeps a notice beside its composer when materials are unavail
   const notices = [...node.querySelectorAll("p")].filter(notice => notice.textContent?.startsWith("Runs use model providers."));
   expect(notices).toHaveLength(1);
   expect(notices[0].closest(".vibe-prototype-trial")).not.toBeNull();
+});
+
+it("Results header tabs use transparent underline states and retain a single row", async () => {
+  await draw(<header className="vibe-project-header"><nav className="vibe-nav"><button role="tab" className="vibe-project-tab" aria-selected="false">Agent</button><button role="tab" className="vibe-project-tab" aria-selected="true">Results</button></nav></header>);
+  const [idle, selected] = [...node.querySelectorAll(".vibe-project-tab")].map(tab => getComputedStyle(tab));
+  expect(idle.borderBottomWidth).toBe("2px");
+  expect(idle.borderBottomColor).toBe("rgba(0, 0, 0, 0)");
+  expect(idle.color).toBe("var(--vibe-muted)");
+  expect(selected.borderBottomColor).toBe("var(--vibe-ink)");
+  expect(selected.color).toBe("var(--vibe-fg)");
+  expect(selected.background).toBe("rgba(0, 0, 0, 0)");
+  expect(getComputedStyle(node.querySelector(".vibe-nav")!).flexWrap).toBe("nowrap");
+});
+
+it("Results identity and metadata use display and data fonts; header tools stay 44px", async () => {
+  await draw(<header className="vibe-project-header"><div className="vibe-project-identity"><div><h1>A long project name</h1><p>v1 · Run 1: Completed</p></div></div><div className="vibe-project-tools"><button className="vibe-button vibe-project-guide">Guide<small className="vibe-guide-attention">Needs attention</small></button><button className="vibe-button">Details</button></div></header>);
+  expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-serif)");
+  expect(getComputedStyle(node.querySelector("p")!).fontFamily).toBe("var(--vibe-font-data)");
+  for (const tool of node.querySelectorAll("button")) expect(getComputedStyle(tool).height).toBe("44px");
+  expect(getComputedStyle(node.querySelector(".vibe-project-guide")!).background).toBe("var(--vibe-surface-2)");
+});
+
+it("Results rows use fixed status columns, unboxed rules and mobile detail stacking", async () => {
+  await draw(<details className="vibe-result-row" data-verdict="FAIL"><summary><span>×</span><span>Test message</span><span className="vibe-verdict-word vibe-verdict-issue">Issue</span><span>›</span></summary><div className="vibe-result-details"><div className="vibe-evidence-field"><p className="vibe-evidence-label">It replied</p><div className="vibe-evidence-content vibe-example-reply">Reply</div></div></div></details>);
+  const summary = getComputedStyle(node.querySelector("summary")!);
+  // jsdom keeps the UA summary display value; inspect the authored declaration.
+  expect(style.textContent).toContain('.vibe-result-row[data-verdict] > summary {\n  display: grid;');
+  expect(summary.gridTemplateColumns).toBe("24px minmax(0, 1fr) minmax(56px, max-content) 24px");
+  expect(getComputedStyle(node.querySelector(".vibe-evidence-field")!).gridTemplateColumns).toBe("96px minmax(0,1fr)");
+  expect(getComputedStyle(node.querySelector(".vibe-example-reply")!).borderLeftColor).toBe("var(--vibe-issue)");
+  expect(style.textContent).toContain('.vibe-result-row[data-verdict] .vibe-evidence-field { grid-template-columns:minmax(0,1fr); gap:var(--vibe-space-1); }');
+  expect(style.textContent).toContain('.vibe-result-row[data-verdict] .vibe-verdict-word.vibe-verdict-issue { background:var(--vibe-issue-tint); }');
+});
+
+
+it("Tests tab rows keep main's three-child flex layout at desktop and mobile widths", async () => {
+  // Exact TestSuitePanel row markup for a non-editable test, without optional actions.
+  await draw(<div className="vibe-panel"><details className="vibe-result-row">
+    <summary>
+      <span className="w-5 shrink-0 text-xs vibe-muted">1</span>
+      <span className="vibe-row-title min-w-0 flex-1">A customer message</span>
+      <ChevronRight className="vibe-chevron vibe-muted" size={16} />
+    </summary>
+    <div className="border-t border-[var(--vibe-border)] p-4">
+      <p className="mb-1 text-xs vibe-muted">What should happen</p>
+      <p>Follow the policy.</p>
+      <p className="mt-2 text-sm vibe-muted">To change custom grading rules, edit the original pack and import it again.</p>
+    </div>
+  </details></div>);
+  const summary = node.querySelector("summary")!;
+  expect(summary.children).toHaveLength(3);
+  expect(getComputedStyle(summary).gridTemplateColumns).toBe("none");
+  expect(style.textContent).toContain(".vibe-result-row summary {\n  display: flex;");
+  // jsdom does not evaluate media queries. Check every authored template, including
+  // mobile overrides, to ensure none can match the real Tests summary.
+  function checkTemplates(rules: CSSRuleList) {
+    for (const rule of Array.from(rules)) {
+      if (rule instanceof CSSStyleRule && rule.style.getPropertyValue("grid-template-columns")) {
+        expect(summary.matches(rule.selectorText), rule.selectorText).toBe(false);
+      } else if ("cssRules" in rule) {
+        checkTemplates((rule as CSSMediaRule).cssRules);
+      }
+    }
+  }
+  checkTemplates(style.sheet!.cssRules);
 });

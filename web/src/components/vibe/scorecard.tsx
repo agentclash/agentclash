@@ -4,9 +4,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ArrowRight, Bookmark, Copy, Lightbulb } from "lucide-react";
 import { dollars, terminal, type CaseResult, type Operation } from "@/lib/vibe";
 import { resultHeadline } from "./result-headline";
+import { ResultSummary } from "./result-summary";
 import { verifiedFinding } from "./grounded-finding";
 import { CaseEvidence } from "./case-evidence";
-import { unresolvedCase } from "@/lib/vibe-result-evidence";
+import { resultSlotStatus, unresolvedCase } from "@/lib/vibe-result-evidence";
 import { testCount } from "@/lib/vibe-presentation";
 import { originalInputs } from "./result-prompts";
 import { recoveryMessage } from "./recovery-message";
@@ -57,7 +58,6 @@ export function VibeScorecard({
 }) {
   const Heading = headingLevel === 1 ? "h1" : "h2";
   const [filter,setFilter]=useState("all");
-  const [copiedFinding, setCopiedFinding] = useState("");
   const [concreteFinding,setConcreteFinding]=useState<{id:string;text:string}>();
   const failedKey=operation.results.find(c => c.verdict==="FAIL")?.case_key;
   useEffect(() => {
@@ -95,10 +95,9 @@ export function VibeScorecard({
           result.verdict === "PASS" &&
           oldResults.get(result.case_key)?.verdict === "FAIL",
       ).length;
-  const unresolved = operation.results.filter(unresolvedCase);
-  const unresolvedCount = unresolved.length;
-  const overlappingCounts = unresolved.some(result => result.verdict === "FAIL" || result.verdict === "PASS");
-  const incomplete = (score.incomplete_cases || 0) > 0 || score.unknown > 0 || unresolvedCount > 0;
+  const { counts } = resultSlotStatus(operation.results, score.total);
+  const unresolvedCount = counts.unresolved;
+  const incomplete = unresolvedCount > 0;
   const stopped = ["CANCELLED", "EXPIRED", "FAILED"].includes(operation.state);
   const offerSave =
     !!onSave &&
@@ -127,7 +126,6 @@ export function VibeScorecard({
       : undefined;
   const remaining = visible.filter((result) => result !== leading);
   const findingID = `${operation.id}:${leading?.case_key || ""}`;
-  const copied = copiedFinding === findingID;
   const headline = stopped
     ? "Run stopped. Results are saved."
     : !done
@@ -157,28 +155,29 @@ export function VibeScorecard({
 
   if (testJourney && !buildJourney && done) return <article aria-label="Run results" className="space-y-6">
     <Heading className="vibe-results-outcome" aria-live="polite" tabIndex={-1}>{!stopped && !incomplete && score.total > 0 && !rechecked ? resultHeadline(score.passed, score.total) : headline}</Heading>
+    <ResultSummary operation={operation} />
     {operation.error && <p role="alert">{recoveryMessage(operation)}</p>}
     {baseline && comparable && !rechecked && <p>{fixed} fixed · {regressions} new failures. Same tests and grading model.</p>}
     {incomplete && <p>{unresolvedCount ? `${unresolvedCount} unresolved. ` : ""}Some grading is incomplete. Completed results are kept.</p>}
-    <section aria-label="Individual results" className="space-y-6">
-    {leading && <div className="vibe-panel" aria-label="Leading finding"><CaseEvidence key={findingID} summary={leading} onAsk={onAskCase ? () => onAskCase(leading.case_key) : undefined} onDispute={onDispute} onRegrade={onRegrade} concise evidenceVersion={evidenceVersion} load={loadEvidence} origin={operation.source?.kind} defaultOpen busy={busy} /></div>}
+    <div className="vibe-results-actions">
     {score.failed > 0 ? <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={() => onImprove()}><Lightbulb aria-hidden="true" />Suggest a fix</VibeButton>
       : onSave && !incomplete && !stopped ? <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onSave}><Bookmark aria-hidden="true" />Keep these tests</VibeButton>
       : <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onRetest}>Run tests again</VibeButton>}
+    {(score.failed > 0 || onSave && !incomplete && !stopped) && <VibeButton disabled={busy} onClick={onRetest}>Run tests again</VibeButton>}
+    </div>
     {actionNotice}
+    <section aria-label="Individual results" className="vibe-results-list">
+    {leading && <div aria-label="Leading finding"><CaseEvidence key={findingID} summary={leading} onAsk={onAskCase ? () => onAskCase(leading.case_key) : undefined} onDispute={onDispute} onRegrade={onRegrade} concise evidenceVersion={evidenceVersion} load={loadEvidence} origin={operation.source?.kind} defaultOpen busy={busy} /></div>}
     {remaining.length > 0 && <details className="vibe-other-results"><summary>{leading ? "Other results" : "Results"} · {remaining.length}</summary>
       {remaining.map(result => <CaseEvidence key={`${operation.id}:${result.case_key}`} summary={result} onAsk={onAskCase ? () => onAskCase(result.case_key) : undefined} concise evidenceVersion={evidenceVersion} load={loadEvidence} onDispute={onDispute} onRegrade={onRegrade} origin={operation.source?.kind} busy={busy} />)}
     </details>}
     </section>
     <details className="vibe-results-more text-sm vibe-muted"><summary className="cursor-pointer py-3">More</summary><div className="mt-3 space-y-4">
-      <p>{score.passed} passed · {score.failed} failed{unresolvedCount ? ` · ${unresolvedCount} unresolved` : ""}</p>
-      {overlappingCounts && <p>Unresolved tests have unfinished grading and can also be counted as passed or failed.</p>}
       <p>{regraded ? "Saved replies only. Your agent was not called again." : provided ? "Based on the conversations you provided. Your live app was not called." : "Text replies from your saved instructions. Your live app was not called."}</p>
       {rechecked && <p>These are the same saved replies. A different grade does not show that your agent improved.</p>}
       {baseline && !rechecked && !comparable && <p>These runs do not have matching verified grading settings. Earlier results are kept separately.</p>}
       <label className="vibe-results-filter">Show tests<select aria-label="Filter tests" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">All</option><option value="failing">Failing</option><option value="unresolved">Unresolved</option><option value="passing">Passing</option></select></label>
       <div className="flex flex-wrap gap-2">
-        {(score.failed > 0 || onSave && !incomplete && !stopped) && <VibeButton disabled={busy} onClick={onRetest}>Run tests again</VibeButton>}
         {score.failed > 0 && onSave && <VibeButton variant="quiet" disabled={busy} onClick={onSave}>Keep these tests</VibeButton>}
         {provided && onNewReplies && <VibeButton disabled={busy} onClick={onNewReplies}>Test new replies</VibeButton>}
         {onRegrade && <VibeButton variant="quiet" disabled={busy} onClick={onRegrade}>Grade the same replies again</VibeButton>}
@@ -209,8 +208,7 @@ export function VibeScorecard({
             ? resultHeadline(score.passed, score.total)
             : headline}
         </Heading>
-        {done && <p className="mt-3 text-sm">{score.passed} passed · {score.failed} failed{unresolvedCount ? ` · ${unresolvedCount} unresolved` : ""}</p>}
-        {done && overlappingCounts && <p className="mt-2 text-sm vibe-muted">Unresolved tests have unfinished grading and can also be counted as passed or failed.</p>}
+        {done && <ResultSummary operation={operation} />}
         {findingFirst && concreteFinding?.id === operation.id && leading?.case_key !== failedKey && <p>{concreteFinding.text}</p>}
         {findingFirst && done && !stopped && score.total > 0 && !score.failed && !incomplete && <p className="mt-2 text-sm vibe-muted">All these tests passed. This does not prove reliability beyond them; live integrations and unseen inputs remain untested.</p>}
         {statusNote && <p className="mt-3 text-sm vibe-muted">{statusNote}</p>}
@@ -265,7 +263,7 @@ export function VibeScorecard({
       {done && operation.error && <p role="alert" className="text-sm text-builder-warn">{recoveryMessage(operation)}</p>}
 
       {leading && (
-        <div className="vibe-panel" aria-label="Leading finding">
+        <div aria-label="Leading finding">
           <CaseEvidence
             key={findingID}
             summary={leading}
@@ -278,7 +276,6 @@ export function VibeScorecard({
             origin={operation.source?.kind}
             defaultOpen
             allowFixPrompt={!testJourney}
-            onFixCopied={() => setCopiedFinding(findingID)}
             busy={busy}
           />
         </div>
@@ -322,11 +319,11 @@ export function VibeScorecard({
           <div className="flex flex-wrap items-center gap-2">
             {score.failed > 0 && (
               <VibeButton
-                variant={primary && !copied ? "primary" : "secondary"}
+                variant={primary ? "primary" : "secondary"}
                 disabled={busy}
                 onClick={() => onImprove()}
               >
-                <Lightbulb aria-hidden="true" /> Suggest a change
+                <Lightbulb aria-hidden="true" /> Suggest a fix
               </VibeButton>
             )}
             {offerSave && (
@@ -347,7 +344,7 @@ export function VibeScorecard({
             <VibeButton
               variant={
                 primary && !offerSave &&
-                (!score.failed || copied) &&
+                !score.failed &&
                 !(retryable && onRecheck)
                   ? "primary"
                   : "secondary"
@@ -382,7 +379,7 @@ export function VibeScorecard({
               {testJourney && !leading ? "Test results" : "Other results"} ·{" "}
               {remaining.length}
             </summary>
-            <div className="vibe-panel mt-3" aria-label="Individual results">
+            <div className="vibe-results-list mt-3" aria-label="Individual results">
               {remaining.map((result) => (
                 <CaseEvidence
                   key={`${operation.id}:${result.case_key}`}
@@ -401,7 +398,7 @@ export function VibeScorecard({
             </div>
           </details>
         ) : (
-          <div className="vibe-panel" aria-label="Individual results">
+          <div className="vibe-results-list" aria-label="Individual results">
             {remaining.map((result) => (
               <CaseEvidence
                 key={`${operation.id}:${result.case_key}`}
@@ -423,8 +420,8 @@ export function VibeScorecard({
         <summary className="cursor-pointer py-2">About this run</summary>
         <div className="mt-2 space-y-3">
           <p>
-            {score.passed} passed · {score.failed}{" "}
-            {score.failed === 1 ? "needs" : "need"} attention · {unresolvedCount}{" "}
+            {counts.pass} passed · {counts.fail}{" "}
+            {counts.fail === 1 ? "needs" : "need"} attention · {unresolvedCount}{" "}
             unresolved
             {(score.incomplete_cases || 0) > score.unknown
               ? ` · ${score.incomplete_cases} with incomplete coverage`

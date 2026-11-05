@@ -24,7 +24,7 @@ it("opens the leading passing evidence and opens full checks only on request", a
   await render({ ...op, results: [...op.results, second], scorecard: { ...op.scorecard!, total: 2, evaluated: 2, passed: 2 } });
   expect(node.querySelectorAll(".vibe-result-row")).toHaveLength(2);
   expect(node.querySelector(".vibe-other-results > summary")?.textContent).toBe("Other results · 1");
-  expect(node.querySelector(".vibe-other-results .vibe-verdict-word")?.textContent).toBe("Passed");
+  expect(node.querySelector(".vibe-other-results .vibe-verdict-word")?.textContent).toBe("Pass");
   expect(node.querySelector(".vibe-other-results svg.vibe-verdict-pass")).not.toBeNull();
   expect(node.querySelector(".vibe-other-results .vibe-result-row")?.hasAttribute("open")).toBe(false);
   expect(node.querySelectorAll(".vibe-build-next-actions")).toHaveLength(1);
@@ -147,7 +147,7 @@ it("keeps the expected reply inside the expanded test before what needs attentio
   const positions = ["We gave it", "It replied", "It should", "What needs attention"].map(label => text.indexOf(label));
   expect(positions.every(position => position >= 0)).toBe(true);
   expect(positions).toEqual([...positions].sort((a, b) => a - b));
-  expect(node.querySelectorAll(".vibe-build-examples .vibe-evidence-label")).toHaveLength(3);
+  expect(node.querySelectorAll(".vibe-build-examples .vibe-evidence-label")).toHaveLength(4);
 });
 
 async function withBuildStyles(check: () => void) {
@@ -191,14 +191,18 @@ it.each([0, 2, 3])("U12/U13 Build uses the shared outcome and fix label (%s pass
   const results = Array.from({ length: 3 }, (_, index) => ({ ...evidence, case_key: `case-${index}`, verdict: index < passed ? "PASS" as const : "FAIL" as const }));
   await render({ ...op, results, scorecard: { ...op.scorecard!, total: 3, evaluated: 3, passed, failed: 3 - passed } });
   expect(node.querySelector(".vibe-results-outcome")?.textContent).toBe(passed === 3 ? "Your agent passed all 3 tests" : `Your agent passed ${passed} of 3 tests`);
+  expect(node.querySelectorAll(".vibe-result-segment")).toHaveLength(3);
+  expect(node.querySelectorAll('.vibe-result-segment[data-status="pass"]')).toHaveLength(passed);
+  expect(node.querySelectorAll('.vibe-result-segment[data-status="fail"]')).toHaveLength(3 - passed);
   if (passed < 3) expect([...node.querySelectorAll("button")].find(button => button.textContent === "Suggest a fix")?.querySelector("svg")).toBeTruthy();
 });
 
-it("P5: puts Suggest a fix immediately after the finding and before Other results", async () => {
+it("puts Suggest a fix before the finding and Other results", async () => {
   const failure = { ...evidence, verdict: "FAIL" as const };
   await render({ ...op, results: [failure, { ...evidence, case_key: "other" }], scorecard: { ...op.scorecard!, passed: 1, failed: 1, total: 2, evaluated: 2 } });
   const finding = node.querySelector(".vibe-build-examples")!;
-  const action = finding.nextElementSibling!;
+  const action = finding.previousElementSibling!;
   expect(action.querySelector("button")?.textContent).toBe("Suggest a fix");
-  expect(action.nextElementSibling).toBe(node.querySelector(".vibe-other-results"));
+  expect(action.nextElementSibling).toBe(finding);
+  expect(finding.nextElementSibling).toBe(node.querySelector(".vibe-other-results"));
 });

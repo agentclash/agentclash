@@ -442,6 +442,18 @@
   gap: var(--vibe-space-3);
   list-style: none;
 }
+.vibe-result-row[data-verdict] { min-width: 0; border-top: 1px solid var(--vibe-border); }
+.vibe-result-row[data-verdict] > summary {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) minmax(56px, max-content) 24px;
+  font-size: var(--vibe-font-body);
+  line-height: var(--vibe-leading-body);
+  min-height: 56px;
+  padding-block: var(--vibe-space-3);
+  align-items: center;
+  gap: var(--vibe-space-3);
+  list-style: none;
+}
 .vibe-result-row summary::-webkit-details-marker {
   display: none;
 }
@@ -665,12 +677,23 @@
 .vibe-build-counts { font-size: var(--vibe-font-callout); margin-top:var(--vibe-space-2); line-height: var(--vibe-leading-callout); }
 .vibe-test-explanation { margin:var(--vibe-space-4) var(--vibe-space-4) var(--vibe-space-3); color:var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-build-examples { border:1px solid var(--vibe-border); border-radius:var(--vibe-radius-md); overflow:hidden; margin-top:var(--vibe-space-4); }
+.vibe-build-examples > .vibe-result-row[data-verdict] { border-top:0; }
 .vibe-build-examples .vibe-result-row + .vibe-result-row { border-top:1px solid var(--vibe-border); }
-.vibe-build-examples summary { padding:var(--vibe-space-3) var(--vibe-space-4); min-height:48px; }
+.vibe-build-examples > .vibe-result-row[data-verdict] > summary { padding:var(--vibe-space-3) var(--vibe-space-4); min-height:56px; }
 .vibe-example-evidence { display:grid; gap:var(--vibe-space-4); }
+.vibe-result-row[data-verdict] > .vibe-result-details { min-width:0; padding:var(--vibe-space-2) var(--vibe-space-4) var(--vibe-space-5) calc(24px + var(--vibe-space-3)); }
+.vibe-build-examples > .vibe-result-row[data-verdict] > .vibe-result-details { border-top:1px solid var(--vibe-border); padding:var(--vibe-space-4); }
+.vibe-result-row[data-verdict] .vibe-evidence-field { display:grid; grid-template-columns:96px minmax(0,1fr); gap:var(--vibe-space-4); min-width:0; }
+.vibe-result-row[data-verdict] .vibe-evidence-content { min-width:0; overflow-wrap:anywhere; }
+.vibe-result-row[data-verdict] > summary > svg { justify-self:center; }
+.vibe-result-row[data-verdict] .vibe-row-title { overflow-wrap:anywhere; font-weight:500; }
+.vibe-result-row[data-verdict] > summary .vibe-verdict-word { justify-self:end; max-width:100%; padding:var(--vibe-space-1) var(--vibe-space-2); border-radius:var(--vibe-radius-pill); font-size:var(--vibe-font-footnote); line-height:var(--vibe-leading-footnote); }
+.vibe-result-row[data-verdict] .vibe-verdict-word.vibe-verdict-pass { background:var(--vibe-pass-tint); }
+.vibe-result-row[data-verdict] .vibe-verdict-word.vibe-verdict-issue { background:var(--vibe-issue-tint); }
 .vibe-evidence-label { font-size: var(--vibe-font-footnote); color:var(--vibe-muted); margin-bottom:var(--vibe-space-1); line-height: var(--vibe-leading-footnote); }
 .vibe-build-examples .vibe-markdown p { margin-block:var(--vibe-space-1); }
 .vibe-example-reply { border-left:2px solid var(--vibe-control-border); padding-left:var(--vibe-space-3); max-height:220px; overflow-y:auto; }
+.vibe-result-row[data-verdict="FAIL"] .vibe-example-reply { border-left-color:var(--vibe-issue); }
 .vibe-evidence-excerpt { white-space:pre-wrap; overflow-wrap:anywhere; }
 .vibe-evidence-full { margin-top:var(--vibe-space-2); }
 .vibe-evidence-full > summary { cursor:pointer; color:var(--vibe-muted); min-height:40px; padding-block:var(--vibe-space-2); }
@@ -699,7 +722,10 @@
   .vibe-composer-build-start { grid-template-columns:minmax(0,1fr); }
   .vibe-composer-build-start .vibe-composer-actions { justify-content:flex-end; }
   .vibe-prototype-card, .vibe-inline-trial { padding:var(--vibe-space-3); }
-  .vibe-build-examples .vibe-result-row > div { padding:var(--vibe-space-3); }
+  .vibe-result-row[data-verdict] > summary { grid-template-columns:16px minmax(0,1fr) minmax(48px,max-content) 16px; gap:var(--vibe-space-2); }
+  .vibe-result-row[data-verdict] > .vibe-result-details { padding:var(--vibe-space-2) 0 var(--vibe-space-4); }
+  .vibe-build-examples > .vibe-result-row[data-verdict] > .vibe-result-details { padding:var(--vibe-space-3); }
+  .vibe-result-row[data-verdict] .vibe-evidence-field { grid-template-columns:minmax(0,1fr); gap:var(--vibe-space-1); }
 }
 @media (hover:none), (pointer:coarse) {
   .vibe-chat-composer .vibe-composer-hint { display:none; }

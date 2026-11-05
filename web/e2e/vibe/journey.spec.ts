@@ -846,7 +846,7 @@ test("improve and retest keep a fixed comparison, duplicate clicks send once", a
   mock.snapshot().operations[0].scorecard!.failed = 1;
   mock.snapshot().operations[0].scorecard!.passed = 0;
   mock.snapshot().revision++;
-  // Suggest a change is the primary action of a failed result, outside any disclosure.
+  // Suggest a fix is the primary action of a failed result, outside any disclosure.
   const suggest = page.getByRole("button", { name: "Suggest a fix", exact: true });
   await expect(suggest).toHaveClass(/vibe-button-primary/);
   await suggest.click();
