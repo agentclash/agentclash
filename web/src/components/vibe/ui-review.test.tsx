@@ -35,17 +35,21 @@ it("U1: both starts use exactly one H1 with the same serif display role", async 
 it("U2: Try and two example pill chips share one row", async () => {
   await draw(<BuildStart {...build} />);
   const row = node.querySelector('[role="group"][aria-label="Example tasks"]')!;
-  expect(row?.firstElementChild?.textContent).toBe("Try:");
+  expect(row?.firstElementChild?.textContent).toBe("Try");
   expect(row.querySelectorAll("button.vibe-example-chip")).toHaveLength(2);
   expect(getComputedStyle(row).display).toBe("flex");
   expect(style.textContent).toContain(".vibe-build-example-chips .vibe-example-chip { border-radius: 999px;");
 });
-it("U3: Build has one input boundary and no surrounding form border or padding", async () => {
+it("U3: Build groups its textarea and examples in one card inside a borderless form", async () => {
   await draw(<BuildStart {...build} />);
   const form = getComputedStyle(node.querySelector("form")!);
   expect(form.borderTopWidth).toBe("0px");
   expect(parseFloat(form.padding)).toBe(0);
   expect(form.boxShadow).toBe("none");
+  const card = node.querySelector(".vibe-build-start-card")!;
+  expect(style.textContent).toContain("border: 1px solid var(--vibe-control-border); border-radius: var(--vibe-radius-lg); background: var(--vibe-surface);");
+  expect(card.querySelector("textarea")).not.toBeNull();
+  expect(card.querySelector('[aria-label="Example tasks"]')).not.toBeNull();
 });
 it("U4: quiet text aligns with its column and keeps 44px targets", async () => {
   await draw(<ImproveStart {...improve} />);
@@ -83,12 +87,22 @@ it("U7: disclosures replace native markers with rotating chevrons and respect re
   expect(css).toContain('summary::before { transform: rotate(135deg); }');
   expect(css).toContain('@media (prefers-reduced-motion: no-preference) { .vibe-workspace summary::before { transition: transform var(--vibe-dur-2) var(--vibe-ease-std); } }');
 });
-it("U9: the free trial uses muted sans metadata", async () => {
+it("U9: price uses mono with a muted footnote underneath", async () => {
   await draw(<BuildStart {...build} />);
   const price = getComputedStyle(node.querySelector(".vibe-build-price")!);
-  expect(price.fontFamily).toContain("--font-sans");
-  expect(price.fontSize).toBe("var(--vibe-font-footnote)");
-  expect(price.color).toBe("var(--vibe-muted)");
+  expect(price.fontFamily).toContain("--vibe-font-data");
+  expect(price.fontSize).toBe("var(--vibe-font-callout)");
+  expect(price.color).toBe("var(--vibe-fg)");
+  const detail = getComputedStyle(node.querySelector(".vibe-build-price-detail")!);
+  expect(detail.fontSize).toBe("var(--vibe-font-footnote)");
+  expect(detail.color).toBe("var(--vibe-text-3)");
+});
+it("U9b: an unknown price is a sentence in the body font, with no footnote", async () => {
+  await draw(<BuildStart {...build} price={{ kind: "unknown" }} />);
+  const price = node.querySelector(".vibe-build-price")!;
+  expect(price.getAttribute("data-kind")).toBe("unknown");
+  expect(getComputedStyle(price).fontFamily).not.toContain("--vibe-font-data");
+  expect(node.querySelector(".vibe-build-price-detail")).toBeNull();
 });
 it("P1: the entry shows three paths in one row, and one column on a phone", async () => {
   await draw(<EvaluationEntry busy={false} />);

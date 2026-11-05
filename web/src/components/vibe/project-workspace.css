@@ -290,3 +290,8 @@
 .vibe-start-region { position: relative; display: grid; min-height: 100%; }
 .vibe-start-region > [inert] { position: absolute; inset: 0; }
 .vibe-start-loading { align-self: center; justify-self: center; margin: 0; padding: var(--vibe-gutter); text-align: center; }
+
+/* Build keeps its navigation muted and its door switch visibly underlined. */
+.vibe-workspace .vibe-build-start .vibe-build-back { gap: 6px; color: var(--vibe-text-2); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
+.vibe-build-back > svg { width: 16px; height: 16px; }
+.vibe-workspace .vibe-build-start .vibe-build-switch { color: var(--vibe-fg); font-weight: 500; text-decoration: underline; text-decoration-color: var(--vibe-control-border); }

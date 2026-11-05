@@ -3632,7 +3632,7 @@ it("keeps the first draft and shows busy only after committed input", async () =
 it("keeps the Build estimate out of the chooser and shows one h1 there", async () => {
   await enterDoor("build");
   expect(shown('[aria-label="Build estimate"]')).toHaveLength(0);
-  await click("Back"); await frame();
+  await click("All projects"); await frame();
   expect(shown('[aria-label="Build estimate"]')).toHaveLength(0);
   expect(visibleH1().map(h1 => h1.textContent)).toEqual(["AI agents you can trust with real work."]);
   expect(document.activeElement?.id).toBe("vibe-door-build");
@@ -3890,7 +3890,7 @@ it("PR4 cleans up a failed first message and retains the door draft across a swi
   expect(params().get("session")).toBeNull();
   expect(container.querySelector('[role="alert"]')?.textContent).toBe("Try again later");
   expect(composer().value).toBe("Keep this Build draft.");
-  await click("Already have an agent? Improve it instead.");
+  await click("Have an agent already? Improve it");
   await type("Independent instructions", "Agent instructions");
   await click("Build an agent instead");
   expect(composer().value).toBe("Keep this Build draft.");
@@ -4029,7 +4029,7 @@ it.each(["build", "test"] as const)("PR4 navigates the %s start with a stale Nex
   await render();
   expect(visibleH1().map(h => h.textContent)).toEqual([heading]);
   expect(document.activeElement).toBe(door === "build" ? composer() : visibleH1()[0]);
-  await click("Back"); await frame();
+  await click(door === "build" ? "All projects" : "Back"); await frame();
   expect(visibleH1().map(h => h.textContent)).toEqual(["AI agents you can trust with real work."]);
   expect(document.activeElement).toBe(buttonByDoor(door));
   expect(requests.filter(r => r.method === "POST" && r.path === "/sessions")).toEqual([]);
@@ -4099,7 +4099,7 @@ it("PR4 round2 restores the chosen workspace and failed Build draft after auth r
   harness.me.mockResolvedValue({ organizations: [{ role: "org_admin", workspaces: [{ id: "workspace-one", name: "One" }, { id: "workspace-two", name: "Two" }] }] });
   const previous = respond;
   respond = async (path, options) => path.endsWith("/messages") ? json({ error: { code: "insufficient_credits", message: "This workspace has no AI credits.", admission: "rejected" } }, 402) : previous(path, options);
-  await render(); await click("Back");
+  await render(); await click("All projects");
   const picker = container.querySelector<HTMLSelectElement>('[aria-label="Workspace for new projects"]')!;
   await act(async () => { picker.value = "workspace-two"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
   await act(async () => buttonByDoor("build").click());

@@ -107,20 +107,22 @@ test("the entry and both door starts: display serif questions, 3:1 control bound
     await expect(title, scheme).toHaveCSS("font-family", /Instrument[ _]Serif/);
     await expect(title, scheme).toHaveCSS("font-weight", "400");
     expect(parseFloat(await css(title, "font-size")), scheme).toBeGreaterThanOrEqual(32);
-    await expect(box, scheme).toHaveCSS("border-top-width", "0px");
+    await expect(box, scheme).toHaveCSS("border-top-width", "1px");
     await expect(box, scheme).toHaveCSS("padding-left", "0px");
-    expect(await boundary(input), `${scheme} Build input`).toBeGreaterThanOrEqual(3);
-    await expect(box, scheme).toHaveCSS("box-shadow", "none");
+    expect(await boundary(box), `${scheme} Build card`).toBeGreaterThanOrEqual(3);
     await expect(box, scheme).toHaveCSS("background-image", "none");
     await expect(page.locator(".vibe-composer-dock")).toHaveCount(0);
     await input.focus(); await page.keyboard.press("Shift+Tab"); await page.keyboard.press("Tab");
     await expect(input).toBeFocused();
     await expect.poll(() => input.evaluate(element => element.matches(":focus-visible"))).toBe(true);
-    await expect(input, scheme).toHaveCSS("outline-style", "solid");
-    await expect(input, scheme).toHaveCSS("outline-width", "2px");
-    expect(await css(input, "outline-color"), scheme).not.toBe(await css(input, "border-top-color"));
-    expect(await boundary(input, "outline"), `${scheme} Build focus ring`).toBeGreaterThanOrEqual(3);
-    await input.blur(); await expect(input).toHaveCSS("outline-style", "none");
+    // The focus ring goes around the whole card, not only the text box.
+    await expect(input, scheme).toHaveCSS("outline-style", "none");
+    await expect(box, scheme).toHaveCSS("outline-style", "solid");
+    await expect(box, scheme).toHaveCSS("outline-width", "2px");
+    expect(await css(box, "outline-color"), scheme).not.toBe(await css(box, "border-top-color"));
+    expect(await boundary(box, "outline"), `${scheme} Build focus ring`).toBeGreaterThanOrEqual(3);
+    await input.blur(); await expect(box).toHaveCSS("outline-style", "none");
+    await expect(box, scheme).toHaveCSS("box-shadow", "none");
     const chips = startScreen(page).getByRole("group", { name: "Example tasks" }).locator(".vibe-example-chip");
     await expect(chips).toHaveCount(2);
     for (const chip of await chips.all()) {
@@ -129,7 +131,9 @@ test("the entry and both door starts: display serif questions, 3:1 control bound
     }
     const positions = await chips.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().y));
     expect(positions[0]).toBe(positions[1]);
-    await expect(page.locator(".vibe-build-price")).toHaveCSS("font-family", /Geist/);
+    // Only an amount uses the mono font; the sentence for an unknown price uses the body font.
+    const price = page.locator(".vibe-build-price");
+    await expect(price).toHaveCSS("font-family", (await price.getAttribute("data-kind")) === "unknown" ? /Geist/ : /IBM[ _]Plex[ _]Mono/);
   }
   await page.goto("/vibe-evals");
   await entryReady(page, 30_000);
@@ -396,7 +400,9 @@ test("review polish: shared start hierarchy, chip rows and vertical steps, align
         await expect(buildOptions(page)).toBeVisible();
         const primary = sendButton(page), input = startComposer(page, "build");
         const task = (await input.boundingBox())!, action = (await primary.boundingBox())!;
-        expect(Math.abs(action.x - task.x)).toBeLessThanOrEqual(1);
+        const card = (await startScreen(page).locator(".vibe-build-start-card").boundingBox())!;
+        expect(Math.abs(action.x - card.x)).toBeLessThanOrEqual(1);
+        expect(task.x).toBeGreaterThan(card.x);
         expect(action.y).toBeGreaterThan((await startScreen(page).locator(".vibe-build-example-chips").boundingBox())!.y);
         await expect(primary).toHaveAccessibleDescription("Describe the task in a sentence or two.");
         await expect(startScreen(page).getByRole("button", { name: startCopy.build.switchDoor, exact: true })).toBeVisible();
@@ -405,12 +411,22 @@ test("review polish: shared start hierarchy, chip rows and vertical steps, align
       for (const button of await quiet.all()) {
         await page.mouse.move(0, 0);
         await expect(button).toHaveCSS("padding-left", "0px");
-        await expect(button).toHaveCSS("text-decoration-line", "none");
+        await expect(button).toHaveCSS("text-decoration-line", (await button.getAttribute("class"))?.includes("vibe-build-switch") ? "underline" : "none");
         expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
         await button.hover();
         await expect(button).toHaveCSS("text-decoration-line", "underline");
       }
       if (door === "build") {
+        const stepsHeading = startScreen(page).getByRole("heading", { name: "What happens next", level: 2, exact: true });
+        await expect(stepsHeading).toBeVisible();
+        const steps = startScreen(page).locator("ol.vibe-build-next-steps > li");
+        await expect(steps).toHaveCount(3);
+        const stepPositions = await steps.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().y));
+        if (width === 390) expect(stepPositions[1]).toBeGreaterThan(stepPositions[0]);
+        else expect(new Set(stepPositions).size).toBe(1);
+        const hint = startScreen(page).getByText("Enter to start · Shift+Enter for a new line", { exact: true });
+        if (await page.evaluate(() => matchMedia("(max-width: 600px), (any-pointer: coarse)").matches)) await expect(hint).toBeHidden();
+        else await expect(hint).toBeVisible();
         const chips = startScreen(page).locator(".vibe-example-chip");
         const ys = await chips.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().y));
         expect(ys[0]).toBe(ys[1]);
@@ -420,7 +436,7 @@ test("review polish: shared start hierarchy, chip rows and vertical steps, align
         for (const label of await labels.all()) { await expect(label).toHaveCSS("font-weight", "600"); await expect(label).toHaveCSS("font-size", "14px"); }
         expect(await startScreen(page).locator("option").allTextContents()).not.toEqual(expect.arrayContaining([models.target]));
       }
-      await startScreen(page).getByRole("button", { name: "Back", exact: true }).click();
+      await startScreen(page).getByRole("button", { name: door === "build" ? "All projects" : "Back", exact: true }).click();
       await entryReady(page);
     }
   }

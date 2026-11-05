@@ -331,7 +331,7 @@ test("door navigation keeps both drafts and makes no project before input is com
   const { fake } = await open(page, "uncommitted-doors");
   await doorButton(page, "build").click(); await doorReady(page, "build");
   await composer(page).fill(description);
-  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page.getByRole("button", { name: "All projects", exact: true }).click();
   await expect(doorButton(page, "build")).toBeFocused();
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.locator(".vibe-entry-intro")).not.toHaveAttribute("data-fresh");
@@ -355,7 +355,7 @@ for (const door of ["build", "improve"] as const) test(`${door} start follows br
   await expect(doorButton(page, door)).toBeFocused();
   await page.goForward(); await doorReady(page, door);
   await page.reload(); await doorReady(page, door);
-  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await page.getByRole("button", { name: door === "build" ? "All projects" : "Back", exact: true }).click();
   await entryReady(page); await expect(doorButton(page, door)).toBeFocused();
   expect(fake.posts).toEqual([]);
   expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
