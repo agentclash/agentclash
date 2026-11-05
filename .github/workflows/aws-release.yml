@@ -36,12 +36,12 @@ jobs:
       actions: read
       id-token: write
     steps:
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         fetch-depth: 0
         persist-credentials: false
     - name: Configure the reviewed image export engine
-      uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70
+      uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5
       with:
         version: v29.3.1
         daemon-config: '{"debug":false,"log-level":"fatal","features":{"containerd-snapshotter":true}}'
