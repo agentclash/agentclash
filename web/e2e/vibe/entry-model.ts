@@ -7,7 +7,7 @@ export type ImproveSource = "instructions" | "recorded" | "import";
 type FilePayload = { name: string; mimeType: string; buffer: Buffer };
 
 export const startCopy = {
-  build: { heading: "What task should the agent handle?", composer: "What task should the agent handle?", primary: "Build and run 3 tests", switchDoor: "Already have an agent? Improve it instead." },
+  build: { heading: "What task should the agent handle?", composer: "What task should the agent handle?", primary: "Build and run 3 tests", switchDoor: "Have an agent already? Improve it" },
   improve: { heading: "How do you want to test your agent?", composer: "Agent instructions", switchDoor: "Build an agent instead" },
   chat: { heading: "Describe your agent", composer: "Message Guide", primary: "Send message", choice: "Describe it in chat" },
   sources: { instructions: "Instructions", recorded: "Real replies", import: "Test pack" },

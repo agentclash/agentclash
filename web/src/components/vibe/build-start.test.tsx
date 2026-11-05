@@ -41,11 +41,11 @@ it("fills examples without sending and calls Back and the door switch", async ()
   for (const text of ["Answer return questions", "Sort support emails"]) {
     await act(async () => button(text).click()); expect(input().value.length).toBeGreaterThan(20); expect(start).not.toHaveBeenCalled(); expect(document.activeElement).toBe(input());
   }
-  await act(async () => button("Back").click()); expect(back).toHaveBeenCalledOnce();
-  await act(async () => button("Already have an agent? Improve it instead.").click()); expect(switchDoor).toHaveBeenCalledOnce();
+  await act(async () => button("All projects").click()); expect(back).toHaveBeenCalledOnce();
+  await act(async () => button("Have an agent already? Improve it").click()); expect(switchDoor).toHaveBeenCalledOnce();
 });
-it.each([[{ kind: "trial" }, "Free trial"], [{ kind: "ceiling", nanoUSD: 500000000 }, "Up to $0.50"], [{ kind: "unknown" }, "Price available when you start"]] as const)("shows the supplied price %j without inventing a duration", async (price, label) => {
-  await render({ price }); expect(node.querySelector(".vibe-build-price")?.textContent).toBe(label); expect(node.textContent).not.toMatch(/1.2 min|usually|about/);
+it.each([[{ kind: "trial" }, "Free trial", "Your first build is free"], [{ kind: "ceiling", nanoUSD: 500000000 }, "Up to $0.50", "Maximum for this build"], [{ kind: "unknown" }, "Price available when you start", undefined]] as const)("shows the supplied price %j without inventing a duration", async (price, label, detail) => {
+  await render({ price }); expect(node.querySelector(".vibe-build-price")?.textContent).toBe(label); expect(node.querySelector(".vibe-build-price-detail")?.textContent).toBe(detail); expect(node.textContent).not.toMatch(/1.2 min|usually|about/);
 });
 it.each([{ trialUsed: true }, { busy: true }, { blockedReason: "No models are available." }])("blocks submission and keeps the draft for %j", async extra => {
   await render({ draft: "Answer questions using our return policy.", ...extra });
@@ -124,8 +124,9 @@ it("P2: exposes attachment after two chips and the switch at the bottom without 
   const row = node.querySelector(".vibe-build-example-chips")!;
   expect([...row.querySelectorAll("button")].map(control => control.textContent)).toEqual(["Answer return questions", "Sort support emails", "Attach a file"]);
   expect(button("Attach a file").querySelector("svg.lucide-paperclip")).not.toBeNull();
-  const switcher = button("Already have an agent? Improve it instead.");
-  expect(switcher.parentElement).toBe(node.querySelector("section"));
+  const switcher = button("Have an agent already? Improve it");
+  expect(switcher.parentElement).toBe(node.querySelector("footer"));
+  expect(switcher.previousElementSibling?.classList.contains("vibe-data-use-notice")).toBe(true);
   expect(node.querySelector("form")!.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(node.querySelector(".vibe-material-hint")?.textContent).toContain("Leave out secrets and customer IDs.");
   const dataUse = node.querySelector('.vibe-material-hint a[href="/docs/vibe-evals/data-use"]');
@@ -133,15 +134,17 @@ it("P2: exposes attachment after two chips and the switch at the bottom without 
   const controls = [...node.querySelectorAll<HTMLButtonElement>("button, textarea, select, a[href], summary")].filter(control => !control.closest("header") && !control.disabled);
   expect(controls).toHaveLength(6);
 });
-it("P3: puts a left-aligned primary and price immediately below chips with its reason beneath", async () => {
+it("P3: puts a left-aligned primary and two-line price below the input card with its reason beneath", async () => {
   const style = document.createElement("style"); style.textContent = readFileSync("src/components/vibe/build-output.css", "utf8"); document.head.append(style);
   try {
     await render();
     const actions = node.querySelector(".vibe-build-start-actions")!;
-    expect(node.querySelector(".vibe-build-example-chips")!.nextElementSibling).toBe(actions);
+    expect(node.querySelector(".vibe-build-start-card")!.nextElementSibling).toBe(actions);
+    expect(input().parentElement).toBe(node.querySelector(".vibe-build-start-card"));
+    expect(input().nextElementSibling).toBe(node.querySelector(".vibe-build-example-chips"));
     expect(actions.querySelector(".vibe-build-start-submit")!.firstElementChild).toBe(submit());
-    expect(submit().nextElementSibling?.textContent).toBe("Free trial");
-    expect(getComputedStyle(actions).justifyContent).toBe("flex-start");
+    expect(submit().nextElementSibling?.textContent).toBe("Free trialYour first build is free");
+    expect(getComputedStyle(actions).justifyContent).toBe("space-between");
     expect(parseFloat(getComputedStyle(submit().parentElement!).marginInlineStart)).toBe(0);
     const reason = document.getElementById(submit().getAttribute("aria-describedby")!)!;
     expect(actions.nextElementSibling).toBe(reason);
@@ -178,4 +181,33 @@ it("PR7 puts a file error beside Attach a file and associates a start error with
   expect(error?.textContent).toContain("Choose a text file");
   expect(error?.previousElementSibling?.contains(attach)).toBe(true);
   expect(node.querySelectorAll('[role="alert"]')).toHaveLength(2);
+});
+
+it("introduces the task and explains three ordered steps under What happens next", async () => {
+  await render();
+  expect(node.querySelector(".vibe-build-eyebrow")?.textContent).toBe("Build an agent");
+  expect(document.getElementById(input().getAttribute("aria-describedby")!)?.textContent).toBe("A few sentences: what comes in, what a good reply does, and any rules.");
+  const heading = node.querySelector("h2")!;
+  expect(heading.textContent).toBe("What happens next");
+  expect(heading.parentElement?.getAttribute("aria-labelledby")).toBe(heading.id);
+  const steps = heading.nextElementSibling!;
+  expect(steps.tagName).toBe("OL");
+  expect([...steps.querySelectorAll("li")].map(step => [step.querySelector(".vibe-build-step-number")?.textContent, step.querySelector("h3")?.textContent, step.querySelector("p")?.textContent])).toEqual([
+    ["01", "We draft the agent", "Instructions written from your task. You can edit them later."],
+    ["02", "We write three tests", "Real messages a customer could send, each with a rule to meet."],
+    ["03", "The tests run", "You see each reply, what passed and what to fix."],
+  ]);
+  expect(node.querySelector(".vibe-build-key-hint")?.textContent).toBe("Enter to start · Shift+Enter for a new line");
+  expect(button("All projects").querySelector("svg.lucide-chevron-left")?.getAttribute("aria-hidden")).toBe("true");
+  expect(node.querySelector('input[aria-label="Attach a task file"]')?.hasAttribute("hidden")).toBe(true);
+});
+it("goes back with Escape unless a build or attachment is in progress", async () => {
+  await render();
+  await act(async () => input().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(back).toHaveBeenCalledOnce();
+  await render({ busy: true });
+  expect(button("All projects").disabled).toBe(true);
+  expect(button("Have an agent already? Improve it").disabled).toBe(true);
+  await act(async () => input().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(back).toHaveBeenCalledOnce();
 });
