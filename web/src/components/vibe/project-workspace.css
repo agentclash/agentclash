@@ -298,25 +298,23 @@
 .vibe-start-region > [inert] { position: absolute; inset: 0; }
 .vibe-start-loading { align-self: center; justify-self: center; margin: 0; padding: var(--vibe-gutter); text-align: center; }
 
-/* Shared start-screen frame. Keep Build’s existing geometry when adding another door. */
-.vibe-start-page.vibe-start-layout { box-sizing: border-box; width: min(100%, calc(760px + 2 * var(--vibe-gutter))); min-width: 0; margin-inline: auto; padding: calc(var(--vibe-space-7) - var(--vibe-space-3)) var(--vibe-gutter) calc(2 * var(--vibe-space-6)); display: grid; gap: var(--vibe-space-6); }
-.vibe-start-layout > header { margin-bottom: calc(-1 * var(--vibe-space-3)); }
-.vibe-start-intro { display: grid; gap: var(--vibe-space-3); }
+/* Shared start-screen rhythm. Text controls keep 44px targets without adding visible gaps. */
+.vibe-start-page.vibe-start-layout { --vibe-start-section-gap: var(--vibe-space-6); box-sizing: border-box; width: min(100%, calc(760px + 2 * var(--vibe-gutter))); min-width: 0; margin-inline: auto; padding: calc(var(--vibe-space-7) - var(--vibe-space-3)) var(--vibe-gutter) calc(2 * var(--vibe-space-6)); display: grid; align-content: start; gap: var(--vibe-start-section-gap); }
+.vibe-start-layout > header { display: flex; margin-bottom: calc(var(--vibe-space-4) - var(--vibe-start-section-gap)); }
+.vibe-start-layout > .vibe-start-intro { display: grid; gap: var(--vibe-space-2); margin: 0; }
 .vibe-start-intro > p { margin: 0; }
 .vibe-start-eyebrow { font-family: var(--vibe-font-data); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); letter-spacing: .08em; text-transform: uppercase; color: var(--vibe-text-3); }
-.vibe-start-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: var(--vibe-space-4) var(--vibe-space-5); padding-top: var(--vibe-space-2); }
+.vibe-start-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: var(--vibe-space-4) var(--vibe-space-5); }
 .vibe-workspace .vibe-start-footer .vibe-data-use-notice { flex: 1 1 320px; max-width: 440px; margin: 0; color: var(--vibe-text-3); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); }
-.vibe-start-footer .vibe-data-use-notice a { display: inline-flex; align-items: center; min-height: 40px; color: var(--vibe-text-2); }
-.vibe-workspace .vibe-start-page .vibe-start-back { gap: 6px; color: var(--vibe-text-2); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
+.vibe-workspace .vibe-start-footer .vibe-data-use-notice a { display: inline; min-height: 0; padding: 0; color: var(--vibe-text-2); }
+.vibe-workspace .vibe-start-page .vibe-start-back { height: 44px; padding-block: 0; margin-block: calc((var(--vibe-leading-callout) - 44px) / 2); gap: 6px; color: var(--vibe-text-2); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-start-back > svg { width: 16px; height: 16px; }
-.vibe-workspace .vibe-start-page .vibe-start-switch { color: var(--vibe-fg); font-weight: 500; text-decoration: underline; text-decoration-color: var(--vibe-control-border); }
+.vibe-workspace .vibe-start-page .vibe-start-switch { height: 44px; padding-block: 0; margin-block: calc((var(--vibe-leading-callout) - 44px) / 2); color: var(--vibe-fg); font-weight: 500; text-decoration: underline; text-decoration-color: var(--vibe-control-border); }
 @media (max-width: 600px) {
-  .vibe-start-page.vibe-start-layout { padding: var(--vibe-space-5) var(--vibe-space-4) var(--vibe-space-6); gap: var(--vibe-space-5); }
-  .vibe-start-layout > header { margin-bottom: 0; }
+  .vibe-start-page.vibe-start-layout { --vibe-start-section-gap: var(--vibe-space-5); padding: var(--vibe-space-6) var(--vibe-space-4); }
   .vibe-start-footer { flex-direction: column; }
   .vibe-workspace .vibe-start-footer .vibe-data-use-notice { flex: auto; }
 }
-@media (pointer: coarse) { .vibe-start-footer .vibe-data-use-notice a { min-height: 44px; } }
 
 /* The bar is decorative; the adjacent mono counts remain readable without color. */
 .vibe-result-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-3); margin-top: var(--vibe-space-4); min-width: 0; }
