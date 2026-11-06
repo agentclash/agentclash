@@ -23,8 +23,8 @@ license files and their dependency manifests.
 [Caddy custom-build entrypoint](https://github.com/caddyserver/caddy/blob/v2.11.4/cmd/caddy/main.go),
 [gosu release/source](https://github.com/tianon/gosu/releases/tag/1.19).
 
-zlib 1.3.2-r1 patches all seven maintained images; Temporal server/admin apply
-the locked APK inside `Dockerfile.temporal` to preserve upstream runtime users.
+zlib 1.3.2-r1 and the fixed musl (CVE-2026-107891) patch the maintained images; Temporal server/admin apply
+the locked APKs inside `Dockerfile.temporal` to preserve upstream runtime users.
 Valkey is pinned to 8.1.11-alpine for CVE-2026-85091.
 
 The driver verifies input hashes before constructing private, minimal build

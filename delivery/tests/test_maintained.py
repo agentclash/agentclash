@@ -121,13 +121,16 @@ class MaintainedBuildTests(unittest.TestCase):
             )
             self.assertEqual(stages[name]["dockerfile"], "Dockerfile.temporal")
             self.assertEqual(stages[name]["target"], target)
+            apks = ("zlib-1.3.2-r1.apk", "musl-1.2.6-r3.apk", "musl-utils-1.2.6-r3.apk")
             self.assertEqual(
                 stages[name]["packages"],
-                {"zlib-1.3.2-r1.apk":
-                 "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/zlib-1.3.2-r1.apk"},
+                {
+                    apk: "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/" + apk
+                    for apk in apks
+                },
             )
             self.assertEqual(
-                stages[name]["package_mtimes"], {"zlib-1.3.2-r1.apk": 0}
+                stages[name]["package_mtimes"], {apk: 0 for apk in apks}
             )
             self.assertEqual(stages[name]["arguments"]["BUILDER"], output["go"])
             self.assertEqual(output[name], image_id(name))

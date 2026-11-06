@@ -185,10 +185,15 @@ def build(root, directory, run, gate):
                 "ca-certificates",
                 "tzdata",
                 "zlib",
+                "musl",
+                "musl-utils",
             ),
         ),
         "go": ("v3.24", ("libcrypto3", "libssl3", "zlib")),
-        "bun": ("v3.22", ("libcrypto3", "libssl3", "zlib")),
+        "bun": (
+            "v3.22",
+            ("libcrypto3", "libssl3", "zlib", "musl", "musl-utils"),
+        ),
         "caddy": (
             "v3.23",
             (
@@ -199,6 +204,8 @@ def build(root, directory, run, gate):
                 "c-ares",
                 "brotli-libs",
                 "zlib",
+                "musl",
+                "musl-utils",
             ),
         ),
         "postgres": (
@@ -210,6 +217,8 @@ def build(root, directory, run, gate):
                 "brotli-libs",
                 "libcurl",
                 "zlib",
+                "musl",
+                "musl-utils",
             ),
         ),
     }
@@ -301,10 +310,13 @@ def build(root, directory, run, gate):
     # original source versions; only the locked security dependencies change.
     context = directory / "platform-context-temporal"
     (context / "packages").mkdir(mode=0o700, parents=True)
-    entry = lock["packages"]["v3.24/zlib"]
-    destination = context / "packages" / ("zlib-" + entry["version"] + ".apk")
-    shutil.copyfile(cache / "v3.24-zlib", destination)
-    os.utime(destination, (0, 0))
+    for package in ("zlib", "musl", "musl-utils"):
+        entry = lock["packages"]["v3.24/" + package]
+        destination = (
+            context / "packages" / (package + "-" + entry["version"] + ".apk")
+        )
+        shutil.copyfile(cache / ("v3.24-" + package), destination)
+        os.utime(destination, (0, 0))
     for component, source in (
         ("server", recipe / "temporal"),
         ("cli", recipe / "temporal/cli"),
