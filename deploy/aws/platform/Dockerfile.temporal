@@ -26,10 +26,24 @@ RUN mkdir -p /out && go build -mod=readonly -trimpath -buildvcs=false -ldflags="
 RUN sh /licenses.sh /out/notices
 
 FROM ${UPSTREAM} AS server
+# Only these runtime stages patch unpatched upstreams; the gate needs upstream users.
+USER root
+COPY packages /opt/platform-inputs
+RUN apk add --no-network --no-cache --upgrade /opt/platform-inputs/*.apk \
+    && rm -rf /opt/platform-inputs \
+    && rm -f /var/log/apk.log
+USER temporal
 COPY --from=server-build /out/temporal-server /usr/local/bin/temporal-server
 COPY --from=server-build /out/notices /usr/share/licenses/agentclash-platform/temporal/
 
 FROM ${UPSTREAM} AS admin
+# Upstream admin tools also run as temporal; restore it for the gate.
+USER root
+COPY packages /opt/platform-inputs
+RUN apk add --no-network --no-cache --upgrade /opt/platform-inputs/*.apk \
+    && rm -rf /opt/platform-inputs \
+    && rm -f /var/log/apk.log
+USER temporal
 COPY --from=server-build /out/tdbg /out/temporal-sql-tool /out/temporal-cassandra-tool /out/temporal-elasticsearch-tool /usr/local/bin/
 COPY --from=cli-build /out/temporal /usr/local/bin/
 COPY --from=server-build /out/notices /usr/share/licenses/agentclash-platform/temporal-admin/server/
