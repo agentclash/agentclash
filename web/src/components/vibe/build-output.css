@@ -30,7 +30,7 @@
 .vibe-build-start-card:has(> textarea:focus-visible) { outline: 2px solid var(--vibe-focus); outline-offset: 3px; }
 .vibe-workspace .vibe-build-start-card > textarea { display: block; box-sizing: border-box; width: 100%; min-height: 132px; max-height: 260px; field-sizing: content; resize: vertical; padding: 20px 20px var(--vibe-space-2); border: 0; border-radius: var(--vibe-radius-lg) var(--vibe-radius-lg) 0 0; font-size: var(--vibe-font-body); line-height: var(--vibe-leading-body); }
 .vibe-workspace .vibe-build-start-card > textarea:focus-visible { outline: none; }
-.vibe-build-start-form .vibe-button-primary:disabled { background: var(--vibe-ink); color: var(--vibe-on-ink); opacity: .65; }
+.vibe-build-start-form .vibe-button-primary:disabled { background: var(--vibe-surface-3); color: var(--vibe-text-3); border-color: transparent; opacity: 1; cursor: default; }
 .vibe-build-start .vibe-button, .vibe-build-trial-used a { min-height: 44px; min-width: 44px; }
 .vibe-build-trial-used a { display: inline-flex; align-items: center; text-decoration: underline; }
 .vibe-build-start-actions, .vibe-build-start-submit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-4); min-width: 0; }
