@@ -15,7 +15,7 @@ from maintained import build
 
 
 class MaintainedBuildTests(unittest.TestCase):
-    def test_temporal_binaries_use_zlib_patched_bases_before_the_final_gate(self):
+    def test_temporal_patches_zlib_in_runtime_stages_before_the_final_gate(self):
         stages, gates = {}, []
         public = json.loads((ROOT / "deploy/aws/images.lock.json").read_text())["images"]
 
@@ -51,6 +51,10 @@ class MaintainedBuildTests(unittest.TestCase):
                     else None,
                     "packages": {
                         p.name: p.read_text()
+                        for p in (context / "packages").glob("*.apk")
+                    },
+                    "package_mtimes": {
+                        p.name: p.stat().st_mtime_ns
                         for p in (context / "packages").glob("*.apk")
                     },
                 }
@@ -90,8 +94,6 @@ class MaintainedBuildTests(unittest.TestCase):
                 "caddy",
                 "postgres-packages",
                 "postgres",
-                "temporal-packages",
-                "temporal-admin-packages",
                 "temporal",
                 "temporal-admin",
             ],
@@ -102,8 +104,6 @@ class MaintainedBuildTests(unittest.TestCase):
             ("bun", "v3.22"),
             ("caddy", "v3.23"),
             ("postgres", "v3.24"),
-            ("temporal", "v3.24"),
-            ("temporal-admin", "v3.24"),
         ):
             with self.subTest(name=name):
                 stage = stages[name + "-packages"]
@@ -117,12 +117,17 @@ class MaintainedBuildTests(unittest.TestCase):
                 )
         for name, target in (("temporal", "server"), ("temporal-admin", "admin")):
             self.assertEqual(
-                stages[name]["arguments"]["UPSTREAM"], image_id(name + "-packages")
+                stages[name]["arguments"]["UPSTREAM"], public[name]["image"]
             )
             self.assertEqual(stages[name]["dockerfile"], "Dockerfile.temporal")
             self.assertEqual(stages[name]["target"], target)
             self.assertEqual(
-                list(stages[name + "-packages"]["packages"]), ["zlib-1.3.2-r1.apk"]
+                stages[name]["packages"],
+                {"zlib-1.3.2-r1.apk":
+                 "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/zlib-1.3.2-r1.apk"},
+            )
+            self.assertEqual(
+                stages[name]["package_mtimes"], {"zlib-1.3.2-r1.apk": 0}
             )
             self.assertEqual(stages[name]["arguments"]["BUILDER"], output["go"])
             self.assertEqual(output[name], image_id(name))
@@ -133,6 +138,29 @@ class MaintainedBuildTests(unittest.TestCase):
                 "temporal", "temporal-admin", "valkey",
             ],
         )
+
+    def test_temporal_runtime_stages_patch_packages_and_preserve_upstream_users(self):
+        dockerfile = (ROOT / "deploy/aws/platform/Dockerfile.temporal").read_text()
+        patch_commands = [
+            "COPY packages /opt/platform-inputs",
+            "RUN apk add --no-network --no-cache --upgrade /opt/platform-inputs/*.apk "
+            "&& rm -rf /opt/platform-inputs && rm -f /var/log/apk.log",
+        ]
+        for target in ("server", "admin"):
+            with self.subTest(target=target):
+                stage = dockerfile.split("FROM ${UPSTREAM} AS " + target + "\n")[1]
+                stage = stage.split("\nFROM ", 1)[0].replace("\\\n", "")
+                commands = [
+                    " ".join(line.split()) for line in stage.splitlines()
+                    if line.strip() and not line.lstrip().startswith("#")
+                ]
+                # Both upstream images run as temporal (amd64 config User).
+                expected = ["USER root", *patch_commands, "USER temporal"]
+                self.assertEqual(commands[:len(expected)], expected)
+                self.assertTrue(all(
+                    command.startswith("COPY --from=")
+                    for command in commands[len(expected):]
+                ))
 
 
 if __name__ == "__main__":
