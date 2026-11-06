@@ -25,8 +25,8 @@ const light = canvas(".vibe-workspace[data-appearance]");
 const dark = canvas('.vibe-workspace[data-appearance="dark"]');
 
 it("colours the browser bar with the dark Vibe canvas, the default appearance", () => {
-  expect(light).toBe("#faf8f5");
-  expect(dark).toBe("#12110f");
+  expect(light).toBe("#fafafa");
+  expect(dark).toBe("#0a0a0b");
   expect(viewport.themeColor).toBe(dark);
 });
 

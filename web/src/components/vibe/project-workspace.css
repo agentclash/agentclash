@@ -1,20 +1,20 @@
 /* Route and every portaled subtree share semantic appearance, never html state.
-   "Ink & Clay": warm paper or charcoal, ink for every control, clay only for a finding,
-   sage only for a pass. Text levels 2-4 are ink at an opacity, so each keeps its contrast
-   on every surface: 12px text uses text-2 or higher; text-3 is for 14px and up; text-4 is
+   "Graphite": neutral graphite, ink for every control, issue only for a finding,
+   pass only for a pass, brass only for contact with the team. Text levels 2-4 are ink at an
+   opacity, so each keeps its contrast on every surface: 12px text uses text-2 or higher; text-3 is for 14px and up; text-4 is
    for disabled and decorative use only. Control borders are 3:1 or more on every surface.
    Status colours never carry meaning alone: each comes with a glyph and a word. */
 .vibe-workspace[data-appearance] {
-  --vibe-bg: #faf8f5; --vibe-sidebar: #f3f0ea; --vibe-surface: #ffffff; --vibe-surface-2: #f2efe9; --vibe-surface-3: #e7e3da; --vibe-elevated: #ffffff;
-  --vibe-text-1: #1c1a16; --vibe-text-2: rgba(28,26,22,.74); --vibe-text-3: rgba(28,26,22,.66); --vibe-text-4: rgba(28,26,22,.4);
-  --vibe-separator: rgba(28,26,22,.12); --vibe-control-border: rgba(28,26,22,.56);
-  --vibe-ink: #1c1a16; --vibe-on-ink: #faf8f5; --vibe-ink-hover: #36322b; --vibe-ink-pressed: #0f0e0c; --vibe-focus: #765820;
-  --vibe-issue: #a8432a; --vibe-issue-tint: #f6e6df; --vibe-on-issue: #ffffff; --vibe-pass: #2e6b40; --vibe-pass-tint: #e5efe4; --vibe-caution: #8a5a00;
-  --vibe-overlay: rgba(18,17,15,.45);
-  --vibe-shadow-2: 0 8px 24px rgba(28,26,22,.1); --vibe-shadow-3: 0 24px 64px rgba(28,26,22,.16);
-  --vibe-diff-add-bg: #e3efd6; --vibe-diff-add-fg: #2f5219; --vibe-diff-del-bg: #f8e1d8; --vibe-diff-del-fg: #8a2e1d; --vibe-selection: #e8dcbc;
+  --vibe-bg: #fafafa; --vibe-sidebar: #f4f4f5; --vibe-surface: #ffffff; --vibe-surface-2: #f1f1f3; --vibe-surface-3: #e7e7ea; --vibe-elevated: #ffffff;
+  --vibe-text-1: #17171a; --vibe-text-2: rgba(23,23,26,.76); --vibe-text-3: rgba(23,23,26,.66); --vibe-text-4: rgba(23,23,26,.4);
+  --vibe-separator: rgba(23,23,26,.1); --vibe-control-border: rgba(23,23,26,.56);
+  --vibe-ink: #17171a; --vibe-on-ink: #fafafa; --vibe-ink-hover: #2e2e33; --vibe-ink-pressed: #050506; --vibe-focus: #2456c9;
+  --vibe-issue: #b8352a; --vibe-issue-tint: #fcebe8; --vibe-on-issue: #ffffff; --vibe-pass: #1b6e40; --vibe-pass-tint: #e4f3ea; --vibe-caution: #875400;
+  --vibe-overlay: rgba(9,9,11,.45);
+  --vibe-shadow-2: 0 8px 24px rgba(9,9,11,.08); --vibe-shadow-3: 0 24px 64px rgba(9,9,11,.14);
+  --vibe-diff-add-bg: #e3f3e8; --vibe-diff-add-fg: #17572f; --vibe-diff-del-bg: #fde6e3; --vibe-diff-del-fg: #8f2a1d; --vibe-selection: #d5e1fb;
   /* Brass is only for contact with the AgentClash team (the agency offer), never for a status. */
-  --vibe-brass: #765820; --vibe-brass-tint: #f3ead6; --vibe-on-brass: #ffffff; --vibe-brass-border: #8c6d30;
+  --vibe-brass: #7a5410; --vibe-brass-tint: #f8f0de; --vibe-on-brass: #ffffff; --vibe-brass-border: #a8823b;
   /* Earlier names, kept as aliases of the roles above. They resolve on this element, so the
      dark block below only sets the roles. */
   --vibe-fg: var(--vibe-text-1); --vibe-muted: var(--vibe-text-2); --vibe-border: var(--vibe-separator);
@@ -36,20 +36,20 @@
 }
 /* Dark: elevated surfaces are lighter than the canvas (sidebar and cards, then dialogs and sheets). */
 .vibe-workspace[data-appearance="dark"] {
-  --vibe-bg: #12110f; --vibe-sidebar: #1b1a17; --vibe-surface: #1b1a17; --vibe-surface-2: #24221e; --vibe-surface-3: #2e2b26; --vibe-elevated: #211f1b;
-  --vibe-text-1: #ede9e1; --vibe-text-2: rgba(237,233,225,.76); --vibe-text-3: rgba(237,233,225,.62); --vibe-text-4: rgba(237,233,225,.38);
-  --vibe-separator: rgba(237,233,225,.1); --vibe-control-border: rgba(237,233,225,.46);
-  --vibe-ink: #ede9e1; --vibe-on-ink: #12110f; --vibe-ink-hover: #fffaf0; --vibe-ink-pressed: #d9d3c6; --vibe-focus: #e3cb94;
-  --vibe-issue: #f0957a; --vibe-issue-tint: #3a2620; --vibe-on-issue: #12110f; --vibe-pass: #8ccb9a; --vibe-pass-tint: #1f2d22; --vibe-caution: #e2b65e;
-  --vibe-overlay: rgba(18,17,15,.6);
-  --vibe-shadow-2: 0 8px 24px rgba(0,0,0,.4); --vibe-shadow-3: 0 24px 64px rgba(0,0,0,.55);
-  --vibe-diff-add-bg: #2f3c27; --vibe-diff-add-fg: #d2e6bc; --vibe-diff-del-bg: #482f27; --vibe-diff-del-fg: #f0c7b4; --vibe-selection: #443d2e;
-  --vibe-brass: #e3cb94; --vibe-brass-tint: #262115; --vibe-on-brass: #12110f; --vibe-brass-border: #9d8a5f;
+  --vibe-bg: #0a0a0b; --vibe-sidebar: #111113; --vibe-surface: #151517; --vibe-surface-2: #1d1d20; --vibe-surface-3: #28282c; --vibe-elevated: #19191c;
+  --vibe-text-1: #f4f4f2; --vibe-text-2: rgba(244,244,242,.76); --vibe-text-3: rgba(244,244,242,.62); --vibe-text-4: rgba(244,244,242,.36);
+  --vibe-separator: rgba(244,244,242,.09); --vibe-control-border: rgba(244,244,242,.46);
+  --vibe-ink: #f4f4f2; --vibe-on-ink: #0a0a0b; --vibe-ink-hover: #ffffff; --vibe-ink-pressed: #d6d6d2; --vibe-focus: #8ab4ff;
+  --vibe-issue: #ff8f7e; --vibe-issue-tint: #2b1714; --vibe-on-issue: #0a0a0b; --vibe-pass: #6dd49b; --vibe-pass-tint: #11261a; --vibe-caution: #f2c26b;
+  --vibe-overlay: rgba(0,0,0,.6);
+  --vibe-shadow-2: 0 8px 24px rgba(0,0,0,.5); --vibe-shadow-3: 0 24px 64px rgba(0,0,0,.6);
+  --vibe-diff-add-bg: #14301f; --vibe-diff-add-fg: #b9ecca; --vibe-diff-del-bg: #3a1a16; --vibe-diff-del-fg: #ffc5bb; --vibe-selection: #2a3a5c;
+  --vibe-brass: #f0c36b; --vibe-brass-tint: #1e190e; --vibe-on-brass: #0a0a0b; --vibe-brass-border: #8d7442;
   color-scheme: dark;
 }
 /* The loading fallback renders before the route sets data-appearance. Dark is the default
    appearance, so the fallback uses the dark canvas (and the theme-color in page.tsx). */
-.vibe-route-fallback { min-height: 100dvh; background: #12110f; }
+.vibe-route-fallback { min-height: 100dvh; background: #0a0a0b; }
 .vibe-portal { background: transparent; }
 .vibe-workspace :is([data-slot="dialog-overlay"], [data-slot="sheet-overlay"]) { background: var(--vibe-overlay); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
 .vibe-workspace :is([data-slot="popover-content"], [data-slot="dropdown-menu-content"]) { background: var(--vibe-elevated); box-shadow: var(--vibe-shadow-2); border: 1px solid var(--vibe-border); }
@@ -174,6 +174,7 @@
 .vibe-workspace .vibe-sidebar-sheet { box-shadow: var(--vibe-shadow-3); }
 /* The composer is a control, so its boundary is 3:1 at rest (it is level 1: no shadow). */
 .vibe-workspace .vibe-composer { border-color: var(--vibe-control-border); }
+.vibe-workspace ::placeholder { color: var(--vibe-text-3); opacity: 1; }
 .vibe-workspace ::selection { background: var(--vibe-selection); color: var(--vibe-fg); }
 /* Secondary buttons are controls, so their boundary is 3:1 at rest and on hover. */
 .vibe-workspace .vibe-button-secondary { border-color: var(--vibe-control-border); }
@@ -187,6 +188,7 @@
 .vibe-workspace .vibe-button-primary, .vibe-workspace .vibe-material-tab[data-active] { background: var(--vibe-ink); border-color: var(--vibe-ink); color: var(--vibe-on-ink); }
 .vibe-workspace .vibe-button-primary:hover:not(:disabled) { background: var(--vibe-ink-hover); border-color: var(--vibe-ink-hover); }
 .vibe-workspace .vibe-button-primary:active:not(:disabled) { background: var(--vibe-ink-pressed); border-color: var(--vibe-ink-pressed); }
+.vibe-workspace .vibe-button-primary:disabled { background: var(--vibe-surface-3); color: var(--vibe-text-3); border-color: transparent; opacity: 1; cursor: default; }
 /* A status colour is never alone: test rows pair it with a glyph and a word. */
 .vibe-workspace .vibe-verdict-pass { color: var(--vibe-pass); }
 .vibe-workspace .vibe-verdict-issue { color: var(--vibe-issue); }
@@ -231,15 +233,15 @@
    The dark block repeats every role, because both blocks match a dark route. */
 @media (prefers-contrast: more) {
   .vibe-workspace[data-appearance] {
-    --vibe-text-2: rgba(28,26,22,.86); --vibe-text-3: rgba(28,26,22,.86); --vibe-separator: rgba(28,26,22,.7); --vibe-control-border: rgba(28,26,22,.7);
-    --vibe-issue: #8e3520; --vibe-pass: #1f5530; --vibe-caution: #6e4700;
-    --vibe-brass: #5e451a; --vibe-brass-border: #5e451a;
+    --vibe-text-2: rgba(23,23,26,.88); --vibe-text-3: rgba(23,23,26,.88); --vibe-separator: rgba(23,23,26,.7); --vibe-control-border: rgba(23,23,26,.72);
+    --vibe-issue: #922a20; --vibe-pass: #14552f; --vibe-caution: #6b4300;
+    --vibe-brass: #5f410c; --vibe-brass-border: #5f410c;
     --vibe-diff-add-fg: var(--vibe-fg); --vibe-diff-del-fg: var(--vibe-fg); --vibe-selection: color-mix(in srgb, var(--vibe-focus) 35%, var(--vibe-bg));
   }
   .vibe-workspace[data-appearance="dark"] {
-    --vibe-text-2: rgba(237,233,225,.88); --vibe-text-3: rgba(237,233,225,.88); --vibe-separator: rgba(237,233,225,.66); --vibe-control-border: rgba(237,233,225,.66);
-    --vibe-issue: #ffb39e; --vibe-pass: #a8ddb3; --vibe-caution: #f0cc85;
-    --vibe-brass: #f0dcab; --vibe-brass-border: #c9b383;
+    --vibe-text-2: rgba(244,244,242,.9); --vibe-text-3: rgba(244,244,242,.9); --vibe-separator: rgba(244,244,242,.66); --vibe-control-border: rgba(244,244,242,.66);
+    --vibe-issue: #ffb8ab; --vibe-pass: #a3e6bf; --vibe-caution: #f7d494;
+    --vibe-brass: #f6d898; --vibe-brass-border: #cfb57d;
   }
 }
 .vibe-reply-body[data-collapsed="true"] { max-height: 24rem; overflow: hidden; }
