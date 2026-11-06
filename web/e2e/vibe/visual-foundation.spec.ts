@@ -1,5 +1,5 @@
-// The "Ink & Clay" visual foundation (plan PR 2; design-direction.md sections 4 and 7): the ink
-// primary, clay and sage status with a glyph and a word, the display serif roles, 3:1 control
+// The "Graphite" visual foundation (plan PR 2; design-direction.md sections 4 and 7): the ink
+// primary, issue and pass status with a glyph and a word, the display serif roles, 3:1 control
 // boundaries, elevated surfaces, the working-state motion and the browser theme colour. Every
 // `/v1/vibe/**` request is fulfilled by a fake, so no API or model is reached.
 import { expect, test, type Locator, type Page } from "@playwright/test";
@@ -10,15 +10,15 @@ import { chooseDoor, composer, doorButton, doorReady, entryHeading, followSystem
 type Scheme = "light" | "dark";
 const schemes = ["light", "dark"] as const;
 // Token values from project-workspace.css, as computed colours.
-const ink = { light: "rgb(28, 26, 22)", dark: "rgb(237, 233, 225)" };
-const onInk = { light: "rgb(250, 248, 245)", dark: "rgb(18, 17, 15)" };
-const canvas = { light: "rgb(250, 248, 245)", dark: "rgb(18, 17, 15)" };
-const elevated = { light: "rgb(255, 255, 255)", dark: "rgb(33, 31, 27)" };
-const clay = { light: "rgb(168, 67, 42)", dark: "rgb(240, 149, 122)" };
-const sage = { light: "rgb(46, 107, 64)", dark: "rgb(140, 203, 154)" };
-const clayMore = { light: "rgb(142, 53, 32)", dark: "rgb(255, 179, 158)" };
-const sageMore = { light: "rgb(31, 85, 48)", dark: "rgb(168, 221, 179)" };
-const themeColor = { light: "#faf8f5", dark: "#12110f" };
+const ink = { light: "rgb(23, 23, 26)", dark: "rgb(244, 244, 242)" };
+const onInk = { light: "rgb(250, 250, 250)", dark: "rgb(10, 10, 11)" };
+const canvas = { light: "rgb(250, 250, 250)", dark: "rgb(10, 10, 11)" };
+const elevated = { light: "rgb(255, 255, 255)", dark: "rgb(25, 25, 28)" };
+const clay = { light: "rgb(184, 53, 42)", dark: "rgb(255, 143, 126)" };
+const sage = { light: "rgb(27, 110, 64)", dark: "rgb(109, 212, 155)" };
+const clayMore = { light: "rgb(146, 42, 32)", dark: "rgb(255, 184, 171)" };
+const sageMore = { light: "rgb(20, 85, 47)", dark: "rgb(163, 230, 191)" };
+const themeColor = { light: "#fafafa", dark: "#0a0a0b" };
 
 test.use({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
 test.describe.configure({ timeout: 90_000 });
@@ -181,7 +181,7 @@ test("the Guide composer has a distinct 3:1 keyboard focus ring in every appeara
   expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
 });
 
-test("results: an ink primary, clay and sage status with a glyph and a word, and the serif title and outcome", async ({ page }) => {
+test("results: an ink primary, issue and pass status with a glyph and a word, and the serif title and outcome", async ({ page }) => {
   const fake = await toResults(page);
   const results = page.getByRole("tabpanel", { name: "Results", exact: true });
   await otherResults(page).click();
