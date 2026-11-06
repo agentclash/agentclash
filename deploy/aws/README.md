@@ -51,13 +51,14 @@ minor, extensions, collation and actual connection use remain live rehearsal gat
 
 `images.lock.json` pins public platform/build images to repository digests and
 `linux/amd64`. The Temporal server and admin tools use the matching 1.32.0 release.
+Valkey uses the reviewed 8.1.11-alpine runtime digest.
 PostgreSQL 18.6 is the local compatibility-test image; the CloudFormation parameter
 requires the separately verified available RDS 18 minor. Never silently downgrade
 the source database. Application images use dedicated Dockerfiles with allowlisted
 contexts. Step 9 prepares workflows to build and publish them to private ECR,
 package these scripts and a verified Compose executable into a hash-addressed
 bootstrap bundle, and record application and maintained platform digests in a
-format 2 immutable release manifest. The five source-only upstream images are
+format 2 immutable release manifest. The seven source-only upstream images are
 patched and scanned before consumption; see the
 [maintained-image procedure](../../delivery/PLATFORM-IMAGES.md).
 Publishing and live delivery wait for the later provisioning and activation steps.
