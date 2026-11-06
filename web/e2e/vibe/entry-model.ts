@@ -153,9 +153,10 @@ export async function expectProjectNavigation(page: Page) {
   const title = header.locator(".vibe-project-identity :is(h1, h2)");
   const tabs = header.getByRole("tablist", { name: "Workspace views" });
   await expect.poll(async () => {
-    const heading = await title.boundingBox();
+    const compact = await page.evaluate(() => window.innerWidth <= 1023);
+    const edge = await (compact ? page.locator(".vibe-project-content") : title).boundingBox();
     const navigation = await tabs.boundingBox();
-    return heading && navigation ? Math.abs(navigation.x - heading.x) : Infinity;
+    return edge && navigation ? Math.abs(navigation.x - edge.x) : Infinity;
   }).toBeLessThanOrEqual(2);
   await expect.poll(async () => {
     const heading = await title.boundingBox();

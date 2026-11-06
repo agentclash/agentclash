@@ -87,10 +87,11 @@
 /* The status sits beside "Guide" on one line, so Guide and Details keep one height. */
 .vibe-guide-attention { display: inline-flex; align-items: center; min-height: 20px; padding-inline: var(--vibe-space-2); border-radius: var(--vibe-radius-pill); background: var(--vibe-active); color: var(--vibe-fg); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); font-weight: 500; white-space: nowrap; }
 .vibe-project-tools [aria-pressed="true"] { color: var(--vibe-fg); background: var(--vibe-hover); }
-.vibe-project-body { display: grid; grid-template-columns: minmax(0,1fr); min-height: 0; flex: 1; }
-.vibe-project-main { min-width: 0; overflow: auto; padding: clamp(var(--vibe-space-4), 3dvh, var(--vibe-space-6)) var(--vibe-gutter); overscroll-behavior: contain; }
+.vibe-project-body { --vibe-section-gap: var(--vibe-space-6); display: grid; grid-template-columns: minmax(0,1fr); min-height: 0; flex: 1; }
+.vibe-project-main { min-width: 0; overflow: auto; padding: var(--vibe-section-gap) var(--vibe-gutter); overscroll-behavior: contain; }
 .vibe-project-content { width: 100%; max-width: 60rem; min-width: 0; margin-inline: auto; }
-.vibe-project-content > section, .vibe-project-content > .vibe-notice { margin-block-end: var(--vibe-space-5); }
+.vibe-project-content > section, .vibe-project-content > .vibe-notice { margin-block-end: var(--vibe-section-gap); }
+.vibe-project-content :is(article[aria-label="Run results"], section[aria-label="Your tests"]) > :not(:last-child) { margin-block-end: var(--vibe-section-gap); }
 /* The answer of a run is a milestone, so it speaks in the display serif. Weight 400 is the only one loaded. */
 .vibe-workspace .vibe-results-outcome { font-family: var(--vibe-font-serif); font-size: var(--vibe-font-display-s); line-height: var(--vibe-leading-display); font-weight: 400; letter-spacing: -0.02em; text-wrap: balance; }
 .vibe-results-filter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); font-size: var(--vibe-font-callout); color: var(--vibe-muted); line-height: var(--vibe-leading-callout); }
@@ -111,7 +112,7 @@
 .vibe-arrival { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-bottom: var(--vibe-space-4); }
 /* One progress strip at the top of the content, or of the Guide sheet below 1280px. It stays in view
    while the content scrolls, and holds the only Stop and Approve controls. Idle, it is an empty live region. */
-.vibe-progress-strip[data-active] { position: sticky; top: calc(-1 * clamp(var(--vibe-space-4), 3dvh, var(--vibe-space-6))); z-index: 2; display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-areas: "copy actions" "bar bar" "note note"; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-block-end: var(--vibe-space-5); padding: var(--vibe-space-3) var(--vibe-space-4); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); background: color-mix(in srgb, var(--vibe-bg) 88%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.vibe-progress-strip[data-active] { position: sticky; top: calc(-1 * var(--vibe-section-gap)); z-index: 2; display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-areas: "copy actions" "bar bar" "note note"; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-block-end: var(--vibe-section-gap); padding: var(--vibe-space-3) var(--vibe-space-4); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); background: color-mix(in srgb, var(--vibe-bg) 88%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
 /* The sticky strip is the one content-layer material; it turns opaque when transparency is reduced. */
 @media (prefers-reduced-transparency: reduce) { .vibe-workspace :is([data-slot="dialog-overlay"], [data-slot="sheet-overlay"]), .vibe-project-header, .vibe-progress-strip[data-active] { background: var(--vibe-bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 .vibe-progress-row { display: contents; }
@@ -139,15 +140,17 @@
 }
 .vibe-project-content > label:has(> select[aria-label="Result history"]) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-bottom: var(--vibe-space-4); font-size: var(--vibe-font-callout); color: var(--vibe-muted); line-height: var(--vibe-leading-callout); }
 .vibe-project-main .vibe-instructions-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: var(--vibe-surface); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); padding: var(--vibe-space-4); }
-.vibe-utility, .vibe-utility-sheet { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--vibe-surface); color: var(--vibe-fg); }
+.vibe-utility, .vibe-utility-sheet { --vibe-utility-inset: var(--vibe-space-4); display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--vibe-surface); color: var(--vibe-fg); }
 /* Sheets are elevation 3: the elevated surface (lighter than the canvas in dark) and a deep shadow. */
 .vibe-workspace .vibe-utility-sheet { background: var(--vibe-elevated); box-shadow: var(--vibe-shadow-3); }
 .vibe-utility { border-left: 1px solid var(--vibe-border); }
-.vibe-utility-heading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: var(--vibe-space-3); padding: clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-4)) var(--vibe-space-4); border-bottom: 1px solid var(--vibe-border); }
+.vibe-utility-heading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: var(--vibe-space-3); padding: clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-4)) var(--vibe-utility-inset); border-bottom: 1px solid var(--vibe-border); }
+/* Close has a full hit target, with its text aligned to the panel's right inset. */
+.vibe-utility-heading > .vibe-button { padding-inline: var(--vibe-space-3); margin-inline-end: calc(-1 * var(--vibe-space-3)); }
 .vibe-utility-heading h2 { font-size: var(--vibe-font-title2); font-weight: 600; line-height: var(--vibe-leading-title2); }
-.vibe-utility-scroll { min-height: 0; flex: 1; overflow: auto; padding: clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-4)) var(--vibe-space-4); overscroll-behavior: contain; overflow-wrap: anywhere; }
+.vibe-utility-scroll { min-height: 0; flex: 1; overflow: auto; padding: clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-4)) var(--vibe-utility-inset); overscroll-behavior: contain; overflow-wrap: anywhere; }
 .vibe-utility-scroll > [data-message-id] { margin-bottom: var(--vibe-space-5); }
-.vibe-guide-composer { display: flex; flex-direction: column; gap: var(--vibe-space-2); flex: 0 1 auto; min-height: 0; padding: clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-3)) var(--vibe-space-4) max(clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-4)), env(safe-area-inset-bottom)); border-top: 1px solid var(--vibe-border); max-height: 55dvh; }
+.vibe-guide-composer { display: flex; flex-direction: column; gap: var(--vibe-space-2); flex: 0 1 auto; min-height: 0; padding: clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-3)) var(--vibe-utility-inset) max(clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-4)), env(safe-area-inset-bottom)); border-top: 1px solid var(--vibe-border); max-height: 55dvh; }
 .vibe-guide-context { min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .vibe-guide-tools { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--vibe-space-2); }
 .vibe-workspace .vibe-guide-data-use { flex: 1; min-width: 0; margin: 0; align-self: center; }
@@ -209,13 +212,15 @@
   .vibe-workspace .vibe-mobile-toggle { display: inline-flex; }
   .vibe-workspace .vibe-desktop-toggle { display: none; }
   .vibe-project-identity .vibe-mobile-toggle { width: 44px; }
-  /* Match the projects toggle and the identity gap above. */
-  .vibe-project-tabs { margin-inline-start: calc(44px + var(--vibe-space-3)); }
+  /* Tabs get their own full row at the content gutter; only the title follows the toggle. */
+  .vibe-project-header { padding-block: var(--vibe-space-2) 0; row-gap: 0; }
+  .vibe-project-tabs { grid-column: 1 / -1; margin-inline-start: 0; }
 }
 @media (max-width: 600px) {
-  .vibe-project-header { padding: var(--vibe-space-3) var(--vibe-gutter); gap: var(--vibe-space-2) var(--vibe-space-1); }
+  .vibe-project-body { --vibe-section-gap: var(--vibe-space-5); }
+  .vibe-project-header { padding: var(--vibe-space-2) var(--vibe-gutter) 0; gap: 0 var(--vibe-space-1); }
   .vibe-project-header .vibe-nav { gap: var(--vibe-space-1); flex-wrap: wrap; }
-  /* The tabs stay in the title column, aligned with the title; they wrap there on the narrowest phones. */
+  /* The full-width tab row wraps at the content gutter on the narrowest phones. */
   .vibe-project-header .vibe-button { padding-inline: var(--vibe-space-2); }
   .vibe-project-tools > button { position: relative; width: 44px; height: 44px; padding: 0; }
   .vibe-project-tools .vibe-project-tool-icon { display: block; width: 18px; height: 18px; }
@@ -245,8 +250,17 @@
   }
 }
 .vibe-reply-body[data-collapsed="true"] { max-height: 24rem; overflow: hidden; }
-.vibe-project-main[data-initial] { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.vibe-project-main[data-initial] { container-type: inline-size; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
 .vibe-project-main[data-initial] > .vibe-project-content { display: contents; }
+/* The strip uses the inner edges of .vibe-column, including its gutters. */
+.vibe-project-main[data-initial] > .vibe-project-content > .vibe-progress-strip[data-active] { position: static; flex: none; width: calc(min(100%, 50.5rem) - 2 * var(--vibe-gutter)); margin: var(--vibe-section-gap) auto 0; }
+.vibe-project-main[data-initial] .vibe-scroll-region { overflow-x: hidden; }
+/* The scroll wrapper keeps the pane width; its scrollbar fits inside the content gutter. */
+.vibe-project-main[data-initial] .vibe-scroll-region > div { width: 100cqw; }
+.vibe-project-main[data-initial] .vibe-composer-dock-inner { width: min(100cqw, 50.5rem); max-width: none; margin-inline: max(0px, (100cqw - 50.5rem) / 2); }
+.vibe-project-main[data-initial] .vibe-scroll-region .vibe-column { padding-block: var(--vibe-section-gap); }
+/* Keep quiet conversation text on the column edge while retaining its full hit area. */
+.vibe-workspace .vibe-project-main[data-initial] .vibe-scroll-region .vibe-button-quiet:not(.vibe-example-chip) { padding-inline: 0; border-inline-width: 0; min-height: 44px; min-width: 44px; justify-content: flex-start; }
 .vibe-project-main[data-initial] > .vibe-project-content > .vibe-composer-dock { flex-shrink: 1; min-height: 0; max-height: 100%; overflow-y: auto; }
 .vibe-workspace .vibe-sidebar-create .vibe-button { background: var(--vibe-surface); color: var(--vibe-fg); border-color: var(--vibe-control-border); }
 .vibe-workspace .vibe-sidebar-create .vibe-button:hover:not(:disabled) { background: var(--vibe-hover); }
@@ -287,7 +301,7 @@
 .vibe-other-results { margin-block: var(--vibe-space-4); }
 .vibe-other-results .vibe-result-row > summary { min-height: 44px; }
 .vibe-other-results .vibe-row-title { white-space: normal; overflow-wrap: anywhere; }
-.vibe-build-result + .vibe-prototype-trial, article:has(> .vibe-build-result) + .vibe-prototype-trial { margin-block-start: var(--vibe-space-6); }
+.vibe-build-result + .vibe-prototype-trial, article:has(> .vibe-build-result) + .vibe-prototype-trial { margin-block-start: var(--vibe-section-gap, var(--vibe-space-6)); }
 .vibe-project-body[data-guide-open] .vibe-project-main .vibe-data-use-notice { display: none; }
 
 .vibe-workspace .vibe-results-outcome:focus-visible { outline: 2px solid var(--vibe-focus); outline-offset: 3px; }
