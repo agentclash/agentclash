@@ -212,6 +212,8 @@ def build(root, directory, run, gate):
                 "zlib",
             ),
         ),
+        "temporal": ("v3.24", ("zlib",)),
+        "temporal-admin": ("v3.24", ("zlib",)),
     }
     for name in packages:
         context = directory / ("platform-context-" + name)
@@ -294,7 +296,9 @@ def build(root, directory, run, gate):
                     else "/usr/local/bin/gosu",
                 },
             )
-        gate(name, public[name]["image"], detail["Id"])
+        # Temporal's binaries must also be rebuilt before its final image gate.
+        if name not in ("temporal", "temporal-admin"):
+            gate(name, public[name]["image"], detail["Id"])
         output[name], identity[name] = detail["Id"], detail
     # Rebuild the exact Temporal release binaries, retaining the upstream image's
     # runtime identity, configuration and schema files. Go module checksums pin
@@ -313,7 +317,7 @@ def build(root, directory, run, gate):
             context,
             "Dockerfile.temporal",
             name,
-            {"BUILDER": output["go"], "UPSTREAM": public[name]["image"]},
+            {"BUILDER": output["go"], "UPSTREAM": output[name]},
             target=target,
         )
         gate(name, public[name]["image"], detail["Id"])

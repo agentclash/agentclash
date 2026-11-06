@@ -13,8 +13,10 @@ Alpine, Go and Bun bases receive pinned, signature-verified APK updates. Caddy
 2.11.4 is rebuilt with Go 1.26.8 and patched module locks. PostgreSQL 18.6 keeps
 its database/admin behavior while its gosu 1.19 helper is rebuilt with patched Go
 and its affected OS packages are updated. Temporal server/admin 1.32.0 and
-Valkey 8.1.10 retain their exact reviewed public digests. Production PostgreSQL
-remains RDS; no additional always-running service was introduced.
+Valkey retained their exact reviewed public digests at this checkpoint. Current
+maintenance rebuilds Temporal and pins Valkey 8.1.11-alpine; see
+[maintained platform images](PLATFORM-IMAGES.md). Production PostgreSQL remains
+RDS; no additional always-running service was introduced.
 
 Original source images are classified as remediation inputs and never directly
 consumed by application builds or runtime services. Each affected component must
