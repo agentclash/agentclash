@@ -184,17 +184,33 @@ def build(root, directory, run, gate):
                 "ca-certificates-bundle",
                 "ca-certificates",
                 "tzdata",
+                "zlib",
             ),
         ),
-        "go": ("v3.24", ("libcrypto3", "libssl3")),
-        "bun": ("v3.22", ("libcrypto3", "libssl3")),
+        "go": ("v3.24", ("libcrypto3", "libssl3", "zlib")),
+        "bun": ("v3.22", ("libcrypto3", "libssl3", "zlib")),
         "caddy": (
             "v3.23",
-            ("libcrypto3", "libssl3", "curl", "libcurl", "c-ares", "brotli-libs"),
+            (
+                "libcrypto3",
+                "libssl3",
+                "curl",
+                "libcurl",
+                "c-ares",
+                "brotli-libs",
+                "zlib",
+            ),
         ),
         "postgres": (
             "v3.24",
-            ("libcrypto3", "libssl3", "libuuid", "brotli-libs", "libcurl"),
+            (
+                "libcrypto3",
+                "libssl3",
+                "libuuid",
+                "brotli-libs",
+                "libcurl",
+                "zlib",
+            ),
         ),
     }
     for name in packages:
