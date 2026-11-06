@@ -15,7 +15,7 @@ beforeEach(() => {
   vi.spyOn(window, "getComputedStyle").mockImplementation(element => {
     const style = nativeStyle(element);
     return new Proxy(style, { get(target, key) {
-      if (key === "getPropertyValue") return (name: string) => name === "--vibe-bg" ? element.getAttribute("data-appearance") === "dark" ? "#12110f" : "#faf8f5" : target.getPropertyValue(name);
+      if (key === "getPropertyValue") return (name: string) => name === "--vibe-bg" ? element.getAttribute("data-appearance") === "dark" ? "#0a0a0b" : "#fafafa" : target.getPropertyValue(name);
       return Reflect.get(target, key);
     } });
   });
@@ -33,19 +33,19 @@ it("is dark by default, keeps the browser bar in sync with explicit and system a
   // Dark is the default, also on a light system, until the visitor chooses another appearance.
   expect(container.querySelector("main")?.getAttribute("data-appearance")).toBe("dark");
   expect(container.querySelector("select")?.value).toBe("dark");
-  expect(colors()).toEqual(["#12110f", "#12110f"]);
+  expect(colors()).toEqual(["#0a0a0b", "#0a0a0b"]);
   choose("system");
-  expect(colors()).toEqual(["#faf8f5", "#faf8f5"]);
+  expect(colors()).toEqual(["#fafafa", "#fafafa"]);
   act(() => { dark = true; systemChanged(); });
-  expect(colors()).toEqual(["#12110f", "#12110f"]);
+  expect(colors()).toEqual(["#0a0a0b", "#0a0a0b"]);
   choose("light");
-  expect(colors()).toEqual(["#faf8f5", "#faf8f5"]);
+  expect(colors()).toEqual(["#fafafa", "#fafafa"]);
   act(() => { dark = false; systemChanged(); });
-  expect(colors()).toEqual(["#faf8f5", "#faf8f5"]);
+  expect(colors()).toEqual(["#fafafa", "#fafafa"]);
   choose("dark");
-  expect(colors()).toEqual(["#12110f", "#12110f"]);
+  expect(colors()).toEqual(["#0a0a0b", "#0a0a0b"]);
   choose("system");
-  expect(colors()).toEqual(["#faf8f5", "#faf8f5"]);
+  expect(colors()).toEqual(["#fafafa", "#fafafa"]);
   act(() => root.render(null));
   expect(colors()).toEqual(["#original-light", "#original-dark"]);
 });
@@ -54,7 +54,7 @@ it("uses the saved appearance for the browser bar on mount", () => {
   localStorage.setItem("vibe-appearance", "light");
   act(() => root.render(<VibeAppearance><AppearanceControl /></VibeAppearance>));
   expect(container.querySelector("main")?.getAttribute("data-appearance")).toBe("light");
-  expect(colors()).toEqual(["#faf8f5", "#faf8f5"]);
+  expect(colors()).toEqual(["#fafafa", "#fafafa"]);
 });
 
 it("keeps a saved System choice instead of the dark default", () => {

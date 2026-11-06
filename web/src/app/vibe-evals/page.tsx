@@ -8,10 +8,10 @@ export const metadata: Metadata = {
     "Describe your AI agent. Build useful tests, see where it needs work, and improve it in one conversation.",
   robots: { index: false, follow: false },
 };
-// The browser bar matches the dark Vibe canvas (--vibe-bg in project-workspace.css), not the
-// site-wide #060606. Dark is the default appearance; VibeAppearance updates the bar when the
-// Appearance setting chooses Light or System.
-export const viewport: Viewport = { themeColor: "#12110f" };
+// The browser bar matches the dark Graphite canvas (--vibe-bg in project-workspace.css).
+// Dark is the default appearance; VibeAppearance updates the bar when the Appearance
+// setting chooses Light or System.
+export const viewport: Viewport = { themeColor: "#0a0a0b" };
 export default function VibePage() {
   return (
     <Suspense fallback={<main className="vibe-route-fallback" />}>

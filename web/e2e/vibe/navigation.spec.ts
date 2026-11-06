@@ -750,12 +750,12 @@ test("workspace geometry, scoped portal appearance and reading focus adapt at ev
       expect(geometry.utility).toBeLessThan((width - geometry.sidebar) / 2);
     } else expect(geometry.utility).toBe(width <= 600 ? width : 480);
     if (width <= 600) expect(geometry.height).toBe(900);
-    expect(geometry.background).toBe("rgb(255, 255, 255)"); expect(geometry.color).toBe("rgb(28, 26, 22)");
+    expect(geometry.background).toBe("rgb(255, 255, 255)"); expect(geometry.color).toBe("rgb(23, 23, 26)");
     expect(geometry.transition).toBe("0s"); if (width < 1280) expect(geometry.backdropMotion).toBe("0s");
     expect(geometry.overflow).toBe(false); expect(geometry.globalTheme).toBe(true);
     await appearance.selectOption("dark");
     const utility = page.locator(width >= 1280 ? ".vibe-utility" : '[data-slot="sheet-content"]');
-    await expect(utility).toHaveCSS("background-color", width >= 1280 ? "rgb(27, 26, 23)" : "rgb(33, 31, 27)");
+    await expect(utility).toHaveCSS("background-color", width >= 1280 ? "rgb(21, 21, 23)" : "rgb(25, 25, 28)");
     await appearance.selectOption("system");
     await expect(utility).toHaveCSS("background-color", "rgb(255, 255, 255)");
     await page.getByRole("button", { name: "Close Details", exact: true }).click();
@@ -792,8 +792,8 @@ test("remaining 320 and 768 layouts retain contrast, scaled text and utility foc
     const popup=page.locator('[data-slot="sheet-content"]');
     const appearance=page.getByLabel("Appearance",{exact:true});
     await appearance.selectOption("system");
-    await expect(popup).toHaveCSS("background-color","rgb(33, 31, 27)");
-    await expect(popup).toHaveCSS("color","rgb(237, 233, 225)");
+    await expect(popup).toHaveCSS("background-color","rgb(25, 25, 28)");
+    await expect(popup).toHaveCSS("color","rgb(244, 244, 242)");
     await appearance.selectOption("light");
     await expect(popup).toHaveCSS("background-color","rgb(255, 255, 255)");
     const geometry=await popup.evaluate(el=>({width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color,transition:getComputedStyle(el).transitionDuration,overflow:document.documentElement.scrollWidth>innerWidth}));
