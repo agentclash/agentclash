@@ -1,13 +1,13 @@
 # Maintained AWS platform images
 
-The AWS build produces five maintained images: Alpine, Go and Bun build/runtime
-bases, Caddy, and PostgreSQL administrative tools. The database service remains
-managed RDS. Temporal server/admin and Valkey retain their exact reviewed public
-digests. No extra always-running service is introduced.
+The AWS build produces seven maintained images: Alpine, Go and Bun build/runtime
+bases, Caddy, PostgreSQL administrative tools, and Temporal server/admin. The
+database service remains managed RDS. Valkey retains its exact reviewed public
+digest. No extra always-running service is introduced.
 
 ## Inputs and gates
 
-`deploy/aws/images.lock.json` distinguishes immutable runtime images from five
+`deploy/aws/images.lock.json` distinguishes immutable runtime images from seven
 **remediation-source-only** images. Those source images must not be used directly
 for application builds or Compose services. Their original findings remain in
 private reports; they are not treated as clean artifacts.
@@ -22,6 +22,10 @@ Upstream layers and notices are retained; rebuilt binaries include module and Go
 license files and their dependency manifests.
 [Caddy custom-build entrypoint](https://github.com/caddyserver/caddy/blob/v2.11.4/cmd/caddy/main.go),
 [gosu release/source](https://github.com/tianon/gosu/releases/tag/1.19).
+
+zlib 1.3.2-r1 and the fixed musl (CVE-2026-107891) patch the maintained images; Temporal server/admin apply
+the locked APKs inside `Dockerfile.temporal` to preserve upstream runtime users.
+Valkey is pinned to 8.1.11-alpine for CVE-2026-85091.
 
 The driver verifies input hashes before constructing private, minimal build
 contexts and normalizes public file modes across private and Git checkouts.
@@ -46,9 +50,9 @@ skip scans. [Trivy image/archive scanning](https://trivy.dev/docs/latest/target/
 ## Release and host binding
 
 Format 2 manifests contain four application references and a separate eight-entry
-`platform_images` map. The five maintained artifacts are published into the same
-approved private ECR repository after every build/scan gate passes. The three
-unchanged public runtime references must exactly match the source lock. Build
+`platform_images` map. The seven maintained artifacts are published into the same
+approved private ECR repository after every build/scan gate passes. The
+public Valkey runtime reference must exactly match the source lock. Build
 evidence binds both maps and the platform recipe hash to the reviewed source.
 IAM permissions retain the existing repository and artifact-bucket boundaries.
 
