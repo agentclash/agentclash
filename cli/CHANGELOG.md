@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.3.0](https://github.com/agentclash/agentclash/compare/v2.2.0...v2.3.0) (2026-10-27)
+
+
+### Features
+
+* complete reviewed evaluation CI roundtrip and owned fixture lifecycle ([054c2a0](https://github.com/agentclash/agentclash/commit/054c2a0f3ff9c42b4f7dfa499e903efe0e5856bd))
+* **delivery:** activate protected AWS delivery preparation ([746ec4e](https://github.com/agentclash/agentclash/commit/746ec4ed9675b73dce76ee6d192ce16a2726451b))
+* **vibe:** improve evaluation workspace and evidence workflows ([599ea40](https://github.com/agentclash/agentclash/commit/599ea405753244808b9afa82731191d4384234c0))
+
+
+### Bug Fixes
+
+* migrate local release configuration to current Homebrew steps ([c6ffb03](https://github.com/agentclash/agentclash/commit/c6ffb0318682449e5bf0b54dd95047d1bd07645b))
+* patch AWS runtime images and supported dependencies ([de67575](https://github.com/agentclash/agentclash/commit/de6757524e6eed44499faceb03c1968a5bed199e))
+
 ## [2.2.0](https://github.com/agentclash/agentclash/compare/v2.1.2...v2.2.0) (2026-08-15)
 
 
