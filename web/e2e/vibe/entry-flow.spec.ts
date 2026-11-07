@@ -400,3 +400,23 @@ test("every Improve source keeps at most nine enabled main controls", async ({ p
   await writeRecord("improve-segment-controls", segments);
   expect(fake.posts).toEqual([]); expect(fake.errors).toEqual([]); expect(fake.unknown).toEqual([]);
 });
+
+test("entry top bar controls share one text line at desktop and phone widths", async ({ page }) => {
+  const fake = await fakeVibe(page);
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/vibe-evals"); await entryReady(page);
+    const bar = page.locator(".vibe-entry-topbar");
+    await expect(bar.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+    // Box centers hid a fault where the links were 44 px blocks with their text at the top, so measure the text.
+    const centers = await bar.evaluate(root => [...root.querySelectorAll<HTMLElement>("nav > a, .vibe-entry-projects .vibe-button")]
+      .filter(el => el.getClientRects().length && getComputedStyle(el).display !== "none")
+      .map(el => { const range = document.createRange(); range.selectNodeContents(el); const r = range.getBoundingClientRect(); return { text: el.textContent?.trim(), center: r.top + r.height / 2, height: el.getBoundingClientRect().height }; }));
+    expect(centers.map(c => c.text), `${width}px controls`).toEqual(["Projects", "Help", "Sign in"]);
+    for (const c of centers) {
+      expect(Math.abs(c.center - centers[0].center), `${width}px ${c.text} text line`).toBeLessThanOrEqual(1);
+      expect(c.height, `${width}px ${c.text} height`).toBeGreaterThanOrEqual(44);
+    }
+  }
+  expect(fake.errors).toEqual([]);
+});

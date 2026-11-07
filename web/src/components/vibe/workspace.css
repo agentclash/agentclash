@@ -806,6 +806,8 @@
 .vibe-entry-brand span { font-family:var(--font-display),serif; font-size:20px; }
 .vibe-entry-topbar nav { display:flex; gap:8px; align-items:center; }
 .vibe-entry-topbar :is(nav > a, .vibe-entry-projects .vibe-button) { height:44px; min-height:44px; align-items:center; padding:0 var(--vibe-space-2); font-size:var(--vibe-font-callout); line-height:var(--vibe-leading-callout); font-weight:500; }
+/* Links center their text in the 44 px row; the toggles keep their own display rules. */
+.vibe-entry-topbar nav > a { display:inline-flex; }
 .vibe-entry-topbar nav > a:first-of-type { color:var(--vibe-text-2); }
 .vibe-entry-topbar a:focus-visible { outline:2px solid var(--vibe-focus); outline-offset:2px; }
 /* Anchor the heading independently of connection notices below it. */
