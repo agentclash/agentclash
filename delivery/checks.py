@@ -3,6 +3,7 @@
 
 import argparse
 import ast
+import concurrent.futures
 import errno
 import os
 from pathlib import Path
@@ -103,13 +104,14 @@ def check(group, evidence, part=None):
     }
     env["TMPDIR"] = str(evidence)
 
-    def run(argv, cwd=ROOT, timeout=2400):
-        label = command_label(argv)
+    def run(argv, cwd=ROOT, timeout=2400, label=None, log_name="checks.log"):
+        # A caller label must be a fixed public name from this file.
+        label = label or command_label(argv)
         if label == "go" and len(argv) > 1 and argv[1] in ("build", "vet", "test"):
             label += "-" + argv[1]
         print("Required check subprocess: " + label, flush=True)
         start = time.monotonic()
-        with (evidence / "checks.log").open("ab") as log:
+        with (evidence / log_name).open("ab") as log:
             result = subprocess.run(
                 argv,
                 cwd=cwd,
@@ -226,48 +228,35 @@ def check(group, evidence, part=None):
         graph = build_graph(ROOT, evidence, image_run)
         prepare_bootstrap(ROOT, evidence, image_run, graph["platform_images"]["go"])
         selection = str(evidence / "image-selection.json")
-        run(
-            [
-                sys.executable,
-                "deploy/aws/tests/rehearse-compose.py",
-                "--evidence-dir",
-                str(evidence),
-                "--images",
-                selection,
+        # Each rehearsal uses random container and network names, free host
+        # ports and its own work directory, so they run at the same time. Each
+        # writes its own private log.
+        rehearsals = {
+            "rehearse-compose": 2400,
+            "rehearse": 1800,
+            "rehearse-edge": 2400,
+            "rehearse-terminal": 600,
+        }
+        with concurrent.futures.ThreadPoolExecutor(len(rehearsals)) as pool:
+            jobs = [
+                pool.submit(
+                    run,
+                    [
+                        sys.executable,
+                        "deploy/aws/tests/" + name + ".py",
+                        "--evidence-dir",
+                        str(evidence),
+                        "--images",
+                        selection,
+                    ],
+                    timeout=timeout,
+                    label=name,
+                    log_name=name + ".log",
+                )
+                for name, timeout in rehearsals.items()
             ]
-        )
-        run(
-            [
-                sys.executable,
-                "deploy/aws/tests/rehearse.py",
-                "--evidence-dir",
-                str(evidence),
-                "--images",
-                selection,
-            ],
-            timeout=1800,
-        )
-        run(
-            [
-                sys.executable,
-                "deploy/aws/tests/rehearse-edge.py",
-                "--evidence-dir",
-                str(evidence),
-                "--images",
-                selection,
-            ]
-        )
-        run(
-            [
-                sys.executable,
-                "deploy/aws/tests/rehearse-terminal.py",
-                "--evidence-dir",
-                str(evidence),
-                "--images",
-                selection,
-            ],
-            timeout=600,
-        )
+        for job in jobs:
+            job.result()
     else:
         raise ValueError("Unknown check group")
 
