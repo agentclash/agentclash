@@ -225,17 +225,42 @@ def check(group, evidence, part=None):
             require(result.returncode == 0, "Required image build or scan failed")
             return result.stdout
 
-        graph = build_graph(ROOT, evidence, image_run)
-        prepare_bootstrap(ROOT, evidence, image_run, graph["platform_images"]["go"])
+        # rehearse.py runs two host `go test -race` checks. Compile them while
+        # the images build, so the rehearsals find a warm Go build cache.
+        warm = evidence / "go-test-binaries"
+        warm.mkdir(mode=0o700)
+        with concurrent.futures.ThreadPoolExecutor(1) as compiler:
+            compiled = compiler.submit(
+                run,
+                [
+                    "go",
+                    "test",
+                    "-race",
+                    "-tags=awsplatform",
+                    "-c",
+                    "-o",
+                    str(warm),
+                    "./internal/temporalutil",
+                    "./internal/pubsub",
+                ],
+                ROOT / "backend",
+                label="go-test-compile",
+                log_name="go-test-compile.log",
+            )
+            graph = build_graph(ROOT, evidence, image_run)
+            prepare_bootstrap(ROOT, evidence, image_run, graph["platform_images"]["go"])
+        compiled.result()
         selection = str(evidence / "image-selection.json")
         # Each rehearsal uses random container and network names, free host
         # ports and its own work directory, so they run at the same time. Each
-        # writes its own private log.
+        # writes its own private log. rehearse.py runs as two processes: the
+        # database and Temporal part, and the cache part.
         rehearsals = {
-            "rehearse-compose": 2400,
-            "rehearse": 1800,
-            "rehearse-edge": 2400,
-            "rehearse-terminal": 600,
+            "rehearse-compose": (["rehearse-compose.py"], 2400),
+            "rehearse-platform": (["rehearse.py", "--platform-only"], 1800),
+            "rehearse-cache": (["rehearse.py", "--cache-only"], 1800),
+            "rehearse-edge": (["rehearse-edge.py"], 2400),
+            "rehearse-terminal": (["rehearse-terminal.py"], 600),
         }
         with concurrent.futures.ThreadPoolExecutor(len(rehearsals)) as pool:
             jobs = [
@@ -243,7 +268,8 @@ def check(group, evidence, part=None):
                     run,
                     [
                         sys.executable,
-                        "deploy/aws/tests/" + name + ".py",
+                        "deploy/aws/tests/" + script,
+                        *options,
                         "--evidence-dir",
                         str(evidence),
                         "--images",
@@ -253,7 +279,7 @@ def check(group, evidence, part=None):
                     label=name,
                     log_name=name + ".log",
                 )
-                for name, timeout in rehearsals.items()
+                for name, ((script, *options), timeout) in rehearsals.items()
             ]
         for job in jobs:
             job.result()

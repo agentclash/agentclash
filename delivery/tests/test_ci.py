@@ -276,7 +276,8 @@ class CITests(unittest.TestCase):
         calls = []
 
         def fake(argv, **kwargs):
-            calls.append((Path(argv[1]).name, Path(kwargs["stdout"].name).name))
+            scope = [a for a in argv if a in ("--platform-only", "--cache-only", "-c")]
+            calls.append((Path(argv[1]).name, *scope, Path(kwargs["stdout"].name).name))
             return subprocess.CompletedProcess(argv, 0)
 
         with (
@@ -294,10 +295,15 @@ class CITests(unittest.TestCase):
                 ("rehearse-compose.py", "rehearse-compose.log"),
                 ("rehearse-edge.py", "rehearse-edge.log"),
                 ("rehearse-terminal.py", "rehearse-terminal.log"),
-                ("rehearse.py", "rehearse.log"),
+                ("rehearse.py", "--cache-only", "rehearse-cache.log"),
+                ("rehearse.py", "--platform-only", "rehearse-platform.log"),
+                ("test", "-c", "go-test-compile.log"),
             ],
         )
-        self.assertIn("Required check subprocess took: rehearse ", output.getvalue())
+        for label in ("rehearse-platform", "rehearse-cache", "go-test-compile"):
+            self.assertIn(
+                "Required check subprocess took: " + label + " ", output.getvalue()
+            )
 
     def test_pr_code_changes_skip_images_but_image_inputs_do_not(self):
         def required(paths, **kwargs):
