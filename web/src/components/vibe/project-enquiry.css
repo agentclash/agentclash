@@ -33,7 +33,7 @@
 .vibe-workspace .vibe-button.vibe-button-brass:focus-visible { outline:2px solid var(--vibe-brass); outline-offset:3px; }
 .vibe-work-with-us { display:flex; flex-wrap:wrap; align-items:center; gap:var(--vibe-space-4) var(--vibe-space-6); padding:var(--vibe-space-5) 28px; border:1px solid var(--vibe-brass-border); border-radius:var(--vibe-radius-lg); background:var(--vibe-brass-tint); }
 .vibe-work-with-us-copy { flex:1 1 280px; min-width:0; display:flex; flex-direction:column; gap:6px; }
-.vibe-workspace .vibe-work-with-us h3 { font-family:var(--font-display),ui-serif,Georgia,serif; font-size:1.75rem; line-height:2.125rem; font-weight:400; letter-spacing:-0.01em; }
+.vibe-workspace .vibe-work-with-us h3 { font-family:var(--vibe-font-heading); font-size:1.75rem; line-height:2.125rem; font-weight:600; letter-spacing:var(--vibe-tracking-title); }
 .vibe-work-with-us-copy > p:last-child { color:var(--vibe-text-2); font-size:var(--vibe-font-callout); line-height:1.375rem; }
 .vibe-work-with-us-actions { display:flex; flex-direction:column; align-items:center; gap:10px; max-width:100%; }
 .vibe-work-with-us-actions .vibe-project-enquiry { display:contents; }
@@ -44,7 +44,7 @@
 .vibe-talk-dialog > [data-slot="dialog-close"] { top:calc(var(--vibe-talk-padding) + var(--vibe-leading-footnote) / 2 - 22px); right:calc(var(--vibe-talk-padding) - 14px); width:44px; height:44px; min-width:44px; min-height:44px; }
 .vibe-talk-dialog .vibe-enquiry-form { gap:var(--vibe-talk-section-gap); }
 .vibe-talk-heading { display:flex; flex-direction:column; gap:var(--vibe-space-2); min-width:0; padding-right:36px; }
-.vibe-talk-heading [data-slot="dialog-title"] { font-family:var(--font-display),ui-serif,Georgia,serif; font-size:1.875rem; line-height:2.125rem; font-weight:400; letter-spacing:-0.01em; outline:none; }
+.vibe-talk-heading [data-slot="dialog-title"] { font-family:var(--vibe-font-heading); font-size:1.875rem; line-height:2.125rem; font-weight:600; letter-spacing:var(--vibe-tracking-title); outline:none; }
 .vibe-talk-heading [data-slot="dialog-description"] { color:var(--vibe-text-2); font-size:var(--vibe-font-callout); line-height:1.375rem; }
 .vibe-talk-dialog .vibe-textarea::placeholder { color:var(--vibe-text-3); opacity:1; }
 .vibe-talk-dialog .vibe-enquiry-receipt { overflow-wrap:anywhere; }

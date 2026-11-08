@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { project } from "./entry-fake";
 import { defaultModels, type Session } from "../../src/lib/vibe";
 import { chooseDoor, composer, doorButton, doorReady, entryHeading, improveSource, newProjectChoices, projectStartHeading, sourceButton, otherResults, startComposer, startScreen, improvePrimary, projectReady } from "./entry-model";
@@ -976,4 +976,117 @@ test("mobile start keeps project navigation without a project frame", async ({ p
   await expect(page.getByRole("button", { name: "Open projects", exact: true })).toBeVisible();
   await expect(page.locator(".vibe-project-header")).toHaveCount(0);
   expect(control.posts).toEqual([]);
+});
+
+// The sidebar grid: every 16px icon starts 24px from the sidebar edge (center 32px), every label
+// starts at 48px, and the icon buttons on the right end 12px from the inner right edge (a touch
+// target grows to 44px from that edge).
+async function sidebarGrid(root: Locator) {
+  return root.evaluate(nav => {
+    const base = nav.getBoundingClientRect(), inner = base.left + nav.clientLeft + nav.clientWidth;
+    const at = (selector: string) => { const node = nav.querySelector(selector); if (!node) throw new Error(`missing ${selector}`); return node; };
+    const box = (node: Element) => node.getBoundingClientRect();
+    const text = (node: Element) => {
+      const label = [...node.childNodes].find(child => child.nodeType === Node.TEXT_NODE && child.textContent!.trim());
+      const range = document.createRange(); range.selectNodeContents(label!); return range.getBoundingClientRect().left - base.left;
+    };
+    const create = at(".vibe-sidebar-create .vibe-button"), item = at(".vibe-sidebar-item"), home = at(".vibe-sidebar-footer > a");
+    const mark = box(at('.vibe-sidebar-brand svg[aria-label="AgentClash"]'));
+    const filter = at("select.vibe-sidebar-filter") as HTMLSelectElement, style = getComputedStyle(filter);
+    const refresh = box(at(".vibe-sidebar-icon")), collapse = nav.querySelector(".vibe-sidebar-collapse");
+    const search = at("input.vibe-sidebar-search"), searchStyle = getComputedStyle(search);
+    return {
+      mark: mark.left + mark.width / 2 - base.left,
+      brand: box(at(".vibe-sidebar-brand > span")).left - base.left,
+      createIcon: box(create.querySelector("svg")!).left - base.left, createText: text(create),
+      itemIcon: box(item.querySelector("svg")!).left - base.left, itemText: box(item.querySelector(".vibe-sidebar-item-copy")!).left - base.left,
+      homeIcon: box(home.querySelector("svg")!).left - base.left, homeText: text(home),
+      filterText: box(filter).left - base.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
+      filterBorder: style.borderTopColor, filterSize: style.fontSize, filterHeight: box(filter).height,
+      searchText: box(search).left - base.left + parseFloat(searchStyle.borderLeftWidth) + parseFloat(searchStyle.paddingLeft),
+      refresh: inner - refresh.right,
+      collapse: collapse ? inner - box(collapse).right : null,
+    };
+  });
+}
+
+function expectGrid(grid: Awaited<ReturnType<typeof sidebarGrid>>, where: string) {
+  for (const key of ["createIcon", "itemIcon", "homeIcon", "filterText", "searchText"] as const) expect(grid[key], `${where} ${key}`).toBeCloseTo(24, 0);
+  for (const key of ["brand", "createText", "itemText", "homeText"] as const) expect(grid[key], `${where} ${key}`).toBeCloseTo(48, 0);
+  expect(grid.mark, `${where} mark`).toBeCloseTo(32, 0);
+  expect(grid.refresh, `${where} refresh`).toBeCloseTo(12, 0);
+  // The filter is the quiet heading of the list, not a boxed control.
+  expect(grid.filterBorder, `${where} filter border`).toBe("rgba(0, 0, 0, 0)");
+}
+
+test("sidebar rows share one icon column and one text column on desktop and in the phone sheet", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  // More than six projects, so the search field shows too.
+  const control = await serve(page, true);
+  const desktop = await sidebarGrid(page.locator(".vibe-sidebar-inner"));
+  expectGrid(desktop, "desktop");
+  expect(desktop.collapse, "desktop collapse").toBeCloseTo(12, 0);
+  expect(desktop.filterSize, "desktop filter text").toBe("14px");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Open projects", exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: "Your projects" });
+  await expect(sheet.locator("[data-evaluation-id]").first()).toBeVisible();
+  expectGrid(await sidebarGrid(sheet), "sheet");
+  expect(control.posts).toEqual([]); expect(control.errors).toEqual([]);
+});
+
+test("on a touch screen the sidebar filter keeps 16px text and a 44px target", async ({ browser }) => {
+  // Touch emulation matches (pointer: coarse); 16px text stops iOS from zooming on focus.
+  const context = await browser.newContext({ baseURL: test.info().project.use.baseURL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  const control = await serve(page, true);
+  expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+  await page.getByRole("button", { name: "Open projects", exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: "Your projects" });
+  await expect(sheet.locator("[data-evaluation-id]").first()).toBeVisible();
+  const grid = await sidebarGrid(sheet);
+  expectGrid(grid, "touch sheet");
+  expect(grid.filterSize).toBe("16px");
+  expect(grid.filterHeight).toBeGreaterThanOrEqual(44);
+  expect(control.errors).toEqual([]);
+  await context.close();
+});
+
+test("the entry workspace picker follows the title: centered on a first visit, on the left edge for a returning visitor", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  const cors = () => ({ "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" });
+  const preflight = { "Access-Control-Allow-Headers": "Content-Type,Authorization,If-Match", "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS" };
+  const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
+  await page.route("**/v1/users/me", route => route.request().method() === "OPTIONS"
+    ? route.fulfill({ status: 204, headers: { ...cors(), ...preflight } })
+    : route.fulfill({ headers: cors(), json: { user_id: "a8000000-0000-4000-8000-000000000001", organizations: [{ id: "org", name: "Org", slug: "org", role: "org_admin", workspaces: [
+      { id: "a8000000-0000-4000-8000-000000000003", name: "Returns team", slug: "returns", role: "workspace_admin" },
+      { id: "a8000000-0000-4000-8000-000000000006", name: "Support pilots", slug: "support", role: "workspace_member" },
+    ] }] } }));
+  const returning = evaluation("returning"); returning.title = "Shop returns assistant";
+  let sessions: Session[] = [];
+  await page.route("**/v1/vibe/**", route => {
+    const request = route.request(), path = new URL(request.url()).pathname;
+    if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...cors(), ...preflight } });
+    if (path.endsWith("/config")) return route.fulfill({ headers: cors(), json: { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) } });
+    if (path.endsWith("/sessions")) return route.fulfill({ headers: cors(), json: sessions });
+    return route.fulfill({ headers: cors(), json: [] });
+  });
+  await page.goto("/auth/login?returnTo=%2Fvibe-evals");
+  await page.getByRole("button", { name: "Continue with AgentClash" }).click();
+  const picker = page.getByRole("combobox", { name: "Workspace for new projects", exact: true });
+  const place = async () => { const [title, select] = await Promise.all([entryHeading(page).boundingBox(), picker.boundingBox()]); return { title: title!, select: select! }; };
+  // First visit: the intro is centered, so the picker centers under the title.
+  await expect(picker).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".vibe-entry-intro[data-returning]")).toHaveCount(0);
+  const first = await place();
+  expect(first.select.x + first.select.width / 2).toBeCloseTo(first.title.x + first.title.width / 2, -1);
+  // Returning visitor: the title, the picker and the cards share the left edge.
+  sessions = [returning];
+  await page.reload();
+  await expect(page.locator(".vibe-entry-intro[data-returning]")).toBeVisible({ timeout: 20_000 });
+  await expect(picker).toBeVisible();
+  const back = await place();
+  expect(back.select.x).toBeCloseTo(back.title.x, 0);
+  expect(errors).toEqual([]);
 });

@@ -133,3 +133,26 @@ it("PR7 associates a rename failure with the title beside Save title", async () 
     expect(node.querySelectorAll('[role="alert"]')).toHaveLength(1);
   } finally { await act(async () => root.unmount()); node.remove(); vi.unstubAllGlobals(); }
 });
+
+it("draws the archive filter as the list heading with its own chevron, and keeps the plain label without a filter", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const node = document.createElement("div"), root = createRoot(node);
+  document.body.append(node);
+  const session = { id: "first", document: { artifacts: [] }, operations: [] } as unknown as Session;
+  const render = (filter: boolean) => root.render(<EvaluationNavigation contexts={[session]} session={null} choosing disabled={false} archiveMode="exclude" onArchiveMode={filter ? () => {} : undefined} onRetryList={()=>{}} onNew={()=>{}} onSwitch={()=>{}} onSettings={()=>{}} onSavedWork={()=>{}}>{()=>null}</EvaluationNavigation>);
+  try {
+    await act(async () => render(true));
+    const select = node.querySelector<HTMLSelectElement>('select[aria-label="Project archive filter"]')!;
+    // The wrapper holds the select and one decorative chevron; the options and the name do not change.
+    expect(select.parentElement!.className).toBe("vibe-sidebar-filter-wrap");
+    const chevron = select.parentElement!.querySelector(":scope > svg")!;
+    expect(chevron.getAttribute("aria-hidden")).toBe("true");
+    expect(Array.from(select.options, option => option.textContent)).toEqual(["Active projects", "Archived projects", "All projects"]);
+    expect(node.querySelector(".vibe-sidebar-tools .vibe-sidebar-label")).toBeNull();
+    // Without a filter handler the list keeps its plain heading and draws no chevron.
+    await act(async () => render(false));
+    expect(node.querySelector("select")).toBeNull();
+    expect(node.querySelector(".vibe-sidebar-filter-wrap")).toBeNull();
+    expect(node.querySelector(".vibe-sidebar-tools .vibe-sidebar-label")!.textContent).toBe("Your projects");
+  } finally { await act(async () => root.unmount()); node.remove(); vi.unstubAllGlobals(); }
+});

@@ -22,15 +22,15 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); node.remove(); style.remove(); vi.unstubAllGlobals(); });
 const draw = (view: React.ReactNode) => act(async () => root.render(view));
-it("U1: both starts use exactly one H1 with the same serif display role", async () => {
+it("U1: both starts use exactly one H1 with the same heading display role", async () => {
   for (const screen of [<BuildStart key="build" {...build} />, <ImproveStart key="improve" {...improve} />]) {
     await draw(screen);
     expect(node.querySelectorAll("h1")).toHaveLength(1);
     const heading = node.querySelector("h1")!;
     expect(heading.className).toBe("vibe-start-title");
-    expect(getComputedStyle(heading).fontFamily).toBe("var(--vibe-font-serif)");
+    expect(getComputedStyle(heading).fontFamily).toBe("var(--vibe-font-heading)");
     expect(getComputedStyle(heading).fontSize).toBe("var(--vibe-font-display-s)");
-    expect(getComputedStyle(heading).fontWeight).toBe("400");
+    expect(getComputedStyle(heading).fontWeight).toBe("600");
   }
 });
 it("U2: Try and two example pill chips share one row", async () => {
@@ -167,7 +167,7 @@ it("Results header tabs use transparent underline states and retain a single row
 
 it("Results identity and metadata use display and data fonts; header tools stay 44px", async () => {
   await draw(<header className="vibe-project-header"><div className="vibe-project-identity"><div><h1>A long project name</h1><p>v1 · Run 1: Completed</p></div></div><div className="vibe-project-tools"><button className="vibe-button vibe-project-guide">Guide<small className="vibe-guide-attention">Needs attention</small></button><button className="vibe-button">Details</button></div></header>);
-  expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-serif)");
+  expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-heading)");
   expect(getComputedStyle(node.querySelector("p")!).fontFamily).toBe("var(--vibe-font-data)");
   for (const tool of node.querySelectorAll("button")) expect(getComputedStyle(tool).height).toBe("44px");
   expect(getComputedStyle(node.querySelector(".vibe-project-guide")!).background).toBe("var(--vibe-surface-2)");

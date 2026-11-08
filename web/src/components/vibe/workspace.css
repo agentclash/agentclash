@@ -47,11 +47,14 @@
   --text-lg--line-height: var(--vibe-leading-headline);
   --text-xl--line-height: var(--vibe-leading-title2);
   --text-2xl--line-height: var(--vibe-leading-title1);
-  /* Serif speaks, sans works, mono counts. The display serif (weight 400 only) is for the
-     entry question, the project name, the outcome of a run and empty-state headlines: never
-     below 20px, never for controls, body text or numbers in tables. Mono (with tabular
-     numbers) is for counts, costs, durations, run numbers, versions and model ids. */
-  --vibe-font-serif: var(--font-display), ui-serif, Georgia, serif;
+  /* Headings speak, body text works, mono counts. The heading face (Geist at weight 600, tight
+     tracking) is for the brand, the entry question, the project name, the outcome of a run and
+     empty-state headlines: never below 20px, never for controls, body text or numbers in
+     tables. Vibe Evals only; the rest of the site keeps its own display face. Mono (with
+     tabular numbers) is for counts, costs, durations, run numbers, versions and model ids. */
+  --vibe-font-heading: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --vibe-tracking-title: -0.02em;
+  --vibe-tracking-display: -0.035em;
   --vibe-font-data: var(--font-mono), ui-monospace, monospace;
   --vibe-font-door: 2rem;
   --vibe-leading-door: 2.25rem;
@@ -564,47 +567,64 @@
 .vibe-main { display:flex; flex:1; flex-direction:column; min-width:0; min-height:0; }
 .vibe-sidebar { flex-shrink:0; overflow:hidden; background:var(--vibe-sidebar); }
 .vibe-sidebar-inner { width:252px; height:100%; display:flex; flex-direction:column; border-right:1px solid var(--vibe-border); }
-.vibe-sidebar-brand { display:flex; align-items:center; gap:var(--vibe-space-2); min-height:68px; padding:var(--vibe-space-3) var(--vibe-space-3) var(--vibe-space-3) calc(var(--vibe-space-3) + var(--vibe-space-2)); font-size: var(--vibe-font-callout); font-weight:600; flex-shrink:0; line-height: var(--vibe-leading-callout); }
+/* Sidebar grid: rows sit 12px from each edge and pad their content by 12px (11px plus a 1px
+   border), so every 16px icon starts at 24px (center 32px) and every label starts at 48px. The
+   icon buttons on the right center on 32px from the right edge. */
+.vibe-sidebar-brand { display:flex; align-items:center; gap:6px; min-height:68px; padding:var(--vibe-space-3) var(--vibe-space-3) var(--vibe-space-3) 22px; font-size: var(--vibe-font-callout); font-weight:600; flex-shrink:0; line-height: var(--vibe-leading-callout); }
 /* Small Vibe marks need full-strength strokes; marketing keeps its glass treatment. */
 .vibe-workspace :is(.vibe-sidebar-brand, .vibe-entry-brand, .vibe-message) svg[aria-label="AgentClash"] { color: var(--vibe-text-1); }
 .vibe-workspace :is(.vibe-sidebar-brand, .vibe-entry-brand, .vibe-message) svg[aria-label="AgentClash"] :is(polygon, line) { stroke-opacity: 1; opacity: 1; }
-.vibe-sidebar-brand > span { font-family: var(--vibe-font-serif); font-size: var(--vibe-font-title2); line-height: var(--vibe-leading-title2); font-weight: 400; letter-spacing: -0.01em; }
+.vibe-sidebar-brand > span { font-family: var(--vibe-font-heading); font-size: var(--vibe-font-title2); line-height: var(--vibe-leading-title2); font-weight: 600; letter-spacing: var(--vibe-tracking-title); }
 .vibe-sidebar-collapse.vibe-button { margin-left:auto; padding:var(--vibe-space-2); min-width:40px; min-height:40px; color:var(--vibe-muted); }
 .vibe-sidebar-create { padding:var(--vibe-space-2) var(--vibe-space-3) var(--vibe-space-5); }
-.vibe-sidebar-create .vibe-button { width:100%; justify-content:flex-start; background:var(--vibe-hover); border-color:var(--vibe-border); min-height:42px; }
+.vibe-sidebar-create .vibe-button { width:100%; justify-content:flex-start; padding-inline:11px; background:var(--vibe-hover); border-color:var(--vibe-border); min-height:42px; }
 .vibe-sidebar-list { flex:1; min-height:0; overflow-y:auto; padding:0 var(--vibe-space-3) var(--vibe-space-4); scrollbar-width:thin; }
-.vibe-sidebar-label { margin:0 var(--vibe-space-2) var(--vibe-space-3); color:var(--vibe-muted); font-size: var(--vibe-font-footnote); font-weight:500; letter-spacing:0.03em; line-height: var(--vibe-leading-footnote); }
-.vibe-sidebar-tools { display:flex; align-items:center; justify-content:space-between; gap:var(--vibe-space-1); margin-bottom:var(--vibe-space-2); }
+.vibe-sidebar-label { margin:0 var(--vibe-space-3) var(--vibe-space-2); color:var(--vibe-muted); font-size: var(--vibe-font-footnote); font-weight:500; letter-spacing:0.03em; line-height: var(--vibe-leading-footnote); }
+.vibe-sidebar-tools { display:flex; align-items:center; justify-content:space-between; gap:var(--vibe-space-1); margin-bottom:var(--vibe-space-1); }
 .vibe-sidebar-tools > .vibe-sidebar-label { margin-bottom:0; }
-.vibe-workspace .vibe-sidebar-filter { min-width:0; min-height:40px; padding:0 var(--vibe-space-2); border-color:transparent; cursor:pointer; }
-.vibe-workspace .vibe-sidebar-filter:hover { border-color:var(--vibe-border); }
+/* The archive filter is the quiet heading of the list: no box, the label on the text grid, and
+   the chevron drawn here so it matches the other sidebar icons in both appearances. */
+.vibe-sidebar-filter-wrap { position:relative; display:inline-flex; align-items:center; min-width:0; }
+.vibe-sidebar-filter-wrap > svg { position:absolute; right:var(--vibe-space-2); width:14px; height:14px; color:var(--vibe-muted); pointer-events:none; }
+.vibe-workspace .vibe-sidebar-tools select.vibe-sidebar-filter { appearance:none; -webkit-appearance:none; min-width:0; min-height:40px; padding:0 28px 0 11px; border:1px solid transparent; border-radius:var(--vibe-radius-sm); background:transparent; color:var(--vibe-muted); font-size:var(--vibe-font-callout); line-height:var(--vibe-leading-callout); font-weight:500; cursor:pointer; }
+.vibe-workspace .vibe-sidebar-tools select.vibe-sidebar-filter:hover:not(:disabled) { background:color-mix(in srgb, var(--vibe-text-1) 6%, var(--vibe-sidebar)); color:var(--vibe-fg); }
+.vibe-workspace .vibe-sidebar-tools select.vibe-sidebar-filter:focus-visible { outline:2px solid var(--vibe-focus); outline-offset:2px; }
 .vibe-sidebar-icon.vibe-button { flex:none; padding:var(--vibe-space-2); min-width:40px; min-height:40px; color:var(--vibe-muted); }
-.vibe-workspace .vibe-sidebar-search { width:100%; margin:0 0 var(--vibe-space-3); }
-.vibe-sidebar-empty { padding:0 var(--vibe-space-2); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); color:var(--vibe-muted); }
+/* The list scope outranks the shared .vibe-input padding and margin, which load later. */
+.vibe-workspace .vibe-sidebar-list input.vibe-sidebar-search { width:100%; min-height:44px; margin:0 0 var(--vibe-space-2); padding-inline:11px; }
+/* A fine pointer gets list-sized text; touch keeps 16px so iOS does not zoom on focus. */
+@media (pointer: fine) {
+  .vibe-workspace .vibe-sidebar-list input.vibe-sidebar-search { font-size:var(--vibe-font-callout); line-height:var(--vibe-leading-callout); }
+}
+@media (pointer: coarse) {
+  .vibe-workspace .vibe-sidebar-tools select.vibe-sidebar-filter { min-height:44px; font-size:var(--vibe-font-body); line-height:var(--vibe-leading-body); }
+}
+.vibe-sidebar-empty { padding:0 var(--vibe-space-3); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); color:var(--vibe-muted); }
 .vibe-project-list-notice { font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
-.vibe-sidebar-item { position:relative; isolation:isolate; display:flex; align-items:center; gap:var(--vibe-space-2); width:100%; min-width:0; padding:var(--vibe-space-3) var(--vibe-space-2); margin-bottom:var(--vibe-space-1); border:0; border-radius:var(--vibe-radius-sm); text-align:left; cursor:pointer; color:var(--vibe-muted); background:transparent; transition:color var(--vibe-dur-1), background-color var(--vibe-dur-1); }
+.vibe-sidebar-item { position:relative; isolation:isolate; display:flex; align-items:flex-start; gap:var(--vibe-space-2); width:100%; min-width:0; padding:var(--vibe-space-2) var(--vibe-space-3); margin-bottom:var(--vibe-space-1); border:0; border-radius:var(--vibe-radius-sm); text-align:left; cursor:pointer; color:var(--vibe-muted); background:transparent; transition:color var(--vibe-dur-1), background-color var(--vibe-dur-1); }
 .vibe-sidebar-item:hover:not(:disabled) { color:var(--vibe-fg); background:var(--vibe-hover); }
 .vibe-sidebar-item[aria-current="page"] { color:var(--vibe-fg); }
 .vibe-sidebar-item:disabled { cursor:default; opacity:0.55; }
-.vibe-sidebar-item > svg { flex-shrink:0; }
+/* The icon sits on the title line, not between the title and the status. */
+.vibe-sidebar-item > svg { flex-shrink:0; margin-top:2px; }
 .vibe-sidebar-item-copy { display:flex; flex-direction:column; min-width:0; }
 .vibe-sidebar-item-copy > span { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size: var(--vibe-font-callout); font-weight:500; line-height: var(--vibe-leading-callout); }
 .vibe-sidebar-item-copy > small { color:var(--vibe-muted); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); }
 .vibe-sidebar-selected { position:absolute; inset:0; z-index:-1; background:var(--vibe-hover); border:1px solid var(--vibe-border); border-radius:var(--vibe-radius-sm); pointer-events:none; }
 .vibe-sidebar-footer { display:flex; flex-direction:column; gap:var(--vibe-space-1); padding:var(--vibe-space-3); border-top:1px solid var(--vibe-border); }
-.vibe-sidebar-footer .vibe-button { justify-content:flex-start; font-size: var(--vibe-font-callout); font-weight:500; padding-inline:var(--vibe-space-2); line-height: var(--vibe-leading-callout); }
-.vibe-sidebar-footer > p { padding:var(--vibe-space-1) var(--vibe-space-2) var(--vibe-space-2); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); }
-.vibe-sidebar-workspace { display:flex; align-items:center; justify-content:space-between; gap:var(--vibe-space-2); padding:0 0 var(--vibe-space-2) var(--vibe-space-2); }
+.vibe-sidebar-footer .vibe-button { justify-content:flex-start; font-size: var(--vibe-font-callout); font-weight:500; padding-inline:11px; line-height: var(--vibe-leading-callout); }
+.vibe-sidebar-footer > p { padding:var(--vibe-space-1) var(--vibe-space-3) var(--vibe-space-2); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); }
+.vibe-sidebar-workspace { display:flex; align-items:center; justify-content:space-between; gap:var(--vibe-space-2); padding:0 0 var(--vibe-space-2) var(--vibe-space-3); }
 .vibe-sidebar-workspace > p { display:grid; min-width:0; overflow-wrap:anywhere; font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight:500; }
 .vibe-sidebar-workspace > p > span { color:var(--vibe-muted); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); font-weight:400; }
 .vibe-sidebar-workspace > .vibe-button { flex-shrink:0; }
-.vibe-sidebar-footer > a, .vibe-sidebar-footer > details > summary { display:flex; align-items:center; gap:var(--vibe-space-2); min-height:40px; padding:var(--vibe-space-2); border-radius:var(--vibe-radius-sm); color:var(--vibe-muted); font-size: var(--vibe-font-callout); font-weight:500; cursor:pointer; line-height: var(--vibe-leading-callout); list-style:none; }
+.vibe-sidebar-footer > a, .vibe-sidebar-footer > details > summary { display:flex; align-items:center; gap:var(--vibe-space-2); min-height:40px; padding:var(--vibe-space-2) var(--vibe-space-3); border-radius:var(--vibe-radius-sm); color:var(--vibe-muted); font-size: var(--vibe-font-callout); font-weight:500; cursor:pointer; line-height: var(--vibe-leading-callout); list-style:none; }
 .vibe-sidebar-footer > details > summary::-webkit-details-marker { display:none; }
 .vibe-sidebar-footer :is(a, summary) > svg { width:16px; height:16px; flex-shrink:0; }
 .vibe-sidebar-footer summary > .vibe-chevron { margin-left:auto; }
 .vibe-sidebar-footer details[open] > summary > .vibe-chevron { transform:rotate(90deg); }
 .vibe-sidebar-footer > a:hover, .vibe-sidebar-footer > details > summary:hover { background:color-mix(in srgb, var(--vibe-text-1) 6%, var(--vibe-sidebar)); color:var(--vibe-fg); }
-.vibe-sidebar-footer > details > p, .vibe-project-actions > div { padding:var(--vibe-space-2); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
+.vibe-sidebar-footer > details > p, .vibe-project-actions > div { padding:var(--vibe-space-2) var(--vibe-space-3); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-sidebar-footer > details > p + p { padding-top:0; }
 .vibe-project-actions > div > p { font-size: var(--vibe-font-footnote); color:var(--vibe-muted); overflow-wrap:anywhere; line-height: var(--vibe-leading-footnote); }
 .vibe-sidebar-footer { max-height:55%; overflow-y:auto; }
@@ -622,7 +642,7 @@
 .vibe-entry-page { padding-top:clamp(var(--vibe-space-4),6dvh,var(--vibe-space-7)); padding-bottom:clamp(var(--vibe-space-4),4dvh,var(--vibe-space-7)); }
 .vibe-entry-page .vibe-active-context { margin-top:var(--vibe-space-1); }
 /* The entry question is the welcome moment: the display serif, 36px on phones to 56px wide. */
-.vibe-entry-title { font-family: var(--vibe-font-serif); font-size: var(--vibe-font-display); font-weight:400; line-height: var(--vibe-leading-display); letter-spacing:-0.02em; text-wrap:balance; }
+.vibe-entry-title { font-family: var(--vibe-font-heading); font-size: var(--vibe-font-display); font-weight:600; line-height: var(--vibe-leading-display); letter-spacing:var(--vibe-tracking-display); text-wrap:balance; }
 .vibe-entry-workspace { display:grid; gap:var(--vibe-space-2); max-width:22.5rem; margin-top:var(--vibe-space-5); }
 .vibe-entry-workspace > label { display:grid; gap:var(--vibe-space-2); }
 .vibe-entry-workspace select { width:100%; min-height:44px; }
@@ -803,7 +823,7 @@
 .vibe-shell-empty .vibe-header { display:none; }
 .vibe-entry-topbar { order:-1; min-height:56px; flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:0 24px; border-bottom:1px solid var(--vibe-border); gap:12px; }
 .vibe-entry-brand { display:flex; align-items:center; gap:8px; }
-.vibe-entry-brand span { font-family:var(--font-display),serif; font-size:20px; }
+.vibe-entry-brand span { font-family:var(--vibe-font-heading); font-size:20px; font-weight:600; letter-spacing:var(--vibe-tracking-title); }
 .vibe-entry-topbar nav { display:flex; gap:8px; align-items:center; }
 .vibe-entry-topbar :is(nav > a, .vibe-entry-projects .vibe-button) { height:44px; min-height:44px; align-items:center; padding:0 var(--vibe-space-2); font-size:var(--vibe-font-callout); line-height:var(--vibe-leading-callout); font-weight:500; }
 /* Links center their text in the 44 px row; the toggles keep their own display rules. */
@@ -819,9 +839,10 @@
 /* The three paths need more width than a reading column; a returning visitor's entry is narrower. */
 .vibe-column.vibe-entry-page { max-width:min(1104px, 100%); }
 .vibe-entry-intro[data-returning] { width:100%; max-width:880px; margin-inline:auto; }
-.vibe-entry-title { font-family:var(--font-display),ui-serif,Georgia,serif; font-weight:400; font-size:clamp(2.5rem,1.6rem + 2.6vw,4rem); line-height:1.04; letter-spacing:-0.02em; text-wrap:balance; }
+.vibe-entry-title { font-family:var(--vibe-font-heading); font-weight:600; font-size:clamp(2.5rem,1.6rem + 2.6vw,4rem); line-height:1.04; letter-spacing:var(--vibe-tracking-display); text-wrap:balance; }
 .vibe-entry-subtitle { margin-top:16px; font-size:1.125rem; line-height:1.75rem; color:var(--vibe-text-2); }
 .vibe-entry-intro .vibe-entry-workspace { margin-inline:auto; text-align:left; }
+.vibe-entry-intro[data-returning] .vibe-entry-workspace { margin-inline:0; }
 .vibe-entry-paths { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:48px; text-align:left; }
 .vibe-entry-path { display:flex; flex-direction:column; align-items:flex-start; gap:var(--vibe-space-2); min-width:0; padding:var(--vibe-space-5); border:1px solid var(--vibe-control-border); border-radius:var(--vibe-radius-lg); background:var(--vibe-surface); color:var(--vibe-fg); text-align:left; cursor:pointer; transition:background-color var(--vibe-dur-1), border-color var(--vibe-dur-1); }
 .vibe-entry-path:hover:not(:disabled) { border-color:var(--vibe-text-2); background:var(--vibe-hover); }
@@ -829,7 +850,9 @@
 .vibe-entry-path:disabled { opacity:.5; cursor:default; }
 .vibe-entry-path:focus-visible { outline:2px solid var(--vibe-focus); outline-offset:3px; }
 .vibe-entry-path-icon { display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; margin-bottom:8px; border-radius:var(--vibe-radius-md); background:var(--vibe-surface-2); }
-.vibe-entry-path-title { font-family:var(--font-display),ui-serif,Georgia,serif; font-size:2rem; line-height:2.25rem; letter-spacing:-0.01em; font-weight:400; }
+/* A card title at title 2 keeps the longest path name on one line at desktop width, so the text
+   of the three cards starts on the same line. */
+.vibe-entry-path-title { font-family:var(--vibe-font-heading); font-size:var(--vibe-font-title2); line-height:var(--vibe-leading-title2); letter-spacing:var(--vibe-tracking-title); font-weight:600; }
 .vibe-entry-path-text { font-size:.9375rem; line-height:1.375rem; color:var(--vibe-text-2); }
 /* The contact email stays above the action so every action can sit on the bottom line. */
 .vibe-entry-path-action { display:inline-flex; align-items:center; gap:8px; order:1; margin-top:auto; font-size:var(--vibe-font-body); line-height:var(--vibe-leading-body); font-weight:600; }
@@ -856,7 +879,6 @@
 .vibe-entry-intro[data-returning] .vibe-entry-paths { margin-top:12px; gap:12px; }
 .vibe-entry-intro[data-returning] .vibe-entry-path { min-height:0; padding:var(--vibe-space-5); border-radius:var(--vibe-radius-md); }
 .vibe-entry-intro[data-returning] .vibe-entry-path-icon { width:auto; height:auto; margin-bottom:4px; background:none; }
-.vibe-entry-intro[data-returning] .vibe-entry-path-title { font-size:1.5rem; line-height:1.75rem; }
 .vibe-entry-intro[data-returning] .vibe-entry-path-action { display:none; }
 .vibe-entry-intro[data-returning] .vibe-entry-footer { justify-content:flex-start; }
 .vibe-sample-sheet { padding:32px; overflow-y:auto; }
@@ -886,7 +908,6 @@
  .vibe-entry-paths, .vibe-entry-intro[data-returning] .vibe-entry-paths { grid-template-columns:minmax(0,1fr); gap:10px; margin-top:24px; }
  .vibe-entry-path, .vibe-entry-intro[data-returning] .vibe-entry-path { display:grid; grid-template-columns:40px minmax(0,1fr); align-items:center; column-gap:14px; row-gap:2px; min-height:0; padding:var(--vibe-space-4); border-radius:var(--vibe-radius-md); }
  .vibe-entry-path-icon, .vibe-entry-intro[data-returning] .vibe-entry-path-icon { grid-row:1 / span 3; width:40px; height:40px; margin:0; background:var(--vibe-surface-2); }
- .vibe-entry-path-title, .vibe-entry-intro[data-returning] .vibe-entry-path-title { font-size:1.375rem; line-height:1.625rem; }
  .vibe-entry-path-text { font-size:var(--vibe-font-callout); line-height:var(--vibe-leading-callout); }
  .vibe-entry-path-action { display:none; }
  .vibe-entry-path-email { grid-column:2; font-size:11px; }
@@ -897,7 +918,7 @@
 .vibe-entry-intro:not([data-returning]) .vibe-entry-title { max-width:16ch; margin-inline:auto; }
 @media(max-width:600px) { .vibe-entry-intro:not([data-returning]) .vibe-entry-title { margin-inline:0; } }
 /* The agency offer in the sidebar: one row with the address in view. Brass is only for contact. */
-.vibe-sidebar-footer > .vibe-sidebar-contact { display:flex; align-items:center; gap:var(--vibe-space-2); width:100%; min-height:44px; padding:var(--vibe-space-1) var(--vibe-space-2); border:0; border-radius:var(--vibe-radius-sm); background:none; color:var(--vibe-fg); text-align:left; cursor:pointer; }
+.vibe-sidebar-footer > .vibe-sidebar-contact { display:flex; align-items:center; gap:6px; width:100%; min-height:44px; padding:var(--vibe-space-1) var(--vibe-space-3); border:0; border-radius:var(--vibe-radius-sm); background:none; color:var(--vibe-fg); text-align:left; cursor:pointer; }
 .vibe-sidebar-footer > .vibe-sidebar-contact:hover { background:color-mix(in srgb, var(--vibe-text-1) 6%, var(--vibe-sidebar)); }
 .vibe-sidebar-footer > .vibe-sidebar-contact:focus-visible { outline:2px solid var(--vibe-focus); outline-offset:2px; }
 .vibe-sidebar-contact-icon { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; flex-shrink:0; margin-left:-2px; border-radius:6px; background:var(--vibe-brass); color:var(--vibe-on-brass); }

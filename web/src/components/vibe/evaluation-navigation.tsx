@@ -9,6 +9,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Archive,
+  ChevronDown,
   ChevronRight,
   CircleHelp,
   FolderCog,
@@ -186,16 +187,19 @@ export function EvaluationNavigation(p: Props) {
         {showListTools && (p.onArchiveMode || p.onRetryList) ? (
           <div className="vibe-sidebar-tools">
             {p.onArchiveMode ? (
-              <select
-                aria-label="Project archive filter"
-                className="vibe-sidebar-filter"
-                value={p.archiveMode || "exclude"}
-                onChange={(e) => p.onArchiveMode?.(e.target.value as "exclude" | "only" | "all")}
-              >
-                <option value="exclude">Active projects</option>
-                <option value="only">Archived projects</option>
-                <option value="all">All projects</option>
-              </select>
+              <span className="vibe-sidebar-filter-wrap">
+                <select
+                  aria-label="Project archive filter"
+                  className="vibe-sidebar-filter"
+                  value={p.archiveMode || "exclude"}
+                  onChange={(e) => p.onArchiveMode?.(e.target.value as "exclude" | "only" | "all")}
+                >
+                  <option value="exclude">Active projects</option>
+                  <option value="only">Archived projects</option>
+                  <option value="all">All projects</option>
+                </select>
+                <ChevronDown aria-hidden="true" />
+              </span>
             ) : <p className="vibe-sidebar-label">Your projects</p>}
             {p.onRetryList && (
               <VibeButton
