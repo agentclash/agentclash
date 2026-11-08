@@ -54,7 +54,8 @@ def build_images(run, bases, revision=None):
             command += ["--build-arg", "BUN_IMAGE=" + bases["bun"]]
         if revision:
             command += ["--label", "org.opencontainers.image.revision=" + revision]
-        run(command + ["."], timeout=2400)
+        with maintained.timed("application " + name + " build"):
+            run(command + ["."], timeout=2400)
 
 
 def build_graph(source, directory, run, revision=None):
@@ -82,7 +83,8 @@ def build_graph(source, directory, run, revision=None):
                 "Built application source mismatch",
             )
         image_ids[name] = detail["Id"]
-        scanner.image(name, detail["Id"], name)
+        with maintained.timed("application " + name + " scan"):
+            scanner.image(name, detail["Id"], name)
     selection = directory / "image-selection.json"
     selection.write_bytes(
         canonical(
@@ -164,32 +166,34 @@ def prepare_bootstrap(source, directory, run, builder):
     compose_input = directory / "compose-input" / "tools"
     compose_input.mkdir(mode=0o700, parents=True)
     install("compose", compose_input / "docker-compose", "linux_amd64")
-    compose, notices = maintained.build_compose(source, directory, run, builder)
+    with maintained.timed("bootstrap compose build"):
+        compose, notices = maintained.build_compose(source, directory, run, builder)
     archive = directory / "bootstrap.tar.gz"
     metadata = bundle(source, compose, archive, notices)
     reports = []
-    for scanner in ("secret", "vuln"):
-        report = directory / ("input-compose-" + scanner + ".json")
-        command = [
-            str(directory / "trivy"),
-            "rootfs",
-            "--quiet",
-            "--ignorefile",
-            os.devnull,
-            "--scanners",
-            scanner,
-            "--exit-code",
-            "0" if scanner == "vuln" else "1",
-            "--format",
-            "json",
-            "--output",
-            str(report),
-        ]
-        if scanner == "vuln":
-            command += ["--severity", "HIGH,CRITICAL", "--list-all-pkgs"]
-        run(command + [str(compose_input.parent)], timeout=1200)
-        reports.append(report)
-    reports.extend(scan_bootstrap(directory, archive, run))
+    with maintained.timed("bootstrap compose scan"):
+        for scanner in ("secret", "vuln"):
+            report = directory / ("input-compose-" + scanner + ".json")
+            command = [
+                str(directory / "trivy"),
+                "rootfs",
+                "--quiet",
+                "--ignorefile",
+                os.devnull,
+                "--scanners",
+                scanner,
+                "--exit-code",
+                "0" if scanner == "vuln" else "1",
+                "--format",
+                "json",
+                "--output",
+                str(report),
+            ]
+            if scanner == "vuln":
+                command += ["--severity", "HIGH,CRITICAL", "--list-all-pkgs"]
+            run(command + [str(compose_input.parent)], timeout=1200)
+            reports.append(report)
+        reports.extend(scan_bootstrap(directory, archive, run))
     remediation = directory / "remediation-compose.json"
     remediation.write_bytes(
         canonical(

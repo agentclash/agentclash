@@ -1,4 +1,6 @@
+from contextlib import redirect_stdout
 import http.client
+import io
 from pathlib import Path
 import sys
 import unittest
@@ -59,6 +61,29 @@ class DownloadTest(unittest.TestCase):
                 tools.download(URL)
         self.assertEqual(urlopen.call_count, tools.DOWNLOAD_ATTEMPTS)
         self.assertEqual(sleep.call_count, tools.DOWNLOAD_ATTEMPTS - 1)
+
+
+class TimedTest(unittest.TestCase):
+    def test_phase_time_prints_also_after_a_failure(self):
+        import maintained
+
+        output = io.StringIO()
+        with (
+            redirect_stdout(output),
+            patch("maintained.time.monotonic", side_effect=[10.0, 13.4, 20.0, 21.0]),
+        ):
+            with maintained.timed("platform temporal build"):
+                pass
+            with self.assertRaises(RuntimeError):
+                with maintained.timed("platform temporal scan"):
+                    raise RuntimeError("PRIVATE_CANARY")
+        self.assertEqual(
+            output.getvalue().splitlines(),
+            [
+                "Image check phase: platform temporal build 3s",
+                "Image check phase: platform temporal scan 1s",
+            ],
+        )
 
 
 if __name__ == "__main__":
