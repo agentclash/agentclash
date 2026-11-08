@@ -277,7 +277,10 @@ class CITests(unittest.TestCase):
 
         def fake(argv, **kwargs):
             scope = [a for a in argv if a in ("--platform-only", "--cache-only", "-c")]
-            calls.append((Path(argv[1]).name, *scope, Path(kwargs["stdout"].name).name))
+            name = Path(argv[1]).name if argv[0] == sys.executable else argv[0]
+            calls.append((name, *scope, Path(kwargs["stdout"].name).name))
+            if argv[0] == "nice":
+                self.assertEqual(argv[:5], ["nice", "-n", "10", "go", "test"])
             return subprocess.CompletedProcess(argv, 0)
 
         with (
@@ -292,12 +295,12 @@ class CITests(unittest.TestCase):
         self.assertEqual(
             sorted(calls),
             [
+                ("nice", "-c", "go-test-compile.log"),
                 ("rehearse-compose.py", "rehearse-compose.log"),
                 ("rehearse-edge.py", "rehearse-edge.log"),
                 ("rehearse-terminal.py", "rehearse-terminal.log"),
                 ("rehearse.py", "--cache-only", "rehearse-cache.log"),
                 ("rehearse.py", "--platform-only", "rehearse-platform.log"),
-                ("test", "-c", "go-test-compile.log"),
             ],
         )
         for label in ("rehearse-platform", "rehearse-cache", "go-test-compile"):

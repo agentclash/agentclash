@@ -230,9 +230,14 @@ def check(group, evidence, part=None):
         warm = evidence / "go-test-binaries"
         warm.mkdir(mode=0o700)
         with concurrent.futures.ThreadPoolExecutor(1) as compiler:
+            # A low CPU priority gives the CPU to the image loads, scans and
+            # builds first. The compile has time until the rehearsals start.
             compiled = compiler.submit(
                 run,
                 [
+                    "nice",
+                    "-n",
+                    "10",
                     "go",
                     "test",
                     "-race",

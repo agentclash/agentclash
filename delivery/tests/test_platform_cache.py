@@ -96,7 +96,10 @@ class PlatformCacheTest(unittest.TestCase):
         self.assertEqual(checks["name"], "AWS release checks")
         steps = checks["jobs"]["images"]["steps"]
         restore = next(
-            s for s in steps if s.get("uses", "").startswith("actions/cache@")
+            s
+            for s in steps
+            if s.get("uses", "").startswith("actions/cache@")
+            and s["with"]["key"].startswith("platform-builds-")
         )
         self.assertEqual(
             restore["if"], "${{ github.workflow == 'AWS release checks' }}"
@@ -114,6 +117,20 @@ class PlatformCacheTest(unittest.TestCase):
         for file in (ROOT / ".github/workflows").glob("*.yml"):
             if file.name != "aws-checks.yml":
                 self.assertNotIn(maintained.PLATFORM_CACHE, file.read_text(), file.name)
+
+    def test_images_job_keeps_its_own_go_cache(self):
+        import yaml
+
+        checks = yaml.safe_load((ROOT / ".github/workflows/aws-checks.yml").read_text())
+        steps = checks["jobs"]["images"]["steps"]
+        go = next(s for s in steps if s.get("uses", "").startswith("actions/setup-go@"))
+        self.assertIs(go["with"]["cache"], False)
+        keys = [
+            s["with"]["key"]
+            for s in steps
+            if s.get("uses", "").startswith("actions/cache@")
+        ]
+        self.assertTrue(any(k.startswith("go-image-rehearsals-") for k in keys))
 
 
 if __name__ == "__main__":
