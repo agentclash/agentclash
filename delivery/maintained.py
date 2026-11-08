@@ -17,6 +17,11 @@ from release_contract import canonical, recipe_hash, DERIVED, UPSTREAM, PLATFORM
 
 LABEL = "io.agentclash.platform-build-sha256"
 PINNED_INPUTS = Path(__file__).resolve().parent / "pinned-inputs"
+ROOT = Path(__file__).resolve().parents[1]
+# Only aws-checks.yml sets this, for its own PR and main runs. A run from
+# aws-release.yml (workflow_call) and the release build never set it, so a
+# publication always builds every platform image from source.
+PLATFORM_CACHE = "AGENTCLASH_PLATFORM_CACHE"
 
 
 @contextmanager
@@ -38,6 +43,26 @@ def normalize_context(context):
         require(not path.is_symlink(), "Unexpected build-context link")
         path.chmod(0o755 if path.is_dir() else 0o644)
         os.utime(path, (0, 0))
+
+
+def platform_cache(build_hash):
+    """Platform builds of an earlier check run with the same recipe, or None.
+
+    The workflow keys the cache on the recipe files. The marker and the recipe
+    label on each image also hold the recipe hash, and every image still goes
+    through the full scan gate.
+    """
+    value = os.environ.get(PLATFORM_CACHE)
+    if not value:
+        return None
+    path = Path(value).resolve()
+    require(not path.is_relative_to(ROOT), "Platform cache must be outside Git")
+    marker = path / "recipe.sha256"
+    if path.exists() and not (marker.is_file() and marker.read_text() == build_hash):
+        shutil.rmtree(path)
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    marker.write_text(build_hash)
+    return path
 
 
 def local_base(run, identity):
@@ -144,6 +169,7 @@ def build(root, directory, run, gate):
         "Platform source/runtime classification mismatch",
     )
     build_hash = recipe_hash(root)
+    reuse = platform_cache(build_hash)
     output, identity = {}, {}
     cache = directory / "platform-inputs"
     cache.mkdir(mode=0o700)
@@ -156,8 +182,13 @@ def build(root, directory, run, gate):
     fetch(lock["gosu"], gosu)
 
     def docker_build(context, filename, name, arguments, target=None):
-        normalize_context(context)
         tag = "agentclash-platform-build:" + name
+        cached = reuse / (name + ".image.tar") if reuse else None
+        if cached and cached.is_file():
+            print("Using the cached platform build " + name, flush=True)
+            run(["docker", "load", "--input", str(cached)], timeout=600)
+            return inspect(run, tag, build_hash)
+        normalize_context(context)
         archive = directory / (name + ".image.tar")
         command = [
             "docker",
@@ -184,7 +215,10 @@ def build(root, directory, run, gate):
             command += ["--build-arg", key + "=" + value]
         run(command + [str(context)], timeout=2400)
         run(["docker", "load", "--input", str(archive)], timeout=600)
-        archive.unlink()
+        if cached:
+            shutil.move(archive, cached)
+        else:
+            archive.unlink()
         return inspect(run, tag, build_hash)
 
     packages = {
@@ -392,13 +426,19 @@ def build_compose(root, directory, run, builder):
     """Export the same Compose release with locked security fixes and notices."""
     root, directory = Path(root), Path(directory)
     recipe = root / "deploy/aws/platform"
+    output = directory / "compose-build"
+    reuse = platform_cache(recipe_hash(root))
+    cached = reuse / "compose-build" if reuse else None
+    if cached and (cached / "docker-compose").is_file():
+        print("Using the cached platform build compose", flush=True)
+        shutil.copytree(cached, output)
+        return output / "docker-compose", output / "notices"
     context = directory / "compose-build-context"
     (context / "source").mkdir(mode=0o700, parents=True)
     for name in ("go.mod", "go.sum"):
         shutil.copyfile(recipe / "compose" / name, context / "source" / name)
     shutil.copyfile(recipe / "licenses.sh", context / "licenses.sh")
     normalize_context(context)
-    output = directory / "compose-build"
     run(
         [
             "docker",
@@ -418,4 +458,6 @@ def build_compose(root, directory, run, builder):
         ],
         timeout=2400,
     )
+    if cached:
+        shutil.copytree(output, cached)
     return output / "docker-compose", output / "notices"

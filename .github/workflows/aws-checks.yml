@@ -187,7 +187,19 @@ jobs:
         python3 -m venv "$RUNNER_TEMP/aws-image-venv"
         "$RUNNER_TEMP/aws-image-venv/bin/pip" install --disable-pip-version-check PyYAML==6.0.3
         echo "$RUNNER_TEMP/aws-image-venv/bin" >> "$GITHUB_PATH"
+    # Reuse the platform builds of the same recipe (Temporal, Caddy, Compose and
+    # the patched bases). Only a direct run of this workflow uses the cache. In
+    # a workflow_call from aws-release.yml, github.workflow is the caller, so
+    # that run builds from source. Every image still goes through the scans.
+    - name: Restore the platform builds of the same recipe
+      if: ${{ github.workflow == 'AWS release checks' }}
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ${{ runner.temp }}/platform-builds
+        key: platform-builds-v1-${{ hashFiles('delivery/maintained.py', 'deploy/aws/images.lock.json', 'deploy/aws/platform/**') }}
     - name: Run required images checks
+      env:
+        AGENTCLASH_PLATFORM_CACHE: ${{ github.workflow == 'AWS release checks' && format('{0}/platform-builds', runner.temp) || '' }}
       run: python3 delivery/checks.py images
   required:
     name: Release checks

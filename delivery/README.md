@@ -21,6 +21,13 @@ it for every application change, and `aws-release.yml` reruns every group before
 a publication. The aggregate requires every selected job to succeed and rejects
 missing/cancelled checks. It does not rely on a path-filtered required workflow.
 
+The images group of a direct `aws-checks.yml` run reuses the platform builds
+(the patched bases, Temporal, Caddy and Compose) of an earlier check run with the
+same recipe, through the GitHub Actions cache. The cache key, a marker file and
+the recipe label on each image hold the recipe hash, and every image still goes
+through the full scan gate. A run from `aws-release.yml` and the release build
+never use this cache, so a publication builds every platform image from source.
+
 `aws-release.yml` reruns checks for trusted main. Only an explicitly activated
 `aws-build` environment can publish. Four Linux/amd64 application images and five
 maintained platform images are built and scanned before publication; staging and
