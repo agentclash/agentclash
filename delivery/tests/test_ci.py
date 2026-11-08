@@ -270,6 +270,35 @@ class CITests(unittest.TestCase):
             self.assertEqual(tuple(job["strategy"]["matrix"]["part"]), parts)
             self.assertIn("--part ${{ matrix.part }}", job["steps"][-1]["run"])
 
+    def test_image_rehearsals_run_together_with_separate_logs(self):
+        import checks
+
+        calls = []
+
+        def fake(argv, **kwargs):
+            calls.append((Path(argv[1]).name, Path(kwargs["stdout"].name).name))
+            return subprocess.CompletedProcess(argv, 0)
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("checks.install"),
+            patch("build.build_graph", return_value={"platform_images": {"go": "x"}}),
+            patch("build.prepare_bootstrap"),
+            patch("checks.subprocess.run", side_effect=fake),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            checks.check("images", directory)
+        self.assertEqual(
+            sorted(calls),
+            [
+                ("rehearse-compose.py", "rehearse-compose.log"),
+                ("rehearse-edge.py", "rehearse-edge.log"),
+                ("rehearse-terminal.py", "rehearse-terminal.log"),
+                ("rehearse.py", "rehearse.log"),
+            ],
+        )
+        self.assertIn("Required check subprocess took: rehearse ", output.getvalue())
+
     def test_pr_code_changes_skip_images_but_image_inputs_do_not(self):
         def required(paths, **kwargs):
             return {g for g, value in select(paths, **kwargs).items() if value}
