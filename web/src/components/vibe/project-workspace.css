@@ -75,7 +75,7 @@
 .vibe-project-header .vibe-button { min-height: 44px; padding: var(--vibe-space-2) var(--vibe-space-3); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-project-identity { grid-column: 1; display: flex; align-items: flex-start; gap: var(--vibe-space-3); min-width: 0; }
 .vibe-project-identity > div { min-width: 0; }
-.vibe-project-identity :is(h1, h2) { font-family: var(--vibe-font-serif); font-size: var(--vibe-font-large); line-height: var(--vibe-leading-large); font-weight: 400; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.vibe-project-identity :is(h1, h2) { font-family: var(--vibe-font-heading); font-size: var(--vibe-font-large); line-height: var(--vibe-leading-large); font-weight: 600; letter-spacing: var(--vibe-tracking-title); overflow-wrap: anywhere; }
 .vibe-project-identity p { font-family: var(--vibe-font-data); font-size: var(--vibe-font-footnote); color: var(--vibe-muted); overflow-wrap: anywhere; line-height: var(--vibe-leading-footnote); margin-top: var(--vibe-space-1); }
 .vibe-project-tools { grid-row: 1; grid-column: 2; align-self: start; display: flex; gap: var(--vibe-space-2); align-items: center; }
 .vibe-project-tools > .vibe-button { height: 44px; white-space: nowrap; }
@@ -93,7 +93,7 @@
 .vibe-project-content > section, .vibe-project-content > .vibe-notice { margin-block-end: var(--vibe-section-gap); }
 .vibe-project-content :is(article[aria-label="Run results"], section[aria-label="Your tests"]) > :not(:last-child) { margin-block-end: var(--vibe-section-gap); }
 /* The answer of a run is a milestone, so it speaks in the display serif. Weight 400 is the only one loaded. */
-.vibe-workspace .vibe-results-outcome { font-family: var(--vibe-font-serif); font-size: var(--vibe-font-display-s); line-height: var(--vibe-leading-display); font-weight: 400; letter-spacing: -0.02em; text-wrap: balance; }
+.vibe-workspace .vibe-results-outcome { font-family: var(--vibe-font-heading); font-size: var(--vibe-font-display-s); line-height: var(--vibe-leading-display); font-weight: 600; letter-spacing: var(--vibe-tracking-display); text-wrap: balance; }
 .vibe-results-filter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); font-size: var(--vibe-font-callout); color: var(--vibe-muted); line-height: var(--vibe-leading-callout); }
 .vibe-results-filter select { min-width: 128px; }
 .vibe-test-review > summary, .vibe-test-review-history > summary { min-height: 44px; padding-block: var(--vibe-space-3); color: var(--vibe-muted); font-size: var(--vibe-font-callout); cursor: pointer; line-height: var(--vibe-leading-callout); }
@@ -107,7 +107,7 @@
 .vibe-results-more-body > .vibe-build-next-actions { margin-block: 0; padding-block: 0; border-top: 0; }
 .vibe-results-more-body > details { margin-top: 0; }
 .vibe-empty-state { display: grid; justify-items: start; gap: var(--vibe-space-3); }
-.vibe-workspace .vibe-empty-state :is(h2, h3), .vibe-workspace .vibe-empty-title { font-family: var(--vibe-font-serif); font-size: var(--vibe-font-title1); line-height: var(--vibe-leading-title1); font-weight: 400; letter-spacing: -0.01em; }
+.vibe-workspace .vibe-empty-state :is(h2, h3), .vibe-workspace .vibe-empty-title { font-family: var(--vibe-font-heading); font-size: var(--vibe-font-title1); line-height: var(--vibe-leading-title1); font-weight: 600; letter-spacing: var(--vibe-tracking-title); }
 /* A finished run or test preparation that the user left: a link to its view. */
 .vibe-arrival { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-bottom: var(--vibe-space-4); }
 /* One progress strip at the top of the content, or of the Guide sheet below 1280px. It stays in view
@@ -286,7 +286,7 @@
   .vibe-workspace :is(.vibe-verdict-pass, .vibe-verdict-issue) { color: CanvasText; }
 }
 
-.vibe-workspace .vibe-start-title { margin: 0; font-family: var(--vibe-font-serif); font-size: var(--vibe-font-display-s); line-height: var(--vibe-leading-display); font-weight: 400; letter-spacing: -0.02em; text-wrap: balance; }
+.vibe-workspace .vibe-start-title { margin: 0; font-family: var(--vibe-font-heading); font-size: var(--vibe-font-display-s); line-height: var(--vibe-leading-display); font-weight: 600; letter-spacing: var(--vibe-tracking-display); text-wrap: balance; }
 .vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) .vibe-button-quiet:not(.vibe-example-chip) { padding-inline: 0; border-inline-width: 0; min-height: 44px; min-width: 44px; justify-content: flex-start; }
 .vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) .vibe-button-quiet { text-decoration: none; text-underline-offset: 3px; }
 .vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) .vibe-button-quiet:is(:hover, :focus-visible) { text-decoration: underline; }

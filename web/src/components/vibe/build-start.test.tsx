@@ -159,12 +159,12 @@ it("associates each mounted Build question with its own input", async () => {
   for (const area of inputs) expect(area.labels?.[0]?.htmlFor).toBe(area.id);
 });
 
-it("uses the display serif and a flat card with a distinct keyboard focus ring", async () => {
+it("uses the heading face and a flat card with a distinct keyboard focus ring", async () => {
   const style = document.createElement("style"); style.textContent = readFileSync("src/components/vibe/build-output.css", "utf8") + readFileSync("src/components/vibe/project-workspace.css", "utf8"); document.head.append(style);
   try {
     await render();
-    expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-serif)");
-    expect(getComputedStyle(node.querySelector("h1")!).fontWeight).toBe("400");
+    expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-heading)");
+    expect(getComputedStyle(node.querySelector("h1")!).fontWeight).toBe("600");
     expect(getComputedStyle(node.querySelector("form")!).boxShadow).toBe("none");
     expect(style.textContent).toContain("outline: 2px solid var(--vibe-focus)");
   } finally { style.remove(); }

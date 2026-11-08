@@ -1,11 +1,13 @@
 // The "Graphite" visual foundation (plan PR 2; design-direction.md sections 4 and 7): the ink
-// primary, issue and pass status with a glyph and a word, the display serif roles, 3:1 control
+// primary, issue and pass status with a glyph and a word, the heading roles, 3:1 control
 // boundaries, elevated surfaces, the working-state motion and the browser theme colour. Every
 // `/v1/vibe/**` request is fulfilled by a fake, so no API or model is reached.
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { Session } from "../../src/lib/vibe";
 import { description, fakeVibe, instructions, models, project } from "./entry-fake";
 import { chooseDoor, composer, doorButton, doorReady, entryHeading, followSystemAppearance, entryReady, sendButton, sourceButton, doorHeading, startScreen, startComposer, buildOptions, startCopy, otherResults, resultsMore, describeInChat } from "./entry-model";
+// Vibe headings use Geist semibold: the first family is Geist, not Geist Mono or the site display serif.
+const headingFace = /^[^,]*Geist(?![ _]Mono)/;
 
 type Scheme = "light" | "dark";
 const schemes = ["light", "dark"] as const;
@@ -84,16 +86,16 @@ async function toResults(page: Page) {
   return fake;
 }
 
-test("the entry and both door starts: display serif questions, 3:1 control boundaries, flat inputs and no start dock", async ({ page }) => {
+test("the entry and both door starts: heading questions, 3:1 control boundaries, flat inputs and no start dock", async ({ page }) => {
   const fake = await fakeVibe(page);
   await page.goto("/vibe-evals");
   await entryReady(page, 30_000);
   for (const scheme of schemes) for (const contrast of ["no-preference", "more"] as const) {
     await settle(page, scheme, { contrast });
     const title = entryHeading(page);
-    await expect(title, scheme).toHaveCSS("font-family", /Instrument[ _]Serif/);
-    await expect(title, scheme).toHaveCSS("font-weight", "400");
-    // Rule: the display serif is never below 20px; the entry question is the largest role (56px at 1440).
+    await expect(title, scheme).toHaveCSS("font-family", headingFace);
+    await expect(title, scheme).toHaveCSS("font-weight", "600");
+    // Rule: the heading face is never below 20px; the entry question is the largest role (56px at 1440).
     expect(parseFloat(await css(title, "font-size")), scheme).toBeGreaterThanOrEqual(36);
     for (const door of ["build", "improve"] as const) expect(await boundary(doorButton(page, door)), `${scheme} ${door} door`).toBeGreaterThanOrEqual(3);
   }
@@ -104,8 +106,8 @@ test("the entry and both door starts: display serif questions, 3:1 control bound
   for (const scheme of schemes) for (const contrast of ["no-preference", "more"] as const) {
     await settle(page, scheme, { contrast });
     const title = doorHeading(page, "build"), input = startComposer(page, "build");
-    await expect(title, scheme).toHaveCSS("font-family", /Instrument[ _]Serif/);
-    await expect(title, scheme).toHaveCSS("font-weight", "400");
+    await expect(title, scheme).toHaveCSS("font-family", headingFace);
+    await expect(title, scheme).toHaveCSS("font-weight", "600");
     expect(parseFloat(await css(title, "font-size")), scheme).toBeGreaterThanOrEqual(32);
     await expect(box, scheme).toHaveCSS("border-top-width", "1px");
     await expect(box, scheme).toHaveCSS("padding-left", "0px");
@@ -142,8 +144,8 @@ test("the entry and both door starts: display serif questions, 3:1 control bound
   for (const scheme of schemes) for (const contrast of ["no-preference", "more"] as const) {
     await settle(page, scheme, { contrast });
     const title = doorHeading(page, "improve");
-    await expect(title, scheme).toHaveCSS("font-family", /Instrument[ _]Serif/);
-    await expect(title, scheme).toHaveCSS("font-weight", "400");
+    await expect(title, scheme).toHaveCSS("font-family", headingFace);
+    await expect(title, scheme).toHaveCSS("font-weight", "600");
     expect(parseFloat(await css(title, "font-size")), scheme).toBeGreaterThanOrEqual(32);
     await title.focus();
     expect(await title.evaluate(element => document.activeElement === element)).toBe(true);
@@ -181,7 +183,7 @@ test("the Guide composer has a distinct 3:1 keyboard focus ring in every appeara
   expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
 });
 
-test("results: an ink primary, issue and pass status with a glyph and a word, and the serif title and outcome", async ({ page }) => {
+test("results: an ink primary, issue and pass status with a glyph and a word, and the heading title and outcome", async ({ page }) => {
   const fake = await toResults(page);
   const results = page.getByRole("tabpanel", { name: "Results", exact: true });
   await otherResults(page).click();
@@ -205,9 +207,9 @@ test("results: an ink primary, issue and pass status with a glyph and a word, an
     await expect(issue.getByText("Issue", { exact: true }), scheme).toHaveCSS("color", clay[scheme]);
     await expect(passed.locator("svg").first(), scheme).toHaveCSS("color", sage[scheme]);
     await expect(passed.getByText("Pass", { exact: true }), scheme).toHaveCSS("color", sage[scheme]);
-    await expect(title, scheme).toHaveCSS("font-family", /Instrument[ _]Serif/);
+    await expect(title, scheme).toHaveCSS("font-family", headingFace);
     await expect(title, scheme).toHaveCSS("font-size", "28px");
-    await expect(outcome, scheme).toHaveCSS("font-family", /Instrument[ _]Serif/);
+    await expect(outcome, scheme).toHaveCSS("font-family", headingFace);
     expect(parseFloat(await css(outcome, "font-size")), scheme).toBeGreaterThanOrEqual(32);
     expect(await boundary(page.getByRole("combobox", { name: "Filter tests" })), `${scheme} filter select`).toBeGreaterThanOrEqual(3);
     // Increased contrast deepens clay and sage and raises the control boundary.
@@ -225,9 +227,9 @@ test("results: an ink primary, issue and pass status with a glyph and a word, an
   // Project identity keeps its display role on phones and wraps within the header.
   await page.setViewportSize({ width: 390, height: 844 });
   await settle(page, "light");
-  await expect(title).toHaveCSS("font-family", /Instrument[ _]Serif/);
+  await expect(title).toHaveCSS("font-family", headingFace);
   await expect(title).toHaveCSS("font-size", "28px");
-  await expect(title).toHaveCSS("font-weight", "400");
+  await expect(title).toHaveCSS("font-weight", "600");
   expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
 });
 
@@ -383,7 +385,7 @@ test("review polish: shared start hierarchy, chip rows and vertical steps, align
       await expect(dataUse).toHaveCSS("text-decoration-line", "underline");
       const title = doorHeading(page, door);
       await expect(title).toHaveClass("vibe-start-title");
-      await expect(title).toHaveCSS("font-family", /Instrument[ _]Serif/);
+      await expect(title).toHaveCSS("font-family", headingFace);
       await expect(title).toHaveCSS("font-size", width === 390 ? "32px" : "42.88px");
       if (door === "improve") {
         const sources = startScreen(page).getByRole("radiogroup", { name: "Agent source", exact: true });

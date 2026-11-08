@@ -196,12 +196,12 @@ it("labels every Improve input and gives independent mounts unique field ids", a
   const areas = [...node.querySelectorAll("textarea")]; expect(new Set(areas.map(area => area.id)).size).toBe(2);
 });
 
-it("uses the display serif question and visible borders for every source tile", async () => {
+it("uses the heading face question and visible borders for every source tile", async () => {
   const style = document.createElement("style"); style.textContent = (readFileSync("src/components/vibe/improve.css", "utf8") + readFileSync("src/components/vibe/project-workspace.css", "utf8")).replaceAll("var(--vibe-control-border)", "#765820"); document.head.append(style);
   try {
     await draw();
-    expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-serif)");
-    expect(getComputedStyle(node.querySelector("h1")!).fontWeight).toBe("400");
+    expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-heading)");
+    expect(getComputedStyle(node.querySelector("h1")!).fontWeight).toBe("600");
     for (const radio of node.querySelectorAll('[role="radio"]')) {
       expect(getComputedStyle(radio).borderTopWidth).toBe("1.5px");
       expect(getComputedStyle(radio).borderTopStyle).toBe("solid");
