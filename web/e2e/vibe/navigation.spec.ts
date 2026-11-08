@@ -994,6 +994,7 @@ async function sidebarGrid(root: Locator) {
     const mark = box(at('.vibe-sidebar-brand svg[aria-label="AgentClash"]'));
     const filter = at("select.vibe-sidebar-filter") as HTMLSelectElement, style = getComputedStyle(filter);
     const refresh = box(at(".vibe-sidebar-icon")), collapse = nav.querySelector(".vibe-sidebar-collapse");
+    const search = at("input.vibe-sidebar-search"), searchStyle = getComputedStyle(search);
     return {
       mark: mark.left + mark.width / 2 - base.left,
       brand: box(at(".vibe-sidebar-brand > span")).left - base.left,
@@ -1002,6 +1003,7 @@ async function sidebarGrid(root: Locator) {
       homeIcon: box(home.querySelector("svg")!).left - base.left, homeText: text(home),
       filterText: box(filter).left - base.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
       filterBorder: style.borderTopColor, filterSize: style.fontSize, filterHeight: box(filter).height,
+      searchText: box(search).left - base.left + parseFloat(searchStyle.borderLeftWidth) + parseFloat(searchStyle.paddingLeft),
       refresh: inner - refresh.right,
       collapse: collapse ? inner - box(collapse).right : null,
     };
@@ -1009,7 +1011,7 @@ async function sidebarGrid(root: Locator) {
 }
 
 function expectGrid(grid: Awaited<ReturnType<typeof sidebarGrid>>, where: string) {
-  for (const key of ["createIcon", "itemIcon", "homeIcon", "filterText"] as const) expect(grid[key], `${where} ${key}`).toBeCloseTo(24, 0);
+  for (const key of ["createIcon", "itemIcon", "homeIcon", "filterText", "searchText"] as const) expect(grid[key], `${where} ${key}`).toBeCloseTo(24, 0);
   for (const key of ["brand", "createText", "itemText", "homeText"] as const) expect(grid[key], `${where} ${key}`).toBeCloseTo(48, 0);
   expect(grid.mark, `${where} mark`).toBeCloseTo(32, 0);
   expect(grid.refresh, `${where} refresh`).toBeCloseTo(12, 0);
@@ -1019,7 +1021,8 @@ function expectGrid(grid: Awaited<ReturnType<typeof sidebarGrid>>, where: string
 
 test("sidebar rows share one icon column and one text column on desktop and in the phone sheet", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
-  const control = await serve(page);
+  // More than six projects, so the search field shows too.
+  const control = await serve(page, true);
   const desktop = await sidebarGrid(page.locator(".vibe-sidebar-inner"));
   expectGrid(desktop, "desktop");
   expect(desktop.collapse, "desktop collapse").toBeCloseTo(12, 0);
@@ -1036,7 +1039,7 @@ test("on a touch screen the sidebar filter keeps 16px text and a 44px target", a
   // Touch emulation matches (pointer: coarse); 16px text stops iOS from zooming on focus.
   const context = await browser.newContext({ baseURL: test.info().project.use.baseURL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
-  const control = await serve(page);
+  const control = await serve(page, true);
   expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
   await page.getByRole("button", { name: "Open projects", exact: true }).click();
   const sheet = page.getByRole("dialog", { name: "Your projects" });

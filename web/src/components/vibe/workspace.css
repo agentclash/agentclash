@@ -590,7 +590,8 @@
 .vibe-workspace .vibe-sidebar-tools select.vibe-sidebar-filter:hover:not(:disabled) { background:color-mix(in srgb, var(--vibe-text-1) 6%, var(--vibe-sidebar)); color:var(--vibe-fg); }
 .vibe-workspace .vibe-sidebar-tools select.vibe-sidebar-filter:focus-visible { outline:2px solid var(--vibe-focus); outline-offset:2px; }
 .vibe-sidebar-icon.vibe-button { flex:none; padding:var(--vibe-space-2); min-width:40px; min-height:40px; color:var(--vibe-muted); }
-.vibe-workspace .vibe-sidebar-search { width:100%; min-height:44px; margin:0 0 var(--vibe-space-2); padding-inline:11px; }
+/* The list scope outranks the shared .vibe-input padding and margin, which load later. */
+.vibe-workspace .vibe-sidebar-list input.vibe-sidebar-search { width:100%; min-height:44px; margin:0 0 var(--vibe-space-2); padding-inline:11px; }
 /* A fine pointer gets list-sized text; touch keeps 16px so iOS does not zoom on focus. */
 @media (pointer: fine) {
   .vibe-workspace .vibe-sidebar-list input.vibe-sidebar-search { font-size:var(--vibe-font-callout); line-height:var(--vibe-leading-callout); }
