@@ -172,13 +172,20 @@ jobs:
       with:
         version: v29.3.1
         daemon-config: '{"debug":false,"log-level":"fatal","features":{"containerd-snapshotter":true}}'
+    # The rehearsals compile `go test -race -tags=awsplatform` on the runner.
+    # The shared setup-go key holds the build cache of whichever job saved it
+    # first, so this job keeps its own Go cache.
     - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
       with:
         go-version-file: backend/go.mod
-        cache-dependency-path: |-
-          backend/go.sum
-          runtime/go.sum
-          cli/go.sum
+        cache: false
+    - name: Restore the Go cache of the image rehearsals
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: go-image-rehearsals-v1-${{ hashFiles('backend/go.mod', 'backend/go.sum', 'runtime/go.sum') }}
     - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
       with:
         bun-version: 1.4.2
