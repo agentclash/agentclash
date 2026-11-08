@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "deploy/aws/scripts"))
@@ -107,6 +108,7 @@ def check(group, evidence, part=None):
         if label == "go" and len(argv) > 1 and argv[1] in ("build", "vet", "test"):
             label += "-" + argv[1]
         print("Required check subprocess: " + label, flush=True)
+        start = time.monotonic()
         with (evidence / "checks.log").open("ab") as log:
             result = subprocess.run(
                 argv,
@@ -116,6 +118,11 @@ def check(group, evidence, part=None):
                 stderr=subprocess.STDOUT,
                 timeout=timeout,
             )
+        seconds = round(time.monotonic() - start)
+        print(
+            "Required check subprocess took: " + label + " " + str(seconds) + "s",
+            flush=True,
+        )
         if result.returncode:
             print("Required check subprocess failed: " + label, flush=True)
         require(result.returncode == 0, "A required check failed")

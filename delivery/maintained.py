@@ -1,5 +1,6 @@
 """Local maintained-image graph. Downloads are public, pinned and verified."""
 
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -16,6 +17,17 @@ from release_contract import canonical, recipe_hash, DERIVED, UPSTREAM, PLATFORM
 
 LABEL = "io.agentclash.platform-build-sha256"
 PINNED_INPUTS = Path(__file__).resolve().parent / "pinned-inputs"
+
+
+@contextmanager
+def timed(phase):
+    """Print the duration of a public, fixed phase name. No paths or values."""
+    start = time.monotonic()
+    try:
+        yield
+    finally:
+        seconds = round(time.monotonic() - start)
+        print("Image check phase: " + phase + " " + str(seconds) + "s", flush=True)
 
 
 def normalize_context(context):
@@ -233,12 +245,13 @@ def build(root, directory, run, gate):
             )
             shutil.copyfile(cache / (branch + "-" + package), destination)
             os.utime(destination, (0, 0))
-        detail = docker_build(
-            context,
-            "Dockerfile.packages",
-            name + "-packages",
-            {"UPSTREAM": public[name]["image"]},
-        )
+        with timed("platform " + name + " packages build"):
+            detail = docker_build(
+                context,
+                "Dockerfile.packages",
+                name + "-packages",
+                {"UPSTREAM": public[name]["image"]},
+            )
         if name in ("caddy", "postgres"):
             if name == "caddy":
                 (context / "source").mkdir(mode=0o700)
@@ -290,20 +303,22 @@ def build(root, directory, run, gate):
                 if path.is_file():
                     os.utime(path, (0, 0))
             binary = "caddy" if name == "caddy" else "gosu"
-            detail = docker_build(
-                context,
-                "Dockerfile.caddy" if name == "caddy" else "Dockerfile.binary",
-                name,
-                {
-                    "BUILDER": output["go"],
-                    "UPSTREAM": detail["Id"],
-                    "BINARY": binary,
-                    "BINARY_PATH": "/usr/bin/caddy"
-                    if name == "caddy"
-                    else "/usr/local/bin/gosu",
-                },
-            )
-        gate(name, public[name]["image"], detail["Id"])
+            with timed("platform " + name + " binary build"):
+                detail = docker_build(
+                    context,
+                    "Dockerfile.caddy" if name == "caddy" else "Dockerfile.binary",
+                    name,
+                    {
+                        "BUILDER": output["go"],
+                        "UPSTREAM": detail["Id"],
+                        "BINARY": binary,
+                        "BINARY_PATH": "/usr/bin/caddy"
+                        if name == "caddy"
+                        else "/usr/local/bin/gosu",
+                    },
+                )
+        with timed("platform " + name + " scan"):
+            gate(name, public[name]["image"], detail["Id"])
         output[name], identity[name] = detail["Id"], detail
     # Rebuild the exact Temporal release binaries, retaining the upstream image's
     # runtime identity, configuration and schema files. Go module checksums pin
@@ -312,9 +327,7 @@ def build(root, directory, run, gate):
     (context / "packages").mkdir(mode=0o700, parents=True)
     for package in ("zlib", "musl", "musl-utils"):
         entry = lock["packages"]["v3.24/" + package]
-        destination = (
-            context / "packages" / (package + "-" + entry["version"] + ".apk")
-        )
+        destination = context / "packages" / (package + "-" + entry["version"] + ".apk")
         shutil.copyfile(cache / ("v3.24-" + package), destination)
         os.utime(destination, (0, 0))
     for component, source in (
@@ -326,19 +339,22 @@ def build(root, directory, run, gate):
             shutil.copyfile(source / filename, context / component / filename)
     shutil.copyfile(recipe / "licenses.sh", context / "licenses.sh")
     for name, target in (("temporal", "server"), ("temporal-admin", "admin")):
-        detail = docker_build(
-            context,
-            "Dockerfile.temporal",
-            name,
-            {"BUILDER": output["go"], "UPSTREAM": public[name]["image"]},
-            target=target,
-        )
-        gate(name, public[name]["image"], detail["Id"])
+        with timed("platform " + name + " build"):
+            detail = docker_build(
+                context,
+                "Dockerfile.temporal",
+                name,
+                {"BUILDER": output["go"], "UPSTREAM": public[name]["image"]},
+                target=target,
+            )
+        with timed("platform " + name + " scan"):
+            gate(name, public[name]["image"], detail["Id"])
         output[name], identity[name] = detail["Id"], detail
     for name in UPSTREAM:
         # These unchanged, immutable upstream runtimes already satisfy the same gate.
         output[name] = public[name]["image"]
-        gate(name, output[name], output[name])
+        with timed("platform " + name + " scan"):
+            gate(name, output[name], output[name])
     (directory / "platform-identities.json").write_bytes(canonical(identity))
     (directory / "platform-inputs.json").write_bytes(
         canonical(
