@@ -197,6 +197,17 @@ class CITests(unittest.TestCase):
             self.assertTrue(select([path])["images"])
         self.assertTrue(all(select([".github/workflows/aws-checks.yml"]).values()))
 
+    def test_cli_release_pr_selects_only_cli_checks(self):
+        release = select([".github/.release-please-manifest.json", "cli/CHANGELOG.md"])
+        self.assertEqual({g for g, required in release.items() if required}, {"cli"})
+        for path in (
+            ".github/release-please-config.json",
+            ".github/workflows/release-please.yml",
+        ):
+            self.assertTrue(all(select([path]).values()))
+        mixed = select([".github/.release-please-manifest.json", "delivery/tools.py"])
+        self.assertTrue(all(mixed.values()))
+
     def test_aggregate_rejects_failure_missing_or_cancelled_jobs(self):
         plan = select(["runtime/types.go"])
         good = {

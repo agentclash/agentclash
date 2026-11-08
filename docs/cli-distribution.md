@@ -113,6 +113,10 @@ script is sourced.
 
 Stable releases are not cut on every merge. Release Please watches releasable `fix:`, `feat:`, and `feat!:` commits that touch `cli/` and opens a version bump PR for that CLI stream. Installer-only, docs-only, and release-config-only changes do not open a stable CLI release by themselves. Merging that release PR creates the `v*` tag, and the tag-triggered GoReleaser workflow publishes archives, checksums, Homebrew metadata, and npm packages.
 
+The release PR merges automatically. `.github/workflows/release-please.yml` runs on every push to `main`. It turns on auto-merge for the open release PR with `RELEASE_PLEASE_TOKEN`, and it rebases the PR when `main` moves, because strict status checks block a PR that is behind. The PR merges as soon as the required "Release checks" passes. A release PR changes only `cli/CHANGELOG.md` and `.github/.release-please-manifest.json`, so `delivery/changes.py` selects only the CLI checks for it.
+
+To hold releases, set the repository variable `CLI_RELEASE_AUTOMERGE` to `false`, then run `gh pr merge <pr-number> --disable-auto` on the open release PR. Delete the variable to turn the automatic merge on again.
+
 Use these commit prefixes for the CLI release stream:
 
 ```text
@@ -135,7 +139,7 @@ Avoid it either way:
   gh pr merge <pr-number> --merge --subject "Merge pull request #<pr-number>" --body ""
   ```
 
-- **At release time** — when reviewing the Release Please PR, delete the duplicate lines from the new `## [x.y.z]` block, keeping the non-merge (branch) commit of each pair.
+- **At release time** — the release PR merges automatically, so there is no review step. Delete the duplicate lines from the GitHub Release notes after the release, keeping the non-merge (branch) commit of each pair.
 
 ## Maintainer Setup
 
