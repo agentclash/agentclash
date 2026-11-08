@@ -407,7 +407,7 @@ test("same-artifact case Back and Forward restores the visible expectation witho
   expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
 });
 
-test("project title and tabs share the left edge of the content", async ({ page }) => {
+test("project tabs share the content edge; mobile titles stay beside the toggle", async ({ page }) => {
   await serve(page, false, true);
   await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
   const tabs = page.getByRole("tablist", { name: "Workspace views" });
@@ -417,6 +417,14 @@ test("project title and tabs share the left edge of the content", async ({ page 
   for (const width of [1024, 1280, 1440, 2560]) {
     await page.setViewportSize({ width, height: 900 });
     await expect.poll(async () => { const e = await edges(); return Math.max(Math.abs(e.tabs - e.content), Math.abs(e.title - e.content)); }, { message: `${width}px` }).toBeLessThanOrEqual(1);
+  }
+  for (const width of [390, 600, 768, 1023]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect.poll(async () => { const e = await edges(); return Math.abs(e.tabs - e.content); }, { message: `${width}px tabs at content gutter` }).toBeLessThanOrEqual(1);
+    await expect.poll(async () => { const e = await edges(); return e.title - e.content; }, { message: `${width}px title beside toggle` }).toBe(56);
+    const identity = (await page.locator(".vibe-project-identity").boundingBox())!;
+    const row = (await tabs.boundingBox())!;
+    expect(row.y).toBeGreaterThanOrEqual(identity.y + identity.height);
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("button", { name: "Guide", exact: true }).click();
@@ -742,12 +750,12 @@ test("workspace geometry, scoped portal appearance and reading focus adapt at ev
       expect(geometry.utility).toBeLessThan((width - geometry.sidebar) / 2);
     } else expect(geometry.utility).toBe(width <= 600 ? width : 480);
     if (width <= 600) expect(geometry.height).toBe(900);
-    expect(geometry.background).toBe("rgb(255, 255, 255)"); expect(geometry.color).toBe("rgb(28, 26, 22)");
+    expect(geometry.background).toBe("rgb(255, 255, 255)"); expect(geometry.color).toBe("rgb(23, 23, 26)");
     expect(geometry.transition).toBe("0s"); if (width < 1280) expect(geometry.backdropMotion).toBe("0s");
     expect(geometry.overflow).toBe(false); expect(geometry.globalTheme).toBe(true);
     await appearance.selectOption("dark");
     const utility = page.locator(width >= 1280 ? ".vibe-utility" : '[data-slot="sheet-content"]');
-    await expect(utility).toHaveCSS("background-color", width >= 1280 ? "rgb(27, 26, 23)" : "rgb(33, 31, 27)");
+    await expect(utility).toHaveCSS("background-color", width >= 1280 ? "rgb(21, 21, 23)" : "rgb(25, 25, 28)");
     await appearance.selectOption("system");
     await expect(utility).toHaveCSS("background-color", "rgb(255, 255, 255)");
     await page.getByRole("button", { name: "Close Details", exact: true }).click();
@@ -774,7 +782,7 @@ test("remaining 320 and 768 layouts retain contrast, scaled text and utility foc
     const results=(await page.getByRole("tab",{name:"Results",exact:true}).boundingBox())!;
     const guide=(await page.getByRole("button",{name:"Guide",exact:true}).boundingBox())!;
     const details=(await page.getByRole("button",{name:"Details",exact:true}).boundingBox())!;
-    expect(results.x+results.width).toBeLessThanOrEqual(guide.x);
+    expect(results.y).toBeGreaterThanOrEqual(Math.max(guide.y + guide.height, details.y + details.height));
     expect(guide.x+guide.width).toBeLessThanOrEqual(details.x);
     for(const box of [results,guide,details]) {
       expect(box.width).toBeGreaterThanOrEqual(44);
@@ -784,8 +792,8 @@ test("remaining 320 and 768 layouts retain contrast, scaled text and utility foc
     const popup=page.locator('[data-slot="sheet-content"]');
     const appearance=page.getByLabel("Appearance",{exact:true});
     await appearance.selectOption("system");
-    await expect(popup).toHaveCSS("background-color","rgb(33, 31, 27)");
-    await expect(popup).toHaveCSS("color","rgb(237, 233, 225)");
+    await expect(popup).toHaveCSS("background-color","rgb(25, 25, 28)");
+    await expect(popup).toHaveCSS("color","rgb(244, 244, 242)");
     await appearance.selectOption("light");
     await expect(popup).toHaveCSS("background-color","rgb(255, 255, 255)");
     const geometry=await popup.evaluate(el=>({width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color,transition:getComputedStyle(el).transitionDuration,overflow:document.documentElement.scrollWidth>innerWidth}));

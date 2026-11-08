@@ -124,8 +124,8 @@ it("P1b: Continue reopens saved work while new projects are blocked", async () =
   await act(async () => resume.click());
   expect(onOpen).toHaveBeenCalledOnce();
 });
-it("U16: the trial follows the result action area by the existing 32px spacing token", () => {
-  expect(css).toContain('article:has(> .vibe-build-result) + .vibe-prototype-trial { margin-block-start: var(--vibe-space-6); }');
+it("U16: the trial follows the responsive section gap with a 32px fallback", () => {
+  expect(css).toContain('article:has(> .vibe-build-result) + .vibe-prototype-trial { margin-block-start: var(--vibe-section-gap, var(--vibe-space-6)); }');
 });
 it("U8: formats raw provider IDs in both model selects without changing submitted values", async () => {
   await draw(<ImproveStart {...improve} />);

@@ -11,7 +11,7 @@
 .vibe-improve-source-description { color: var(--vibe-text-2); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); }
 .vibe-improve-start :is(button, a, summary, select):focus-visible { outline: 2px solid var(--vibe-focus); outline-offset: 3px; }
 .vibe-improve-start :is(label, .vibe-improve-form, .vibe-improve-field) { display: grid; gap: var(--vibe-space-2); min-width: 0; }
-.vibe-improve-start .vibe-improve-form { gap: var(--vibe-space-6); }
+.vibe-improve-start .vibe-improve-form { gap: var(--vibe-start-section-gap); }
 .vibe-workspace .vibe-improve-start .vibe-improve-form select, .vibe-workspace .vibe-improve-form textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: var(--vibe-space-4) 20px; border: 1px solid var(--vibe-control-border); border-radius: var(--vibe-radius-md); background: var(--vibe-surface); color: var(--vibe-fg); }
 .vibe-workspace .vibe-improve-start .vibe-improve-form select { min-height: 48px; padding: var(--vibe-space-3) var(--vibe-space-4); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight: 500; }
 .vibe-workspace .vibe-improve-form .vibe-improve-instructions { min-height: 132px; font-family: var(--vibe-font-data); font-size: 13px; line-height: 21px; }
@@ -19,18 +19,21 @@
 .vibe-improve-helper, .vibe-improve-other > summary, .vibe-improve-help > summary { color: var(--vibe-text-3); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); }
 .vibe-improve-start summary, .vibe-improve-start a { cursor: pointer; min-height: 44px; padding-block: var(--vibe-space-3); }
 .vibe-improve-start a { display: inline-flex; align-items: center; }
+/* Collapse the extra hit-area height out of the document rhythm, including when open. */
+.vibe-improve-start :is(.vibe-improve-help, .vibe-improve-other) { display: flow-root; }
+.vibe-improve-start :is(.vibe-improve-help, .vibe-improve-other) > summary { padding-block: calc((44px - var(--vibe-leading-footnote)) / 2); margin-block: calc((var(--vibe-leading-footnote) - 44px) / 2); }
 .vibe-improve-help > :not(summary) { margin-top: var(--vibe-space-3); }
 .vibe-improve-request { padding: var(--vibe-space-4); border: 1px solid var(--vibe-control-border); border-radius: var(--vibe-radius-sm); }
 .vibe-improve-drop { display: grid; justify-items: start; gap: var(--vibe-space-4); border: 1px dashed var(--vibe-control-border); background: var(--vibe-surface); padding: var(--vibe-space-5); border-radius: var(--vibe-radius-md); }
 .vibe-improve-count { font-family: var(--vibe-font-data); font-variant-numeric: tabular-nums; font-size: var(--vibe-font-callout); }
-.vibe-improve-other > div { display: grid; justify-items: start; gap: var(--vibe-space-2); }
+.vibe-improve-other > div { margin-top: var(--vibe-space-4); display: grid; justify-items: start; gap: var(--vibe-space-2); }
 .vibe-recorded-chat { display: grid; gap: var(--vibe-space-3); }
 .vibe-recorded-bubble { max-width: 90%; width: fit-content; border: 1px solid var(--vibe-control-border); border-radius: var(--vibe-radius-md); padding: var(--vibe-space-3) var(--vibe-space-4); white-space: pre-wrap; overflow-wrap: anywhere; }
 .vibe-recorded-bubble[data-role=assistant] { justify-self: end; background: var(--vibe-hover); }
 .vibe-recorded-bubble strong { display: block; font-size: var(--vibe-font-footnote); margin-bottom: var(--vibe-space-1); }
 .vibe-improve-field-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--vibe-space-2); }
-.vibe-workspace .vibe-improve-start .vibe-improve-field-heading .vibe-improve-sample { color: var(--vibe-text-2); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); text-decoration: underline; text-decoration-color: var(--vibe-control-border); }
-.vibe-improve-submit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-4); padding-top: var(--vibe-space-2); }
+.vibe-workspace .vibe-improve-start .vibe-improve-field-heading .vibe-improve-sample { height: 44px; border-block-width: 0; padding-block: calc(44px - var(--vibe-leading-footnote) - var(--vibe-space-2)) var(--vibe-space-2); margin-block: calc(var(--vibe-leading-footnote) + var(--vibe-space-2) - 44px) calc(-1 * var(--vibe-space-2)); color: var(--vibe-text-2); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); text-decoration: underline; text-decoration-color: var(--vibe-control-border); }
+.vibe-improve-submit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-4); }
 .vibe-improve-submit-actions { flex: 0 0 auto; }
 .vibe-improve-submit-actions > .vibe-button { padding-inline: 20px; font-weight: 600; }
 .vibe-improve-submit > .vibe-improve-helper { flex: 1 1 240px; max-width: 380px; }
@@ -38,7 +41,12 @@
 .vibe-improve-start > .vibe-start-footer { border-top: 1px solid var(--vibe-border); padding-top: var(--vibe-space-4); }
 @media (max-width: 600px) {
   .vibe-improve-sources { grid-template-columns: minmax(0, 1fr); }
-  .vibe-improve-start .vibe-improve-form { gap: var(--vibe-space-5); }
+  .vibe-improve-sources > button { grid-template-columns: 20px minmax(0, 1fr) 18px; align-items: center; align-content: center; gap: var(--vibe-space-3); padding: var(--vibe-space-3) var(--vibe-space-4); }
+  .vibe-improve-source-icons { display: contents; }
+  .vibe-improve-source-icons > svg { grid-column: 1; grid-row: 1; }
+  .vibe-improve-source-copy { grid-column: 2; grid-row: 1; min-width: 0; }
+  .vibe-improve-radio { grid-column: 3; grid-row: 1; }
+  .vibe-improve-drop { padding: var(--vibe-space-4); }
   .vibe-workspace .vibe-improve-form textarea { padding-inline: var(--vibe-space-4); }
 }
 .vibe-improve-help > summary:focus-visible { outline: 2px solid var(--vibe-focus); outline-offset: 3px; }

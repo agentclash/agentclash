@@ -48,13 +48,22 @@ it("uses the address that the API gives", async () => {
 });
 
 it("explains a failed copy when the Clipboard API is absent, and keeps the status region in the tree", async () => {
-  vi.stubGlobal("navigator", { ...navigator, clipboard: undefined });
-  await render();
-  const status = popup().querySelector('[role="status"]')!;
-  expect(status.textContent).toBe("");
-  const copy = [...popup().querySelectorAll("button")].find(b => b.textContent === "Copy")!;
-  await act(async () => { copy.click(); });
-  expect(status.textContent).toBe("Copy is not available here. Select the text and copy it yourself.");
+  const style = document.createElement("style");
+  style.textContent = readFileSync("src/components/vibe/project-enquiry.css", "utf8");
+  document.head.append(style);
+  try {
+    vi.stubGlobal("navigator", { ...navigator, clipboard: undefined });
+    await render();
+    const status = popup().querySelector('[role="status"]')!;
+    expect(status.textContent).toBe("");
+    expect(getComputedStyle(status).display).not.toBe("none");
+    expect(getComputedStyle(status).position).toBe("absolute");
+    const copy = [...popup().querySelectorAll("button")].find(b => b.textContent === "Copy")!;
+    await act(async () => { copy.click(); });
+    expect(status.textContent).toBe("Copy is not available here. Select the text and copy it yourself.");
+    expect(getComputedStyle(status).display).not.toBe("none");
+    expect(getComputedStyle(status).position).not.toBe("absolute");
+  } finally { style.remove(); }
 });
 
 const token = vi.fn(async () => "visitor-token");
