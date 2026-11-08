@@ -286,6 +286,12 @@ if __name__ == "__main__":
         categories = {
             "HTTPError",
             "URLError",
+            "RemoteDisconnected",
+            "IncompleteRead",
+            "TimeoutError",
+            "ConnectionResetError",
+            "ConnectionAbortedError",
+            "ConnectionRefusedError",
             "TimeoutExpired",
             "FileNotFoundError",
             "Refused",

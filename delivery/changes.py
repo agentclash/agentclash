@@ -9,11 +9,17 @@ import re
 import subprocess
 
 GROUPS = ("backend", "runtime", "cli", "terminal", "frontend", "platform", "images")
+# Release Please writes only the CLI version here. A release PR changes this
+# file and cli/CHANGELOG.md, so it needs the CLI checks, not every group.
+CLI_RELEASE_MANIFEST = ".github/.release-please-manifest.json"
 
 
 def select(paths, force=False):
     selected = {key: force for key in GROUPS}
     for path in paths:
+        if path == CLI_RELEASE_MANIFEST:
+            selected["cli"] = True
+            continue
         if path.startswith((".github/", "delivery/")) or path in (
             "Makefile",
             "go.work",
