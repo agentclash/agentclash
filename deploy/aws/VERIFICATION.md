@@ -20,10 +20,12 @@ versions, repeated recovery rehearsal and remaining image blockers.
   All three queues complete durable workflows after replacement at a different
   membership IP and certificate/CA rotation. Full database dump/restore recovers
   those workflows and their visibility results.
-- Valkey 8.1.8 passes TLS/ACL tests with the actual Go client and Linux/Bun terminal
-  image. Lua, transactions, provider throttling and pub/sub work. AOF rewrite,
+- The then-pinned Valkey image passes TLS/ACL tests with the actual Go client and
+  Linux/Bun terminal image. Lua, transactions, provider throttling and pub/sub work. AOF rewrite,
   restart and offline restore preserve spend values and absolute trial expiry.
   A deliberately truncated AOF is rejected rather than silently repaired.
+  Current maintenance pins Valkey 8.1.11-alpine; see
+  [maintained platform images](../../delivery/PLATFORM-IMAGES.md).
 - Pinned Caddy 2.11.4 runs without root and passes all-method maintenance fencing,
   reload and request-metadata removal from error logs.
 - Python lint/compilation and shell syntax checks pass. Per-commit secret scans

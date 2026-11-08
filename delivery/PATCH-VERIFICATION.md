@@ -23,9 +23,11 @@ overrides update brace-expansion, tar and undici. E2B and R2 integrations remain
 in place. The application images install patched OpenSSL packages on top of
 immutable upstream bases; the upstream bases are independently scanned.
 
-Temporal server/admin move together to 1.32.0, Valkey stays on the 8.1 series at
-8.1.10, and the local PostgreSQL admin/test image advances to 18.6. The RDS minor
-still needs a live availability/compatibility check. Caddy remains at 2.11.4.
+Temporal server/admin move together to 1.32.0, Valkey stays on the 8.1 series,
+and the local PostgreSQL admin/test image advances to 18.6. Current maintenance
+pins Valkey 8.1.11-alpine; see [maintained platform images](PLATFORM-IMAGES.md).
+The RDS minor still needs a live availability/compatibility check. Caddy remains
+at 2.11.4.
 
 ## Evidence
 
