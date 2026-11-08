@@ -197,6 +197,118 @@ class CITests(unittest.TestCase):
             self.assertTrue(select([path])["images"])
         self.assertTrue(all(select([".github/workflows/aws-checks.yml"]).values()))
 
+    def test_cli_release_pr_selects_only_cli_checks(self):
+        release = select([".github/.release-please-manifest.json", "cli/CHANGELOG.md"])
+        self.assertEqual({g for g, required in release.items() if required}, {"cli"})
+        mixed = select([".github/.release-please-manifest.json", "delivery/tools.py"])
+        self.assertTrue(all(mixed.values()))
+
+    def test_workflows_outside_the_aws_checks_select_only_platform(self):
+        def required(paths, **kwargs):
+            return {g for g, value in select(paths, **kwargs).items() if value}
+
+        for path in (
+            ".github/release-please-config.json",
+            ".github/workflows/release-please.yml",
+            ".github/workflows/frontend.yml",
+            ".github/actions/agentclash-ci/run_test.py",
+            ".github/dependabot.yml",
+            "delivery/tests/test_ci.py",
+            "delivery/README.md",
+        ):
+            self.assertEqual(required([path]), {"platform"}, path)
+        self.assertEqual(required(["deploy/aws/README.md"]), {"platform"})
+        for path in (
+            ".github/workflows/aws-checks.yml",
+            ".github/workflows/aws-release.yml",
+            "delivery/changes.py",
+            "delivery/build.py",
+        ):
+            self.assertTrue(all(select([path], pull_request=True).values()), path)
+
+    def test_check_parts_split_the_group_commands(self):
+        import yaml
+        import checks
+
+        def commands(group, part=None):
+            calls = []
+
+            def fake(argv, **kwargs):
+                name = "python" if argv[0] == sys.executable else argv[0]
+                calls.append(" ".join([name, *argv[1:3]]))
+                return subprocess.CompletedProcess(argv, 0)
+
+            with (
+                tempfile.TemporaryDirectory() as directory,
+                patch("checks.subprocess.run", side_effect=fake),
+                redirect_stdout(io.StringIO()),
+            ):
+                checks.check(group, directory, part)
+            return calls
+
+        go_build, go_vet = "go build ./...", "go vet ./..."
+        go_test, migrator = "go test -short", "python scripts/db/test-migrator.py"
+        self.assertEqual(commands("backend", "compile"), [go_build, go_vet])
+        self.assertEqual(commands("backend", "test"), [go_test])
+        self.assertEqual(commands("backend", "migrator"), [migrator])
+        self.assertEqual(commands("backend"), [go_build, go_vet, go_test, migrator])
+        self.assertEqual(commands("runtime", "test"), [go_test])
+        self.assertEqual(
+            commands("frontend", "static"),
+            ["npm ci", "npx tsc --noEmit", "npm run lint"],
+        )
+        self.assertEqual(commands("frontend", "build"), ["npm ci", "npm run build"])
+        with self.assertRaises(Refused):
+            commands("runtime", "migrator")
+        with self.assertRaises(Refused):
+            commands("cli", "test")
+        workflow = yaml.safe_load(
+            (ROOT / ".github/workflows/aws-checks.yml").read_text()
+        )
+        for group, parts in checks.PARTS.items():
+            job = workflow["jobs"][group]
+            self.assertEqual(tuple(job["strategy"]["matrix"]["part"]), parts)
+            self.assertIn("--part ${{ matrix.part }}", job["steps"][-1]["run"])
+
+    def test_pr_code_changes_skip_images_but_image_inputs_do_not(self):
+        def required(paths, **kwargs):
+            return {g for g, value in select(paths, **kwargs).items() if value}
+
+        self.assertEqual(
+            required(["backend/internal/api/routes.go"], pull_request=True),
+            {"backend"},
+        )
+        self.assertEqual(
+            required(["runtime/provider/throttle/redis.go"], pull_request=True),
+            {"backend", "runtime", "cli"},
+        )
+        self.assertEqual(
+            required(["services/try-cli/server/main.ts"], pull_request=True),
+            {"terminal"},
+        )
+        for path in (
+            "backend/go.mod",
+            "backend/go.sum",
+            "backend/db/migrations/00099_new.sql",
+            "backend/internal/engine/assets/mock_agent_vault.py",
+            "runtime/go.sum",
+            "runtime/challengepack/catalog/new.yaml",
+            "scripts/db/test-migrator.py",
+            "services/try-cli/bun.lock",
+            "services/try-cli/package.json",
+            "try-cli/packages/core/package.json",
+            "try-cli/demos/example.yaml",
+            "deploy/aws/Dockerfile.backend",
+        ):
+            self.assertTrue(select([path], pull_request=True)["images"], path)
+        # A push to main keeps the images group for every application change.
+        for path in (
+            "backend/internal/api/routes.go",
+            "runtime/provider/throttle/redis.go",
+            "services/try-cli/server/main.ts",
+        ):
+            self.assertTrue(select([path])["images"], path)
+
     def test_aggregate_rejects_failure_missing_or_cancelled_jobs(self):
         plan = select(["runtime/types.go"])
         good = {

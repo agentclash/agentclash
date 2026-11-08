@@ -126,9 +126,8 @@ Do not manually publish for normal releases.
 1. Make and validate a releasable CLI change under `cli/` locally.
 2. Use a conventional commit: `fix:` = patch, `feat:` = minor, `feat!:` = major.
 3. Merge to `main`.
-4. Wait for Release Please to open `chore(main): release x.y.z`.
-5. Merge the release PR.
-6. `.github/workflows/release-cli.yml` builds release assets, publishes npm, and runs smoke installs on Ubuntu, macOS, and Windows.
+4. Release Please opens `chore(main): release x.y.z` and turns on auto-merge. The PR merges when "Release checks" passes.
+5. `.github/workflows/release-cli.yml` builds release assets, publishes npm, and runs smoke installs on Ubuntu, macOS, and Windows.
 
 The one-time npm Trusted Publishing bootstrap is documented in `docs/cli-distribution.md`. That bootstrap should not be part of routine releases.
 

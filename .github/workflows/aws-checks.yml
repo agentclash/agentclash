@@ -7,6 +7,11 @@ name: AWS release checks
     branches:
     - main
   workflow_call: {}
+# A new push to a PR stops the old run. In a workflow_call, github.workflow is
+# the caller (aws-release.yml), so a release run has its own group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
@@ -33,6 +38,12 @@ jobs:
     if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    # Each part runs on its own runner. The aggregate sees one result for the
+    # matrix: success only if every part passes.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [compile, test, migrator]
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
@@ -46,12 +57,18 @@ jobs:
           runtime/go.sum
           cli/go.sum
     - name: Run required backend checks
-      run: python3 delivery/checks.py backend
+      run: python3 delivery/checks.py backend --part ${{ matrix.part }}
   runtime:
     needs: changes
     if: ${{ needs.changes.outputs.runtime == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    # Each part runs on its own runner. The aggregate sees one result for the
+    # matrix: success only if every part passes.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [compile, test]
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
@@ -65,7 +82,7 @@ jobs:
           runtime/go.sum
           cli/go.sum
     - name: Run required runtime checks
-      run: python3 delivery/checks.py runtime
+      run: python3 delivery/checks.py runtime --part ${{ matrix.part }}
   cli:
     needs: changes
     if: ${{ needs.changes.outputs.cli == 'true' }}
@@ -105,6 +122,12 @@ jobs:
     if: ${{ needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    # Each part runs on its own runner. The aggregate sees one result for the
+    # matrix: success only if every part passes.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [test, static, build]
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
@@ -116,7 +139,7 @@ jobs:
         cache: npm
         cache-dependency-path: web/package-lock.json
     - name: Run required frontend checks
-      run: python3 delivery/checks.py frontend
+      run: python3 delivery/checks.py frontend --part ${{ matrix.part }}
   platform:
     needs: changes
     if: ${{ needs.changes.outputs.platform == 'true' }}

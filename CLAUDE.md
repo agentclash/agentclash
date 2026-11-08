@@ -213,8 +213,9 @@ done
 Routine npm release path:
 
 1. Land a releasable CLI change under `cli/` on `main` with a conventional commit (`fix:`, `feat:`, `feat!:`).
-2. Wait for Release Please to open `chore(main): release x.y.z`.
-3. Merge the release PR.
-4. Let `.github/workflows/release-cli.yml` publish npm automatically.
+2. Release Please opens `chore(main): release x.y.z` and turns on auto-merge. The PR merges when "Release checks" passes. `.github/workflows/release-please.yml` rebases the PR when `main` moves.
+3. Let `.github/workflows/release-cli.yml` publish npm automatically.
+
+If a release PR stays open, look at its "Release checks" run first. To hold releases, set the repository variable `CLI_RELEASE_AUTOMERGE` to `false` and run `gh pr merge <pr-number> --disable-auto`.
 
 Do not manually `npm publish` or create ad hoc release tags for routine releases.

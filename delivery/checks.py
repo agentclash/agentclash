@@ -65,7 +65,21 @@ def failure_location(error):
     return location
 
 
-def check(group, evidence):
+# A group can run as parallel parts: aws-checks.yml gives each part its own
+# runner. Without a part, the group runs every part in sequence.
+PARTS = {
+    "backend": ("compile", "test", "migrator"),
+    "runtime": ("compile", "test"),
+    "frontend": ("test", "static", "build"),
+}
+
+
+def check(group, evidence, part=None):
+    require(part is None or part in PARTS.get(group, ()), "Unknown check part")
+
+    def selected(name):
+        return part in (None, name)
+
     evidence = Path(evidence).resolve()
     require(not evidence.is_relative_to(ROOT), "Check evidence must be outside Git")
     evidence.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -107,13 +121,12 @@ def check(group, evidence):
         require(result.returncode == 0, "A required check failed")
 
     if group in ("backend", "runtime", "cli"):
-        for command in (
-            ["go", "build", "./..."],
-            ["go", "vet", "./..."],
-            ["go", "test", "-short", "-race", "-count=1", "./..."],
-        ):
-            run(command, ROOT / group)
-        if group == "backend":
+        if selected("compile"):
+            run(["go", "build", "./..."], ROOT / group)
+            run(["go", "vet", "./..."], ROOT / group)
+        if selected("test"):
+            run(["go", "test", "-short", "-race", "-count=1", "./..."], ROOT / group)
+        if group == "backend" and selected("migrator"):
             run([sys.executable, "scripts/db/test-migrator.py"])
     elif group == "terminal":
         # Bun resolves the linked core package through its owning workspace in
@@ -127,14 +140,14 @@ def check(group, evidence):
         ):
             run(command, ROOT / "services/try-cli")
     elif group == "frontend":
-        for command in (
-            ["npm", "ci"],
-            ["npm", "test"],
-            ["npx", "tsc", "--noEmit"],
-            ["npm", "run", "lint"],
-            ["npm", "run", "build"],
-        ):
-            run(command, ROOT / "web")
+        run(["npm", "ci"], ROOT / "web")
+        if selected("test"):
+            run(["npm", "test"], ROOT / "web")
+        if selected("static"):
+            run(["npx", "tsc", "--noEmit"], ROOT / "web")
+            run(["npm", "run", "lint"], ROOT / "web")
+        if selected("build"):
+            run(["npm", "run", "build"], ROOT / "web")
     elif group == "platform":
         actionlint = evidence / "actionlint"
         install("actionlint", actionlint)
@@ -154,7 +167,7 @@ def check(group, evidence):
             [
                 str(actionlint),
                 "-shellcheck=",
-                *map(str, sorted((ROOT / ".github/workflows").glob("aws-*.yml"))),
+                *map(str, sorted((ROOT / ".github/workflows").glob("*.yml"))),
             ]
         )
         run(
@@ -267,13 +280,16 @@ def main():
             "images",
         ],
     )
+    parser.add_argument(
+        "--part", choices=sorted({name for parts in PARTS.values() for name in parts})
+    )
     parser.add_argument("--evidence-dir")
     args = parser.parse_args()
     if args.evidence_dir:
-        check(args.group, args.evidence_dir)
+        check(args.group, args.evidence_dir, args.part)
     else:
         with tempfile.TemporaryDirectory(prefix="agentclash-ci-") as directory:
-            check(args.group, directory)
+            check(args.group, directory, args.part)
     print("Required check group passed")
 
 
@@ -286,6 +302,12 @@ if __name__ == "__main__":
         categories = {
             "HTTPError",
             "URLError",
+            "RemoteDisconnected",
+            "IncompleteRead",
+            "TimeoutError",
+            "ConnectionResetError",
+            "ConnectionAbortedError",
+            "ConnectionRefusedError",
             "TimeoutExpired",
             "FileNotFoundError",
             "Refused",

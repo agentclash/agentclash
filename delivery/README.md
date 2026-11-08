@@ -9,8 +9,16 @@ and all populated configuration/evidence are recorded privately.
 `aws-checks.yml` runs on every PR/main push and exposes **Release checks** as the
 aggregate required status. Conditional jobs cover backend, shared runtime and CLI,
 frontend Vitest/lint/types/build, terminal/core, migrations, images and platform
-tooling. Shared runtime changes check both consumers; delivery/workflow changes
-check all groups. The aggregate requires every selected job to succeed and rejects
+tooling. The backend, runtime and frontend groups run their parts (`--part`) on
+parallel runners. Shared runtime changes check both consumers. Changes to delivery
+code and to the `aws-*.yml` workflows check all groups. Delivery tests and docs,
+and the other workflows, run only the platform group, which lints every workflow.
+
+The images group takes about 20 minutes. On a pull request, a change to Go or
+TypeScript application code alone does not select it. Dockerfiles, dependency
+locks, migrations, assets and `deploy/aws/` still select it. A push to main keeps
+it for every application change, and `aws-release.yml` reruns every group before
+a publication. The aggregate requires every selected job to succeed and rejects
 missing/cancelled checks. It does not rely on a path-filtered required workflow.
 
 `aws-release.yml` reruns checks for trusted main. Only an explicitly activated
