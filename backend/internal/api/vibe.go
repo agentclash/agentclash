@@ -341,10 +341,6 @@ func (h *VibeHandler) config(w http.ResponseWriter, r *http.Request) {
 	vibeJSON(w, 200, response)
 }
 func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
-	if !h.Service.Config.Enabled {
-		vibeError(w, mutation.Reject(&vibe.Fault{Code: "hosted_disabled", Message: "New evaluations are unavailable. Your existing work can still be read, saved or downloaded."}))
-		return
-	}
 	var input struct {
 		ID          uuid.UUID  `json:"id"`
 		Door        string     `json:"door,omitempty"`
@@ -366,6 +362,11 @@ func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.ID == uuid.Nil {
 		vibeError(w, &vibe.Fault{Code: "invalid_request", Message: "A client-generated session ID is required."})
+		return
+	}
+	// Reject invalid input first. Then refuse new work before a cookie or a database write.
+	if !h.Service.Config.Enabled {
+		vibeError(w, mutation.Reject(&vibe.Fault{Code: "hosted_disabled", Message: "New evaluations are unavailable. Your existing work can still be read, saved or downloaded."}))
 		return
 	}
 	actor, err := h.actor(r)

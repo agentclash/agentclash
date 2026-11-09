@@ -39,6 +39,7 @@ class PlatformUpdateTests(unittest.TestCase):
         files = {
             "delivery/release.py": "unchanged driver",
             "delivery/health.py": "unchanged health",
+            "delivery/vibe-drain.sql": "unchanged drain",
             "delivery/tools.lock.json": "{}",
             "delivery/maintained.py": "old maintained packages",
             "deploy/aws/compose.yaml": "unchanged compose",
