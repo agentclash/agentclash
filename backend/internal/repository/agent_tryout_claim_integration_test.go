@@ -77,10 +77,10 @@ func TestRepositoryTryoutCreatorClaimAtomicity(t *testing.T) {
 		}
 	})
 	for _, tc := range []struct {
-		name                   string
-		expired, legacy, wrong bool
+		name                            string
+		expired, legacy, wrong, missing bool
 	}{
-		{name: "expired", expired: true}, {name: "legacy", legacy: true}, {name: "wrong proof", wrong: true},
+		{name: "expired", expired: true}, {name: "legacy", legacy: true}, {name: "wrong proof", wrong: true}, {name: "missing proof", missing: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			expiry := time.Now().Add(time.Hour)
@@ -95,6 +95,9 @@ func TestRepositoryTryoutCreatorClaimAtomicity(t *testing.T) {
 			p := params(row.ID)
 			if tc.wrong {
 				p.OwnerProofHash = strings.Repeat("b", 64)
+			}
+			if tc.missing {
+				p.OwnerProofHash = ""
 			}
 			if _, err := repo.ClaimAgentTryout(ctx, p); err == nil {
 				t.Fatal("ineligible claim accepted")
