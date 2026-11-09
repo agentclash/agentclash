@@ -197,7 +197,17 @@ func (r *Repository) UpdateDatasetGenerationJobStatus(ctx context.Context, param
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return DatasetGenerationJob{}, ErrDatasetGenerationJobNotFound
+			// No row matched: either the job does not exist or it is in a
+			// terminal state that the guard refused to leave.
+			current, getErr := r.GetDatasetGenerationJobByID(ctx, params.ID)
+			if getErr != nil {
+				return DatasetGenerationJob{}, getErr
+			}
+			return DatasetGenerationJob{}, InvalidTransitionError{
+				Entity: "dataset generation job",
+				From:   string(current.Status),
+				To:     string(params.Status),
+			}
 		}
 		return DatasetGenerationJob{}, fmt.Errorf("update dataset generation job status: %w", err)
 	}

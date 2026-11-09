@@ -47,6 +47,9 @@ SET status = @status,
     failed_at = COALESCE(sqlc.narg('failed_at'), failed_at),
     updated_at = now()
 WHERE id = @id
+  -- A terminal job keeps its status. Same-state writes stay allowed so
+  -- retried activities remain idempotent.
+  AND (status NOT IN ('completed', 'failed') OR status = @status)
 RETURNING *;
 
 -- name: UpdateDatasetGenerationJobProgress :one
