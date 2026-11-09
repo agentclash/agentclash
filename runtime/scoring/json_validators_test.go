@@ -168,6 +168,19 @@ func TestParseJSONSchema(t *testing.T) {
 			input:   `not json`,
 			wantErr: true,
 		},
+		{
+			// jsonschema-go v0.3.0 did not parse this form. Keep that result.
+			name:      "array form of items",
+			input:     `{"type":"array","items":[{"type":"string"}]}`,
+			wantErr:   true,
+			errSubstr: `"items" must be a schema, not an array`,
+		},
+		{
+			name:      "draft-07 tuple items in a subschema",
+			input:     `{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"pair":{"type":"array","items":[]}}}`,
+			wantErr:   true,
+			errSubstr: `"items" must be a schema, not an array`,
+		},
 	}
 
 	for _, tt := range tests {

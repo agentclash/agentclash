@@ -6,7 +6,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/containerd/errdefs v1.0.0
 	github.com/go-redis/redis_rate/v10 v10.0.1
-	github.com/google/jsonschema-go v0.3.0
+	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
