@@ -60,8 +60,8 @@ agentclash org list
 agentclash org get <org-id>
 agentclash org create --name "Acme Eval" --slug acme-eval
 agentclash org update <org-id> --name "Acme Eval Platform"
-agentclash org members list --org <org-id>
-agentclash org members invite --org <org-id> --email user@example.com --role org_member
+agentclash org members list <org-id>
+agentclash org members invite <org-id> --email user@example.com --role org_member
 agentclash org members update <membership-id> --role org_admin
 ```
 

@@ -83,11 +83,7 @@ Some checksum tools print uppercase hex. Normalize those values to lowercase bef
 
 Producers can validate the manifest shape with `https://www.agentclash.dev/schemas/voice-artifact-manifest.schema.json`. The schema covers required artifact kinds, supported artifact kinds, artifact locations, checksums, UUID fields, and common reference mistakes before upload.
 
-The CLI can run the same preflight without requiring a repository checkout:
-
-```bash
-agentclash artifact validate-voice-manifest ./voice_artifact_manifest.json
-```
+The CLI has no command that checks a voice artifact manifest. AgentClash removed the `agentclash artifact validate-voice-manifest` command with the voice-eval validators. To check a manifest, use a JSON Schema tool and the schema above.
 
 ## Required artifacts
 

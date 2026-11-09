@@ -27,13 +27,37 @@ Supported platforms:
 ```bash
 agentclash auth login
 agentclash link
+agentclash doctor
 agentclash challenge-pack init support-eval.yaml
 agentclash eval start --help
 ```
 
+Released binaries use the hosted API (`https://api.agentclash.dev`) by default.
+
+## Common commands
+
+| Task | Command |
+| --- | --- |
+| Check auth, workspace, and eval readiness | `agentclash doctor`, `agentclash quickstart` |
+| Author and publish a challenge pack | `agentclash challenge-pack init`, `validate`, `publish` |
+| Add a ready-made library pack | `agentclash challenge-pack catalog list`, `catalog use <slug>` |
+| Start and follow an eval | `agentclash eval start --follow` |
+| Read scorecards and regression verdicts | `agentclash eval scorecard [run]` |
+| Compare with a baseline | `agentclash baseline set`, `agentclash compare latest` |
+| Inspect a run | `agentclash run list`, `run get`, `run ranking`, `run replay`, `run transcript` |
+| Answer a human turn in a multi-turn run | `agentclash run turn status`, `run turn submit` |
+| Promote failures into regression suites | `agentclash run failures`, `run promote-failure`, `regression-suite` |
+| Gate CI on a release verdict | `agentclash ci init`, `ci validate`, `ci run` |
+| Work with datasets | `agentclash dataset import`, `dataset eval`, `dataset test` |
+| Submit multi-pack eval sets | `agentclash evalset submit`, `evalset status`, `evalset report` |
+| Install Agent Skills into a coding agent | `agentclash integration <host> install` |
+| Print the full command tree as JSON | `agentclash schema --json` |
+
+Run `agentclash <command> --help` for all flags. Add `--json` to any command for output that a script can read.
+
 ## Use a local CLI build against a hosted backend
 
-If you're working on the CLI itself, you can run the local Go binary against a hosted AgentClash API. Production is the default:
+If you work on the CLI itself, you can run the local Go binary against a hosted AgentClash API. Source builds use `http://localhost:8080` by default, so set `AGENTCLASH_API_URL` for production:
 
 ```bash
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
@@ -77,6 +101,8 @@ Routine npm releases should not be manual.
 1. Land a releasable CLI change under `cli/` on `main` with a conventional commit (`fix:`, `feat:`, or `feat!:`).
 2. Release Please opens `chore(main): release x.y.z` and merges it automatically when the required checks pass.
 3. Let `.github/workflows/release-cli.yml` publish GitHub release assets, npm packages, and smoke installs automatically.
+
+npm shows the README of the latest published version. A change to this file appears on npm only after the next CLI release.
 
 ## Other install channels
 

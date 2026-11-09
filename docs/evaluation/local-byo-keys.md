@@ -1,6 +1,7 @@
 # Local BYO provider keys
 
-Part of Local M1 (`agentclash local run`). Credentials for local evals stay on
+Part of Local M1, which plans an `agentclash local run` command. The CLI does
+not have a `local` command yet. Credentials for local evals stay on
 the user's machine: process environment, optional user config, optional OS
 keychain. They are never uploaded to the AgentClash hosted control plane.
 

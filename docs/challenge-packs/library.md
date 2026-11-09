@@ -16,7 +16,7 @@ just reopens your existing copy.
 ```bash
 agentclash challenge-pack catalog list
 agentclash challenge-pack catalog use text-to-sql
-agentclash run create --challenge-pack-version-id <id> --follow
+agentclash run create --challenge-pack-version <id> --follow
 ```
 
 `catalog use` is idempotent — re-running it returns the existing pack.
