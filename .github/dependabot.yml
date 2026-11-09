@@ -28,6 +28,11 @@ updates:
     directory: /web
     schedule:
       interval: weekly
+    ignore:
+      # typescript-eslint stops with "typescript-eslint does not support TS 7.0".
+      # Remove this rule when typescript-eslint supports TypeScript 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       web:
         patterns: ["*"]
