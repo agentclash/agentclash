@@ -10,12 +10,12 @@ import {
   Download,
   FileCode2,
   GitBranch,
-  Github,
   Loader2,
   Play,
   ShieldCheck,
   TriangleAlert,
 } from "lucide-react";
+import { GitHubIcon } from "@/components/icons/github-icon";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import { providerAccountLabel } from "@/lib/provider-accounts";
@@ -697,7 +697,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
             {creatingSetupPR ? (
               <Loader2 data-icon="inline-start" className="size-4 animate-spin" />
             ) : (
-              <Github data-icon="inline-start" className="size-4" />
+              <GitHubIcon data-icon="inline-start" className="size-4" />
             )}
             Open setup PR
           </Button>
@@ -774,7 +774,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
           </Section>
 
           <Section
-            icon={<Github className="size-4" />}
+            icon={<GitHubIcon className="size-4" />}
             title="Repository"
             meta={repositories.data?.items?.length ? "GitHub connected" : "Manual entry"}
           >

@@ -1,0 +1,233 @@
+{
+  "src/app/(workspace)/workspaces/[workspaceId]/builds/quick-create-agent-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/challenge-packs/generate-pack-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/challenge-packs/promote-tryout-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/ci-setup/ci-setup-client.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 13
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/compare/evaluate-release-gate-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/datasets/[datasetId]/dataset-ci-dialogs.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 4
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/datasets/[datasetId]/dataset-results-panel.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/datasets/[datasetId]/edit-dataset-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/datasets/[datasetId]/example-form-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/datasets/[datasetId]/promote-trace-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/datasets/[datasetId]/start-eval-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/datasets/[datasetId]/start-generation-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/datasets/[datasetId]/trace-candidates-panel.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/datasets/create-dataset-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/deployments/create-deployment-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/regression-suites/[suiteId]/cases/[caseId]/edit-case-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/regression-suites/[suiteId]/edit-suite-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/runs/[runId]/compare-run-picker.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/runs/[runId]/failures/promote-failure-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/runs/[runId]/run-ranking-insights-card.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/runs/create-eval-session-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/app/(workspace)/workspaces/[workspaceId]/runs/create-run-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 5
+    }
+  },
+  "src/app/auth/login/lightspeed.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/app/tryouts/tryouts-client.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 3
+    }
+  },
+  "src/components/challenge-packs/vibe-return.tsx": {
+    "react-hooks/refs": {
+      "count": 4
+    }
+  },
+  "src/components/marketing/fluid-shader.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    }
+  },
+  "src/components/replay/awaiting-human-banner.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/components/share/create-public-share-button.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/components/share/workspace-reports.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 1
+    }
+  },
+  "src/components/vibe/connector-settings.tsx": {
+    "react-hooks/refs": {
+      "count": 5
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/components/vibe/credits-dialog.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/components/vibe/evaluation-navigation.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/components/vibe/grade-reviews.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/components/vibe/project-enquiry.tsx": {
+    "react-hooks/refs": {
+      "count": 19
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/components/vibe/project-workspace.tsx": {
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/components/vibe/talk-to-us.tsx": {
+    "react-hooks/refs": {
+      "count": 6
+    }
+  },
+  "src/components/vibe/task-input.tsx": {
+    "react-hooks/purity": {
+      "count": 1
+    },
+    "react-hooks/refs": {
+      "count": 3
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/components/vibe/task-sources.tsx": {
+    "react-hooks/refs": {
+      "count": 1
+    }
+  },
+  "src/hooks/use-organization.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/hooks/use-session.ts": {
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  },
+  "src/lib/use-vibe-saving.ts": {
+    "react-hooks/refs": {
+      "count": 4
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 2
+    }
+  },
+  "src/lib/use-vibe-session.ts": {
+    "react-hooks/refs": {
+      "count": 1
+    },
+    "react-hooks/set-state-in-effect": {
+      "count": 1
+    }
+  }
+}
