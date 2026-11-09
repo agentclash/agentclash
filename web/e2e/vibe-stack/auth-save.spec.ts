@@ -29,7 +29,7 @@ test("guest setup resumes the exact selected prototype and baseline before expli
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`landing-navigation-${viewport.width}.png`) });
     await page.getByRole("link", { name: "Try Vibe Evals", exact: true }).click();
-    await expect(page).toHaveURL(/\/vibe-evals$/);
+    await expect(page).toHaveURL(/\/vibe-evals(\?view=agent)?$/); // The entry can show its default pane in the URL.
     await expect(doorButton(page, "build")).toBeVisible();
     // The entry top bar opens the projects drawer at every width; its footer links Home.
     await page.getByRole("button", { name: "Open projects", exact: true }).click();
