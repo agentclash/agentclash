@@ -77,6 +77,7 @@ WHERE id = @id
   AND claimed_by_user_id IS NULL
   AND anonymous_owner_proof_hash = @owner_proof_hash::text
   AND expires_at > CURRENT_TIMESTAMP
+  AND status IN ('completed', 'failed', 'cancelled')
 RETURNING *;
 
 -- name: GetClaimedAgentTryoutRetry :one

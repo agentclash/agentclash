@@ -6783,7 +6783,8 @@ paths:
       summary: Claim an anonymous tryout into a workspace
       description: >-
         Explicit save requires authenticated workspace write access, the independent
-        creator cookie and an unexpired anonymous result. Ownership and expiry are
+        creator cookie and an unexpired anonymous result in completed, failed or cancelled
+        state. Queued/running sessions must finish before save; claim returns 409. Ownership, terminal state and expiry are
         checked atomically. Retrying the same proof, claimant and workspace returns
         the original receipt without another ownership transition. Legacy proofless
         results cannot be saved. Clients must require save_eligible=true before enabling save.
@@ -15136,7 +15137,7 @@ components:
         save_eligible:
           type: boolean
           default: false
-          description: Safe creator-proof claim is supported for this result. Missing or false disables save.
+          description: Safe creator-proof claim is supported for this terminal result. Queued/running results are false. Missing or false disables save.
         id:
           type: string
           format: uuid

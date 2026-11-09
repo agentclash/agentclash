@@ -554,6 +554,8 @@ func TestAgentTryoutManagerCreateWorkspaceClaimAndShare(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
 	}
+	anonymous.Status = repository.AgentTryoutStatusCompleted
+	repo.tryouts[anonymous.ID] = anonymous
 	claimed, err := manager.ClaimTryout(ctx, caller, ClaimAgentTryoutInput{ID: anonymous.ID, WorkspaceID: workspaceID})
 	if err != nil {
 		t.Fatalf("ClaimTryout returned error: %v", err)
@@ -1615,4 +1617,41 @@ func (s *fakeAgentTryoutService) CompareWorkspaceTryouts(context.Context, Caller
 
 func (s *fakeAgentTryoutService) PromoteTryoutToEval(context.Context, Caller, PromoteAgentTryoutInput) (AgentTryoutPromotionResult, error) {
 	return AgentTryoutPromotionResult{}, nil
+}
+
+func TestAgentTryoutManagerDefersActiveClaimUntilTerminal(t *testing.T) {
+	for _, status := range []repository.AgentTryoutStatus{repository.AgentTryoutStatusQueued, repository.AgentTryoutStatusRunning} {
+		t.Run(string(status), func(t *testing.T) {
+			workspace := uuid.New()
+			repo := newFakeAgentTryoutRepository(uuid.New(), workspace)
+			manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+			ctx := context.WithValue(context.Background(), tryoutProofContextKey{}, testTryoutOwnerProofHash)
+			expires := time.Now().Add(time.Hour)
+			proof := testTryoutOwnerProofHash
+			id := uuid.New()
+			row := repository.AgentTryout{ID: id, Status: status, ExpiresAt: &expires, AnonymousOwnerProofHash: &proof}
+			repo.tryouts[id] = row
+			if mapPublicAgentTryoutResponse(row).SaveEligible {
+				t.Fatal("active result eligible")
+			}
+			caller := callerWithWorkspace(workspace)
+			if _, err := manager.ClaimTryout(ctx, caller, ClaimAgentTryoutInput{ID: id, WorkspaceID: workspace}); !errors.Is(err, repository.ErrAgentTryoutActive) {
+				t.Fatalf("active claim error = %v", err)
+			}
+			if repo.tryouts[id].WorkspaceID != nil {
+				t.Fatal("active claim changed ownership")
+			}
+			if err := manager.SubmitAnonymousTryoutTurn(ctx, id, SubmitAgentTryoutTurnInput{Message: "continue"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := manager.SubmitAnonymousTryoutTurn(ctx, id, SubmitAgentTryoutTurnInput{End: true}); err != nil {
+				t.Fatal(err)
+			}
+			row.Status = repository.AgentTryoutStatusCompleted
+			repo.tryouts[id] = row
+			if _, err := manager.ClaimTryout(ctx, caller, ClaimAgentTryoutInput{ID: id, WorkspaceID: workspace}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }

@@ -504,6 +504,9 @@ func (r *Repository) ClaimAgentTryout(ctx context.Context, params ClaimAgentTryo
 			if existing.WorkspaceID == nil && existing.AnonymousOwnerProofHash != nil && *existing.AnonymousOwnerProofHash == params.OwnerProofHash && existing.ExpiresAt != nil && !existing.ExpiresAt.After(time.Now()) {
 				return AgentTryout{}, ErrAgentTryoutExpired
 			}
+			if existing.WorkspaceID == nil && existing.OrganizationID == nil && existing.ClaimedByUserID == nil && existing.AnonymousOwnerProofHash != nil && *existing.AnonymousOwnerProofHash == params.OwnerProofHash && existing.Status != AgentTryoutStatusCompleted && existing.Status != AgentTryoutStatusFailed && existing.Status != AgentTryoutStatusCancelled {
+				return AgentTryout{}, ErrAgentTryoutActive
+			}
 			return AgentTryout{}, ErrAgentTryoutNotFound
 		}
 		return AgentTryout{}, fmt.Errorf("claim agent tryout: %w", err)

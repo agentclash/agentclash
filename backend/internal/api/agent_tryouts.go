@@ -1088,6 +1088,9 @@ func (m *AgentTryoutManager) ClaimTryout(ctx context.Context, caller Caller, inp
 		if err := m.authorizeAnonymousTryout(ctx, tryout, true); err != nil {
 			return repository.AgentTryout{}, err
 		}
+		if !agentTryoutTerminal(tryout.Status) {
+			return repository.AgentTryout{}, repository.ErrAgentTryoutActive
+		}
 	}
 	orgID, err := m.repo.GetOrganizationIDByWorkspaceID(ctx, input.WorkspaceID)
 	if err != nil {
@@ -1648,6 +1651,8 @@ func writeAgentTryoutError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusTooManyRequests, "hosted_spend_exhausted", "Hosted free tryouts are temporarily unavailable. Please try again later.")
 	case errors.Is(err, ErrAgentTryoutCostCapExceeded):
 		writeError(w, http.StatusBadRequest, "tryout_cost_cap_exceeded", "This template exceeds the hosted free tryout cost cap.")
+	case errors.Is(err, repository.ErrAgentTryoutActive):
+		writeError(w, http.StatusConflict, "agent_tryout_active", "Finish or end this session before saving its result.")
 	case errors.Is(err, repository.ErrAgentTryoutExpired):
 		writeError(w, http.StatusGone, "agent_tryout_expired", "This tryout has expired. Start a new tryout to continue.")
 	case errors.Is(err, repository.ErrAgentTryoutNotFound):
@@ -1757,7 +1762,7 @@ func mapAgentTryoutResponse(tryout repository.AgentTryout) agentTryoutResponse {
 
 func mapPublicAgentTryoutResponse(tryout repository.AgentTryout) publicAgentTryoutResponse {
 	return publicAgentTryoutResponse{
-		SaveEligible:           tryout.WorkspaceID == nil && tryout.AnonymousOwnerProofHash != nil && tryout.ExpiresAt != nil && tryout.ExpiresAt.After(time.Now()),
+		SaveEligible:           agentTryoutTerminal(tryout.Status) && tryout.WorkspaceID == nil && tryout.AnonymousOwnerProofHash != nil && tryout.ExpiresAt != nil && tryout.ExpiresAt.After(time.Now()),
 		Type:                   string(repository.PublicShareResourceAgentTryout),
 		ID:                     tryout.ID,
 		TemplateSlug:           tryout.TemplateSlug,

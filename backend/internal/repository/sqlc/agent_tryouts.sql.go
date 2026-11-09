@@ -85,6 +85,7 @@ WHERE id = $5
   AND claimed_by_user_id IS NULL
   AND anonymous_owner_proof_hash = $6::text
   AND expires_at > CURRENT_TIMESTAMP
+  AND status IN ('completed', 'failed', 'cancelled')
 RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash
 `
 

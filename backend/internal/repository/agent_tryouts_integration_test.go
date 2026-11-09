@@ -323,6 +323,9 @@ func TestRepositoryAgentTryoutLifecycle(t *testing.T) {
 		t.Fatalf("cost limit = %v, want 0.25", created.CostLimitUSD)
 	}
 
+	if _, err := repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{ID: created.ID, Status: repository.AgentTryoutStatusCompleted}); err != nil {
+		t.Fatal(err)
+	}
 	claimed, err := repo.ClaimAgentTryout(ctx, repository.ClaimAgentTryoutParams{
 		ID:              created.ID,
 		OwnerProofHash:  ownerProofHash,

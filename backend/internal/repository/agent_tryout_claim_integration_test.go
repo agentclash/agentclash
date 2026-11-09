@@ -108,6 +108,34 @@ func TestRepositoryTryoutCreatorClaimAtomicity(t *testing.T) {
 			}
 		})
 	}
+	for _, status := range []repository.AgentTryoutStatus{repository.AgentTryoutStatusQueued, repository.AgentTryoutStatusRunning} {
+		t.Run("active "+string(status), func(t *testing.T) {
+			row := create(time.Now().Add(time.Hour), &proof)
+			if _, err := repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{ID: row.ID, Status: status}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := repo.ClaimAgentTryout(ctx, params(row.ID)); !errors.Is(err, repository.ErrAgentTryoutActive) {
+				t.Fatalf("active claim error = %v", err)
+			}
+			current, err := repo.GetAgentTryoutByID(ctx, row.ID)
+			if err != nil || current.WorkspaceID != nil {
+				t.Fatal("active claim mutated ownership")
+			}
+			if _, err := repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{AgentTryoutID: row.ID, OwnerProofHash: proof, Role: "user", Message: "continue"}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{AgentTryoutID: row.ID, OwnerProofHash: proof, Role: "system_end"}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{ID: row.ID, Status: repository.AgentTryoutStatusCompleted}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := repo.ClaimAgentTryout(ctx, params(row.ID)); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+
 	t.Run("competing workspaces have one winner", func(t *testing.T) {
 		row := create(time.Now().Add(time.Hour), &proof)
 		a, b := params(row.ID), params(row.ID)

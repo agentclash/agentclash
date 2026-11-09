@@ -64,8 +64,8 @@ func TestTryoutCreatorCookieAndClaimBoundary(t *testing.T) {
 	if strings.Contains(create.Body.String(), cookie.Value) || strings.Contains(create.Body.String(), "proof") {
 		t.Fatal("proof leaked in response")
 	}
-	if !result.SaveEligible {
-		t.Fatal("new result must advertise safe save eligibility")
+	if result.SaveEligible {
+		t.Fatal("queued result must not advertise save eligibility")
 	}
 	path := "/agent-tryouts/" + result.ID.String()
 	if got := request("GET", path, "", nil).Code; got != 404 {
@@ -105,6 +105,21 @@ func TestTryoutCreatorCookieAndClaimBoundary(t *testing.T) {
 	stored.ExpiresAt = originalExpiry
 	repo.tryouts[result.ID] = stored
 	claim := `{"workspace_id":"` + workspace.String() + `"}`
+	if got := request("POST", path+"/claim", claim, cookie).Code; got != 409 {
+		t.Fatalf("queued claim status=%d", got)
+	}
+	if got := request("POST", path+"/turns", `{"message":"keep working"}`, cookie).Code; got != 202 {
+		t.Fatalf("creator reply status=%d", got)
+	}
+	if got := request("POST", path+"/turns", `{"end":true}`, cookie).Code; got != 202 {
+		t.Fatalf("creator end status=%d", got)
+	}
+	stored.Status = repository.AgentTryoutStatusCompleted
+	repo.tryouts[result.ID] = stored
+	read := request("GET", path, "", cookie)
+	if err := json.Unmarshal(read.Body.Bytes(), &result); err != nil || !result.SaveEligible {
+		t.Fatal("finished creator result must advertise eligibility")
+	}
 	if got := request("POST", path+"/claim", claim, nil).Code; got != 404 {
 		t.Fatalf("missing proof claim=%d", got)
 	}

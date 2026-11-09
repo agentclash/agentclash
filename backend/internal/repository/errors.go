@@ -17,6 +17,7 @@ var (
 	ErrRunAgentScorecardNotFound             = errors.New("run agent scorecard not found")
 	ErrRunScorecardNotFound                  = errors.New("run scorecard not found")
 	ErrPublicShareLinkNotFound               = errors.New("public share link not found")
+	ErrAgentTryoutActive                     = errors.New("agent tryout is still active")
 	ErrAgentTryoutExpired                    = errors.New("agent tryout expired")
 	ErrAgentTryoutNotFound                   = errors.New("agent tryout not found")
 	ErrAgentTryoutAlreadyClaimed             = errors.New("agent tryout is already claimed")
