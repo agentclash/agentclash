@@ -1,4 +1,4 @@
-import { sanitizeReturnTo } from "@/lib/auth/return-to";
+import { isTryoutReturnTo, sanitizeReturnTo } from "@/lib/auth/return-to";
 import { redirect } from "next/navigation";
 import { AuthenticatedAppProviders } from "@/app/providers";
 import { getServerApiClient } from "@/lib/api/server";
@@ -8,7 +8,7 @@ import { OnboardingWizard } from "./onboarding-wizard";
 
 export default async function OnboardPage({ searchParams }: { searchParams: Promise<{ returnTo?: string }> }) {
   const destination = sanitizeReturnTo((await searchParams).returnTo);
-  const returnTo = destination.startsWith("/vibe-evals?") ? destination : undefined;
+  const returnTo = (destination.startsWith("/vibe-evals?") || isTryoutReturnTo(destination)) ? destination : undefined;
   const auth = await getServerAuth();
   if (!auth.user || !auth.accessToken) redirect(`/auth/login?${new URLSearchParams({ returnTo: returnTo || "/dashboard" })}`);
   const initialAuth = toInitialAuth(auth);
@@ -24,7 +24,7 @@ export default async function OnboardPage({ searchParams }: { searchParams: Prom
   }
 
   if (!session && returnTo) {
-    return <main className="flex min-h-screen items-center justify-center"><div className="max-w-md p-6"><h1 className="text-lg font-semibold">Couldn’t verify workspace access</h1><p className="my-4">Your Vibe work is preserved. Retry setup when your account is available.</p><a className="underline" href={`/onboard?${new URLSearchParams({ returnTo })}`}>Retry setup</a><p className="mt-4"><a className="underline" href={returnTo}>Return to your work</a></p></div></main>;
+    return <main className="flex min-h-screen items-center justify-center"><div className="max-w-md p-6"><h1 className="text-lg font-semibold">Couldn’t verify workspace access</h1><p className="my-4">Your return destination is preserved. Retry setup when your account is available.</p><a className="underline" href={`/onboard?${new URLSearchParams({ returnTo })}`}>Retry setup</a><p className="mt-4"><a className="underline" href={returnTo}>Return to your work</a></p></div></main>;
   }
 
   // Redirects must be outside try/catch — Next.js redirect() throws internally.

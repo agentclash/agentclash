@@ -137,3 +137,27 @@ it("keeps the current Vibe pane through sign-in", () => {
   }
   expect(sanitizeReturnTo(`/vibe-evals?session=${id}&view=javascript:alert(1)`)).toBe(`/vibe-evals?session=${id}`);
 });
+
+describe("tryout signup returns", () => {
+  const id = "018f9f2e-65cb-7d0b-9c98-0df2ce4076d8";
+  it("keeps only a valid result identity", () => {
+    expect(sanitizeReturnTo(`/tryouts?tryout=${id}&workspace=${id}&claim=1#saved`)).toBe(`/tryouts?tryout=${id}`);
+    expect(sanitizeReturnTo("/tryouts?tryout=invalid&next=https://evil.example")).toBe("/tryouts");
+    expect(sanitizeReturnTo("/tryouts")).toBe("/tryouts");
+  });
+  it("accepts catalog demos and strips every argument", () => {
+    expect(sanitizeReturnTo("/try/codex?session=secret#terminal")).toBe("/try/codex");
+    for (const path of ["/try/unknown", "/try/codex/extra", "/try/%63odex", "/tryouts/extra", "/\\evil.example/tryouts", "//evil.example/tryouts"]) expect(sanitizeReturnTo(path)).toBe("/dashboard");
+  });
+});
+
+describe("auth completion routing", () => {
+  it("routes public tryout destinations through workspace setup guard", async () => {
+    const { authCompletionReturnTo } = await import("../return-to");
+    for (const destination of ["/tryouts", "/tryouts?tryout=018f9f2e-65cb-7d0b-9c98-0df2ce4076d8", "/try/codex"]) {
+      expect(authCompletionReturnTo(destination)).toBe(`/dashboard?${new URLSearchParams({ returnTo: destination })}`);
+    }
+    for (const destination of ["/dashboard?plan=pro", "/auth/device?user_code=ABCD-1234", "/vibe-evals?view=results"]) expect(authCompletionReturnTo(destination)).toBe(destination);
+    expect(authCompletionReturnTo("/try/unknown")).toBe("/dashboard");
+  });
+});
