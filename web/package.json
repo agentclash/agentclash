@@ -31,7 +31,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "driver.js": "^1.10.2",
-    "framer-motion": "14.10.0",
+    "framer-motion": "14.10.1",
     "gray-matter": "^4.0.3",
     "js-yaml": "^5.5.0",
     "lucide-react": "^1.62.0",
