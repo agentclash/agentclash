@@ -15,3 +15,16 @@ export const DEFAULT_MARKETING_NAV: MarketingNavLink[] = [
   { href: "/blog", label: "Blog" },
   { href: "/changelog", label: "Changelog" },
 ];
+
+const VIBE_ENTRY: MarketingNavLink[] = process.env.NEXT_PUBLIC_VIBE_EVALS_ENABLED === "true" ? [{ href: "/vibe-evals", label: "Try Vibe Evals" }] : [];
+
+// The homepage keeps its own sections and the only crawl link to /why.
+export const LANDING_MARKETING_NAV: MarketingNavLink[] = [
+  ...VIBE_ENTRY,
+  { href: "#features", label: "Features" },
+  { href: "/why", label: "Why we built this" },
+  { href: "#pricing", label: "Pricing" },
+  { href: "/docs", label: "Docs" },
+  { href: "/benchmarks", label: "Benchmarks" },
+  { href: "/blog", label: "Blog" },
+];

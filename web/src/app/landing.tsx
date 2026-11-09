@@ -1,6 +1,7 @@
 "use client";
 
 import { MarketingNavigation } from "@/components/marketing/marketing-navigation";
+import { LANDING_MARKETING_NAV } from "@/lib/marketing-nav";
 
 import type React from "react";
 import { useEffect, useRef } from "react";
@@ -1455,7 +1456,7 @@ export default function HomePage({
             </span>
           </Link>
           <nav aria-label="Primary navigation" className="flex items-center gap-0.5 sm:gap-2 text-xs lg:text-sm">
-            <MarketingNavigation />
+            <MarketingNavigation items={LANDING_MARKETING_NAV} />
             <a
               href="https://github.com/agentclash/agentclash"
               target="_blank"
