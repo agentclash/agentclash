@@ -12,7 +12,7 @@ require (
 	github.com/aws/smithy-go v1.28.8
 	github.com/e2b-dev/infra/packages/shared v0.0.0-20260314182832-f0efff7b7516
 	github.com/go-chi/chi/v5 v5.5.0
-	github.com/google/jsonschema-go v0.3.0
+	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/lestrrat-go/jwx/v2 v2.1.7

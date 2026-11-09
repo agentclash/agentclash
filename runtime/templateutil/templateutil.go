@@ -2,7 +2,11 @@ package templateutil
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
+	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -144,9 +148,47 @@ func DeclaredToolParameters(parameters json.RawMessage) (map[string]struct{}, er
 	return declared, nil
 }
 
+// RejectItemsArray returns an error if the schema or a subschema has an array
+// value for "items". jsonschema-go v0.3.0 did not parse that form.
+// jsonschema-go v0.4 parses it, but draft 2020-12 validation ignores it.
+// Thus, this check keeps the v0.3.0 result.
+func RejectItemsArray(s *jsonschema.Schema) error {
+	if s == nil {
+		return nil
+	}
+	if s.ItemsArray != nil {
+		return errors.New(`"items" must be a schema, not an array`)
+	}
+	v := reflect.ValueOf(s).Elem()
+	for i := range v.NumField() {
+		// v0.3.0 did not parse "dependencies". It kept it as an unknown keyword.
+		if f := v.Type().Field(i); !f.IsExported() || f.Name == "DependencySchemas" {
+			continue
+		}
+		var children []*jsonschema.Schema
+		switch f := v.Field(i).Interface().(type) {
+		case *jsonschema.Schema:
+			children = []*jsonschema.Schema{f}
+		case []*jsonschema.Schema:
+			children = f
+		case map[string]*jsonschema.Schema:
+			children = slices.Collect(maps.Values(f))
+		}
+		for _, child := range children {
+			if err := RejectItemsArray(child); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func ValidateToolParameterSchema(parameters json.RawMessage) error {
 	var schema jsonschema.Schema
 	if err := json.Unmarshal(parameters, &schema); err != nil {
+		return fmt.Errorf("must be a valid JSON Schema: %w", err)
+	}
+	if err := RejectItemsArray(&schema); err != nil {
 		return fmt.Errorf("must be a valid JSON Schema: %w", err)
 	}
 	if _, err := schema.Resolve(nil); err != nil {
