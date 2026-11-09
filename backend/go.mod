@@ -22,7 +22,7 @@ require (
 	go.opentelemetry.io/otel/exporters/prometheus v0.69.0
 	go.opentelemetry.io/otel/metric v1.47.0
 	go.opentelemetry.io/otel/sdk/metric v1.47.0
-	go.temporal.io/api v1.64.1
+	go.temporal.io/api v1.64.2
 	go.temporal.io/sdk v1.50.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -156,7 +156,7 @@ require (
 	github.com/pingcap/failpoint v0.0.0-20240528011301-b51a646c7c86 // indirect
 	github.com/pingcap/log v1.1.0 // indirect
 	github.com/pingcap/tidb/pkg/parser v0.0.0-20250324122243-d51e00e5bbf0 // indirect
-	github.com/posthog/posthog-go v1.40.1
+	github.com/posthog/posthog-go v1.41.1
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/riza-io/grpc-go v0.2.0 // indirect
