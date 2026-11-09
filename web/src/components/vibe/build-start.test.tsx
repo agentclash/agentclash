@@ -4,6 +4,7 @@ import React, { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { BuildStart } from "./build-start";
+import { setTokenSentinels, tokenSentinels as token } from "./token-sentinels";
 
 let root: Root, node: HTMLDivElement;
 const start = vi.fn(), back = vi.fn(), switchDoor = vi.fn();
@@ -160,10 +161,10 @@ it("associates each mounted Build question with its own input", async () => {
 });
 
 it("uses the heading face and a flat card with a distinct keyboard focus ring", async () => {
-  const style = document.createElement("style"); style.textContent = readFileSync("src/components/vibe/build-output.css", "utf8") + readFileSync("src/components/vibe/project-workspace.css", "utf8"); document.head.append(style);
+  const style = document.createElement("style"); style.textContent = readFileSync("src/components/vibe/build-output.css", "utf8") + readFileSync("src/components/vibe/project-workspace.css", "utf8"); document.head.append(style); setTokenSentinels(node);
   try {
     await render();
-    expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-heading)");
+    expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe(token["--vibe-font-heading"]);
     expect(getComputedStyle(node.querySelector("h1")!).fontWeight).toBe("600");
     expect(getComputedStyle(node.querySelector("form")!).boxShadow).toBe("none");
     expect(style.textContent).toContain("outline: 2px solid var(--vibe-focus)");

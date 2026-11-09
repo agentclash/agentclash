@@ -3,6 +3,7 @@ import React, { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ImproveStart } from "./improve-start";
+import { setTokenSentinels, tokenSentinels as token } from "./token-sentinels";
 
 let node: HTMLDivElement; let root: Root;
 const write = vi.fn(), replies = vi.fn(), pack = vi.fn(), other = vi.fn(), back = vi.fn(), switchDoor = vi.fn();
@@ -197,13 +198,17 @@ it("labels every Improve input and gives independent mounts unique field ids", a
 });
 
 it("uses the heading face question and visible borders for every source tile", async () => {
-  const style = document.createElement("style"); style.textContent = (readFileSync("src/components/vibe/improve.css", "utf8") + readFileSync("src/components/vibe/project-workspace.css", "utf8")).replaceAll("var(--vibe-control-border)", "#765820"); document.head.append(style);
+  const style = document.createElement("style"); style.textContent = (readFileSync("src/components/vibe/improve.css", "utf8") + readFileSync("src/components/vibe/project-workspace.css", "utf8")).replaceAll("var(--vibe-control-border)", "#765820"); document.head.append(style); setTokenSentinels(node);
   try {
     await draw();
-    expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-heading)");
+    expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe(token["--vibe-font-heading"]);
     expect(getComputedStyle(node.querySelector("h1")!).fontWeight).toBe("600");
+    // At devicePixelRatio 1, jsdom 31 rounds a border width down to whole device pixels. For this reason, the 1.5px border computes to 1px.
+    const tile = [...style.sheet!.cssRules].find(rule => rule instanceof CSSStyleRule && rule.selectorText === ".vibe-improve-sources > button") as CSSStyleRule;
+    expect(tile.style.borderTopWidth).toBe("1.5px");
     for (const radio of node.querySelectorAll('[role="radio"]')) {
-      expect(getComputedStyle(radio).borderTopWidth).toBe("1.5px");
+      expect(radio.matches(tile.selectorText)).toBe(true);
+      expect(getComputedStyle(radio).borderTopWidth).toBe("1px");
       expect(getComputedStyle(radio).borderTopStyle).toBe("solid");
     }
   } finally { style.remove(); }
@@ -217,7 +222,8 @@ it("keeps programmatic heading focus without a control outline", async () => {
     await draw();
     const heading = node.querySelector("h1")!;
     expect(document.activeElement).toBe(heading);
-    expect(getComputedStyle(heading).outline).toBe("none");
+    // The jsdom default stylesheet gives :focus-visible an "auto" outline. The rule of the heading replaces it.
+    expect(getComputedStyle(heading).outlineStyle).toBe("none");
   } finally { style.remove(); }
 });
 

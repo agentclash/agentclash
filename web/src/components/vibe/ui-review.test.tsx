@@ -9,6 +9,7 @@ import { EvaluationEntry } from "./evaluation-entry";
 import { PrototypeTrial } from "./prototype-trial";
 import { VibeDataUseNotice } from "./vibe-data-use";
 import { ChevronRight } from "lucide-react";
+import { setTokenSentinels, tokenSentinels as token } from "./token-sentinels";
 
 let node: HTMLDivElement, root: Root, style: HTMLStyleElement;
 const noop = vi.fn();
@@ -17,7 +18,7 @@ const improve = { mode: "instructions" as const, onMode: noop, drafts: { instruc
 const css = readFileSync("src/components/vibe/project-workspace.css", "utf8");
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  node = document.createElement("div"); node.className = "vibe-workspace"; document.body.append(node); root = createRoot(node);
+  node = document.createElement("div"); node.className = "vibe-workspace"; setTokenSentinels(node); document.body.append(node); root = createRoot(node);
   style = document.createElement("style"); style.textContent = ["workspace.css", "build-output.css", "improve.css", "project-workspace.css"].map(file => readFileSync(`src/components/vibe/${file}`, "utf8")).join("\n"); document.head.append(style);
 });
 afterEach(async () => { await act(async () => root.unmount()); node.remove(); style.remove(); vi.unstubAllGlobals(); });
@@ -28,8 +29,8 @@ it("U1: both starts use exactly one H1 with the same heading display role", asyn
     expect(node.querySelectorAll("h1")).toHaveLength(1);
     const heading = node.querySelector("h1")!;
     expect(heading.className).toBe("vibe-start-title");
-    expect(getComputedStyle(heading).fontFamily).toBe("var(--vibe-font-heading)");
-    expect(getComputedStyle(heading).fontSize).toBe("var(--vibe-font-display-s)");
+    expect(getComputedStyle(heading).fontFamily).toBe(token["--vibe-font-heading"]);
+    expect(getComputedStyle(heading).fontSize).toBe(token["--vibe-font-display-s"]);
     expect(getComputedStyle(heading).fontWeight).toBe("600");
   }
 });
@@ -79,7 +80,7 @@ it("U6: every associated input label has the same callout weight and size", asyn
   for (const control of node.querySelectorAll<HTMLTextAreaElement | HTMLSelectElement>("textarea, select")) {
     expect(control.labels).toHaveLength(1);
     expect(getComputedStyle(control.labels![0]).fontWeight).toBe("600");
-    expect(getComputedStyle(control.labels![0]).fontSize).toBe("var(--vibe-font-callout)");
+    expect(getComputedStyle(control.labels![0]).fontSize).toBe(token["--vibe-font-callout"]);
   }
 });
 it("U7: disclosures replace native markers with rotating chevrons and respect reduced motion", () => {
@@ -91,18 +92,19 @@ it("U7: disclosures replace native markers with rotating chevrons and respect re
 it("U9: price uses mono with a muted footnote underneath", async () => {
   await draw(<BuildStart {...build} />);
   const price = getComputedStyle(node.querySelector(".vibe-build-price")!);
-  expect(price.fontFamily).toContain("--vibe-font-data");
-  expect(price.fontSize).toBe("var(--vibe-font-callout)");
-  expect(price.color).toBe("var(--vibe-fg)");
+  expect(price.fontFamily).toBe(token["--vibe-font-data"]);
+  expect(price.fontSize).toBe(token["--vibe-font-callout"]);
+  expect(price.color).toBe(token["--vibe-fg"]);
   const detail = getComputedStyle(node.querySelector(".vibe-build-price-detail")!);
-  expect(detail.fontSize).toBe("var(--vibe-font-footnote)");
-  expect(detail.color).toBe("var(--vibe-text-3)");
+  expect(detail.fontSize).toBe(token["--vibe-font-footnote"]);
+  expect(detail.color).toBe(token["--vibe-text-3"]);
 });
 it("U9b: an unknown price is a sentence in the body font, with no footnote", async () => {
   await draw(<BuildStart {...build} price={{ kind: "unknown" }} />);
   const price = node.querySelector(".vibe-build-price")!;
   expect(price.getAttribute("data-kind")).toBe("unknown");
-  expect(getComputedStyle(price).fontFamily).not.toContain("--vibe-font-data");
+  expect(getComputedStyle(price).fontFamily).not.toBe(token["--vibe-font-data"]);
+  expect(getComputedStyle(price).fontFamily).toBe(getComputedStyle(price.parentElement!).fontFamily);
   expect(node.querySelector(".vibe-build-price-detail")).toBeNull();
 });
 it("P1: the entry shows three paths in one row, and one column on a phone", async () => {
@@ -110,7 +112,7 @@ it("P1: the entry shows three paths in one row, and one column on a phone", asyn
   const paths = node.querySelector(".vibe-entry-paths")!;
   expect(paths.querySelectorAll(".vibe-entry-path")).toHaveLength(3);
   expect(getComputedStyle(paths).display).toBe("grid");
-  expect(getComputedStyle(paths).gridTemplateColumns).toBe("repeat(3,minmax(0,1fr))");
+  expect(getComputedStyle(paths).gridTemplateColumns).toBe("repeat(3, minmax(0px, 1fr))");
   expect(style.textContent).toContain(".vibe-entry-paths, .vibe-entry-intro[data-returning] .vibe-entry-paths { grid-template-columns:minmax(0,1fr);");
   expect(node.querySelector(".vibe-door-steps")).toBeNull();
 });
@@ -158,17 +160,17 @@ it("Results header tabs use transparent underline states and retain a single row
   const [idle, selected] = [...node.querySelectorAll(".vibe-project-tab")].map(tab => getComputedStyle(tab));
   expect(idle.borderBottomWidth).toBe("2px");
   expect(idle.borderBottomColor).toBe("rgba(0, 0, 0, 0)");
-  expect(idle.color).toBe("var(--vibe-muted)");
-  expect(selected.borderBottomColor).toBe("var(--vibe-ink)");
-  expect(selected.color).toBe("var(--vibe-fg)");
+  expect(idle.color).toBe(token["--vibe-muted"]);
+  expect(selected.borderBottomColor).toBe(token["--vibe-ink"]);
+  expect(selected.color).toBe(token["--vibe-fg"]);
   expect(selected.backgroundColor).toBe("rgba(0, 0, 0, 0)");
   expect(getComputedStyle(node.querySelector(".vibe-nav")!).flexWrap).toBe("nowrap");
 });
 
 it("Results identity and metadata use display and data fonts; header tools stay 44px", async () => {
   await draw(<header className="vibe-project-header"><div className="vibe-project-identity"><div><h1>A long project name</h1><p>v1 · Run 1: Completed</p></div></div><div className="vibe-project-tools"><button className="vibe-button vibe-project-guide">Guide<small className="vibe-guide-attention">Needs attention</small></button><button className="vibe-button">Details</button></div></header>);
-  expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-heading)");
-  expect(getComputedStyle(node.querySelector("p")!).fontFamily).toBe("var(--vibe-font-data)");
+  expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe(token["--vibe-font-heading"]);
+  expect(getComputedStyle(node.querySelector("p")!).fontFamily).toBe(token["--vibe-font-data"]);
   for (const tool of node.querySelectorAll("button")) expect(getComputedStyle(tool).height).toBe("44px");
   // jsdom 30 does not keep a var() value of the background shorthand in the computed style. Thus, the test reads the rule.
   expect(node.querySelector(".vibe-project-guide")!.matches(".vibe-project-tools .vibe-project-guide")).toBe(true);
@@ -180,9 +182,9 @@ it("Results rows use fixed status columns, unboxed rules and mobile detail stack
   const summary = getComputedStyle(node.querySelector("summary")!);
   // jsdom keeps the UA summary display value; inspect the authored declaration.
   expect(style.textContent).toContain('.vibe-result-row[data-verdict] > summary {\n  display: grid;');
-  expect(summary.gridTemplateColumns).toBe("24px minmax(0, 1fr) minmax(56px, max-content) 24px");
-  expect(getComputedStyle(node.querySelector(".vibe-evidence-field")!).gridTemplateColumns).toBe("96px minmax(0,1fr)");
-  expect(getComputedStyle(node.querySelector(".vibe-example-reply")!).borderLeftColor).toBe("var(--vibe-issue)");
+  expect(summary.gridTemplateColumns).toBe("24px minmax(0px, 1fr) minmax(56px, max-content) 24px");
+  expect(getComputedStyle(node.querySelector(".vibe-evidence-field")!).gridTemplateColumns).toBe("96px minmax(0px, 1fr)");
+  expect(getComputedStyle(node.querySelector(".vibe-example-reply")!).borderLeftColor).toBe(token["--vibe-issue"]);
   expect(style.textContent).toContain('.vibe-result-row[data-verdict] .vibe-evidence-field { grid-template-columns:minmax(0,1fr); gap:var(--vibe-space-1); }');
   expect(style.textContent).toContain('.vibe-result-row[data-verdict] .vibe-verdict-word.vibe-verdict-issue { background:var(--vibe-issue-tint); }');
 });

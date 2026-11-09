@@ -159,7 +159,7 @@ it("keeps evidence in a single stretching column at every width", async () => {
   await withBuildStyles(() => {
     const card = getComputedStyle(node.querySelector(".vibe-build-examples")!);
     expect(card.display).toBe("grid");
-    expect(card.gridTemplateColumns).toBe("minmax(0, 1fr)");
+    expect(card.gridTemplateColumns).toBe("minmax(0px, 1fr)");
   });
 });
 
