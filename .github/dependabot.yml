@@ -28,6 +28,16 @@ updates:
     directory: /web
     schedule:
       interval: weekly
+    ignore:
+      # typescript-eslint stops with "typescript-eslint does not support TS 7.0".
+      # Remove this rule when typescript-eslint supports TypeScript 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # jsdom 31 resolves var() and normalizes values in getComputedStyle.
+      # 13 Vibe UI tests in src/components/vibe compare raw "var(--...)" values.
+      # Remove this rule when those tests check the stylesheet rules instead.
+      - dependency-name: jsdom
+        update-types: ["version-update:semver-major"]
     groups:
       web:
         patterns: ["*"]
