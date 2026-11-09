@@ -8,7 +8,7 @@
 # at backend/Dockerfile.
 
 # ---- Build stage ----
-FROM golang:1.26.8-alpine3.24@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628 AS builder
+FROM golang:1.26.10-alpine3.24@sha256:87c65a688975c0b1d4585d204874c45ca78354670e3a5f11368c5a492303d696 AS builder
 
 RUN apk add --no-cache git ca-certificates
 

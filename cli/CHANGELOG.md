@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.1](https://github.com/agentclash/agentclash/compare/v2.3.0...v2.3.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **deps:** build with Go 1.26.10 ([29b6944](https://github.com/agentclash/agentclash/commit/29b6944815e877bff8be42b8a96beee3b92f79c7))
+* **deps:** build with Go 1.26.10 ([6613bc6](https://github.com/agentclash/agentclash/commit/6613bc6095d293d7775eb0ae49b480c1422a2eb9))
+
 ## [2.3.0](https://github.com/agentclash/agentclash/compare/v2.2.0...v2.3.0) (2026-11-08)
 
 
