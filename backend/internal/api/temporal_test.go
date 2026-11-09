@@ -151,6 +151,11 @@ func (f fakeWorkflowRun) GetRunID() string {
 	return f.runID
 }
 
+// GetFirstExecutionRunID returns the run ID. A new workflow has one run, so the first run ID is the same.
+func (f fakeWorkflowRun) GetFirstExecutionRunID() string {
+	return f.runID
+}
+
 func (f fakeWorkflowRun) Get(context.Context, interface{}) error {
 	return nil
 }
