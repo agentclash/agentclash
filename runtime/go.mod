@@ -1,6 +1,6 @@
 module github.com/agentclash/agentclash/runtime
 
-go 1.26.8
+go 1.26.10
 
 require (
 	github.com/alicebob/miniredis/v2 v2.40.0
