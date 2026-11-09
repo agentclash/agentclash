@@ -117,3 +117,19 @@ func TestNormalizeCommandPath(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildUserAgentExplicitHost(t *testing.T) {
+	for _, host := range []string{"claude", "codex", "unknown", "claude; token=private", "CLAUDE", ""} {
+		got := BuildUserAgentWithHost("https://api.agentclash.dev", "dev", "agentclash run list", host)
+		want := "unknown"
+		if host == "claude" || host == "codex" {
+			want = host
+		}
+		if !strings.Contains(got, "host="+want+")") {
+			t.Fatalf("host %q: %s", host, got)
+		}
+		if neutral := BuildUserAgentWithHost("http://localhost:8080", "dev", "agentclash run list", host); neutral != "agentclash-cli/dev" {
+			t.Fatal(neutral)
+		}
+	}
+}

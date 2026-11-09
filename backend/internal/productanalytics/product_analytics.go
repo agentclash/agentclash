@@ -25,6 +25,8 @@ const (
 	RunCompleted           = "product.run.completed"
 	RunFailed              = "product.run.failed"
 	RunCancelled           = "product.run.cancelled"
+	TryoutClaimed          = "product.tryout.claimed"
+	SDKReportImported      = "product.sdk_report.imported"
 )
 
 type Surface string
@@ -78,6 +80,8 @@ func (r *Recorder) Record(ctx context.Context, event Event) {
 
 	properties := make(map[string]any, len(event.Properties)+5)
 	properties["schema_version"] = SchemaVersion
+	properties["observed_host"] = ObservedHostFromContext(ctx)
+	properties["workflow_kind"] = workflowKind(event.Name)
 	properties[entityProperty(event.Name)] = event.EntityID.String()
 	if event.OrganizationID != uuid.Nil {
 		properties["org_id"] = event.OrganizationID.String()
@@ -93,7 +97,7 @@ func (r *Recorder) Record(ctx context.Context, event Event) {
 		properties["surface"] = string(surface)
 	}
 	for key, value := range event.Properties {
-		if safePropertyKey(key) {
+		if safePropertyKey(key) && !reservedProperty(key) {
 			properties[key] = value
 		}
 	}
@@ -126,6 +130,10 @@ func entityProperty(eventName string) string {
 		return "challenge_pack_id"
 	case RunCreated, RunStarted, RunCompleted, RunFailed, RunCancelled:
 		return "run_id"
+	case TryoutClaimed:
+		return "tryout_id"
+	case SDKReportImported:
+		return "sdk_report_id"
 	default:
 		return "entity_id"
 	}
@@ -204,3 +212,43 @@ var eventNamespace = uuid.MustParse("c28b3020-a03c-5f58-92a3-3928d704ef3f")
 
 var _ ProductAnalytics = (*Recorder)(nil)
 var _ ProductAnalytics = Noop{}
+
+// Host markers are explicit, self-reported observations, never proof of install.
+func NormalizeObservedHost(host string) string {
+	switch host {
+	case "claude", "codex":
+		return host
+	default:
+		return "unknown"
+	}
+}
+
+type observedHostContextKey struct{}
+
+func WithObservedHost(ctx context.Context, host string) context.Context {
+	return context.WithValue(ctx, observedHostContextKey{}, NormalizeObservedHost(host))
+}
+func ObservedHostFromContext(ctx context.Context) string {
+	host, _ := ctx.Value(observedHostContextKey{}).(string)
+	return NormalizeObservedHost(host)
+}
+func workflowKind(name string) string {
+	switch name {
+	case RunCreated, RunStarted, RunCompleted, RunFailed, RunCancelled:
+		return "hosted_run"
+	case TryoutClaimed:
+		return "platform_demo"
+	case SDKReportImported:
+		return "imported_local_evidence"
+	default:
+		return "unknown"
+	}
+}
+func reservedProperty(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "schema_version", "observed_host", "workflow_kind", "surface", "org_id", "workspace_id", "user_id", "organization_id", "provider_account_id", "agent_deployment_id", "challenge_pack_id", "run_id", "tryout_id", "sdk_report_id", "entity_id":
+		return true
+	default:
+		return false
+	}
+}

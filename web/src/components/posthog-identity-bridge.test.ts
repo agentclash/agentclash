@@ -37,6 +37,8 @@ import {
   resetPostHogModuleForTests,
 } from "@/lib/analytics/posthog-client";
 
+import { recordFirstTouch } from "@/lib/analytics/attribution";
+
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
@@ -90,6 +92,18 @@ describe("identified PostHog sessions", () => {
         ([event]) => event === "web.app.session_started",
       ),
     ).toHaveLength(1);
+  });
+
+  it.each(["claude", "codex"])("retains tagged %s acquisition on internal identity across auth", (host) => {
+    window.history.replaceState({}, "", `/tryouts?utm_source=${host}`);
+    recordFirstTouch();
+    window.history.replaceState({}, "", "/onboarding?utm_source=other");
+    recordFirstTouch();
+    document.cookie = "ac_auth_completed=1; Path=/; SameSite=Lax";
+    const userID = host === "claude" ? "11111111-1111-4111-8111-111111111111" : "22222222-2222-4222-8222-222222222222";
+    identifyPostHogSession({ user_id: userID, organization_memberships: [], workspace_memberships: [] });
+    expect(posthog.identify).toHaveBeenCalledWith(userID, {org_ids: [], workspace_ids: []}, expect.objectContaining({acquisition_channel: host, acquisition_entry_path: "/tryouts"}));
+    expect(posthog.capture.mock.calls.map(([name]) => name)).not.toContain("product.account.signup_completed");
   });
 
   it("does not restore the old identity when logout races a session fetch", async () => {

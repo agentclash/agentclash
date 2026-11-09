@@ -34,6 +34,7 @@ describe("first-touch attribution", () => {
 
     expect(attributionSetOnce()).toEqual({
       acquisition_entry_path: "/pricing",
+      acquisition_channel: "unknown",
       acquisition_referrer_hostname: "search.example",
       acquisition_utm_source: "google",
       acquisition_utm_campaign: "launch",
@@ -51,4 +52,23 @@ describe("first-touch attribution", () => {
 
     expect(attributionSetOnce()).toEqual({});
   });
+});
+
+it.each(["claude", "codex"])("retains original %s channel across auth and later visits", (host) => {
+  window.localStorage.clear();
+  window.history.replaceState({}, "", `/tryouts?utm_source=${host}`);
+  recordFirstTouch();
+  window.history.replaceState({}, "", "/auth/callback?utm_source=other");
+  recordFirstTouch();
+  expect(attributionSetOnce().acquisition_channel).toBe(host);
+});
+
+it("sanitizes tampered storage before identifying a person", () => {
+  window.localStorage.setItem(attributionStorageKeyForTests, JSON.stringify({
+    first_touch: { entry_path: "/auth/callback?token=private", expires_at: Date.now() + 10000,
+      channel: "claude", referrer_hostname: "https://secret.invalid/path?token=secret",
+      utm: { utm_source: "codex", utm_campaign: "private@example.com", secret_token: "private" } },
+    acquisition_cta: { cta_id: { secret: "private" }, expires_at: Date.now() + 10000 },
+  }));
+  expect(attributionSetOnce()).toEqual({ acquisition_entry_path: "/auth/callback", acquisition_channel: "codex", acquisition_utm_source: "codex" });
 });
