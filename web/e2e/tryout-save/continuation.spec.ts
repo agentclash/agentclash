@@ -28,10 +28,17 @@ async function save(page: Page, id: string, workspace: string) {
  expect((await evidence(page, id)).workspace_id).toBeNull();
  await expect(panel(page).getByRole("button", { name: "Save result", exact: true })).toBeDisabled();
  await panel(page).getByLabel("Save to workspace").selectOption(workspace);
+ const workspaceName = await panel(page).locator("option:checked").textContent();
  await panel(page).getByRole("button", { name: "Save result", exact: true }).click();
- await expect(panel(page).getByRole("status")).toContainText(`Saved result ${id} to workspace ${workspace}`);
+ await expect(panel(page)).toHaveAttribute("data-save-state", "saved");
+ await expect(panel(page)).toHaveAttribute("data-tryout-id", id);
+ await expect(panel(page)).toHaveAttribute("data-workspace-id", workspace);
+ await expect(panel(page).getByRole("link", { name: workspaceName!, exact: true })).toHaveAttribute("href", `/workspaces/${workspace}`);
+ await expect(page.locator('a[href="#save-tryout"]')).toHaveCount(0);
+ await expect(page.getByRole("button", { name: "Save result", exact: true })).toHaveCount(0);
  const record = await evidence(page, id); expect(record.workspace_id).toBe(workspace); expect(record.id).toBe(id);
- await page.reload(); await expect(panel(page).getByRole("status")).toContainText(id);
+ await page.reload(); await expect(panel(page)).toHaveAttribute("data-tryout-id", id);
+ await expect(panel(page).getByRole("link", { name: workspaceName!, exact: true })).toHaveAttribute("href", `/workspaces/${workspace}`);
  expect(new URL(page.url()).searchParams.get("tryout")).toBe(id);
 }
 
@@ -90,7 +97,7 @@ test("expired and legacy results recover without fabricated save", async ({ page
  await expect(page.locator("main").getByRole("alert")).toContainText("expired"); await expect(page.getByRole("link", { name: "Start a new tryout" })).toBeVisible();
  expect((await evidence(page, id)).workspace_id).toBeNull();
  const legacy = await create(page); await page.request.post(`${api}/__fixture/result/${legacy}/legacy`); await page.reload();
- await expect(panel(page)).toContainText("cannot be saved"); await expect(panel(page).getByRole("button", { name: "Save result" })).toHaveCount(0);
+ await expect(panel(page)).toHaveAttribute("data-save-state", "unavailable"); await expect(panel(page).getByRole("button", { name: "Save result" })).toHaveCount(0);
 });
 
 test("UUID substitution and another result's cookie never expose a creator result", async ({ page, browser }) => {
@@ -113,7 +120,44 @@ test("UUID substitution and another result's cookie never expose a creator resul
 test("missing server capability never offers the old ID-only save", async ({ page }) => {
  const id = await create(page);
  await page.request.post(`${api}/__fixture/result/${id}/old-capability`); await page.reload();
- await expect(panel(page)).toContainText("cannot be saved");
+ await expect(panel(page)).toHaveAttribute("data-save-state", "unavailable");
  await expect(panel(page).getByRole("button", { name: "Save result" })).toHaveCount(0);
  expect((await evidence(page, id)).workspace_id).toBeNull();
+});
+
+
+test("active creator can reply and finish before save; private results never offer anonymous turns", async ({ page }, info) => {
+ const id = await create(page);
+ const membershipRequest = page.waitForRequest(request => request.url().endsWith("/v1/users/me"));
+ await signIn(page); await expect(panel(page).getByLabel("Save to workspace")).toBeVisible();
+ const authorization = (await membershipRequest).headers().authorization;
+ for (const status of ["queued", "running"]) {
+  expect((await page.request.post(`${api}/__fixture/result/${id}/${status}`)).status()).toBe(204);
+  await page.reload(); await expect(panel(page)).toHaveAttribute("data-save-state", "active");
+  await expect(panel(page).getByRole("button")).toHaveCount(0);
+  await expect(panel(page).getByRole("combobox")).toHaveCount(0);
+  const attempt = await page.evaluate(async ({ api, id, authorization, workspace }) => {
+   const response = await fetch(`${api}/v1/agent-tryouts/${id}/claim`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", Authorization: authorization }, body: JSON.stringify({ workspace_id: workspace }) });
+   return { status: response.status, body: await response.json() };
+  }, { api, id, authorization, workspace: selectedWorkspace });
+  expect(attempt.status).toBe(409); expect(attempt.body.error.code).toBe("agent_tryout_active");
+  expect((await evidence(page, id)).workspace_id).toBeNull();
+ }
+ await page.getByPlaceholder("Reply to the agent…").fill("Finish the synthetic summary.");
+ await page.getByRole("button", { name: "Send", exact: true }).click();
+ await expect.poll(async () => (await evidence(page, id)).turn_roles).toEqual(["user"]);
+ await page.getByRole("button", { name: "End session", exact: true }).click();
+ await expect.poll(async () => (await evidence(page, id)).turn_roles).toEqual(["user", "system_end"]);
+ await expect(panel(page)).toHaveAttribute("data-save-state", "ready");
+ await save(page, id, selectedWorkspace);
+ // A historical private active row remains readable, with no public turn controls.
+ await page.request.post(`${api}/__fixture/result/${id}/running`); await page.reload();
+ await expect(panel(page)).toHaveAttribute("data-save-state", "saved");
+ await expect(panel(page).getByRole("link", { name: "Selected workspace", exact: true })).toBeVisible();
+ await expect(page.getByRole("link", { name: "Open workspace", exact: true }).first()).toBeVisible();
+ await expect(page.getByPlaceholder("Reply to the agent…")).toHaveCount(0);
+ await expect(page.getByRole("button", { name: "End session", exact: true })).toHaveCount(0);
+ await expect(page.locator('a[href="#save-tryout"]')).toHaveCount(0);
+ await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+ await page.screenshot({ path: info.outputPath("saved-private-active.png"), animations: "disabled" });
 });

@@ -1530,7 +1530,7 @@ function TryoutSidebar({
 
       <div className="min-h-0 flex-1" />
 
-      <Link href="#save-tryout" className="mt-5 inline-flex h-9 items-center justify-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90">Save result</Link>
+      <Link href={tryout.workspace_id ? `/workspaces/${tryout.workspace_id}` : "#save-tryout"} className="mt-5 inline-flex h-9 items-center justify-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90">{tryout.workspace_id ? "Open workspace" : tryoutIsActive(tryout.status) ? "Session status" : "Save result"}</Link>
     </div>
   );
 }
@@ -1560,6 +1560,7 @@ function TryoutChatThread({
   const [appliedIds, setAppliedIds] = useState<string[]>([]);
 
   const active = tryoutIsActive(tryout.status);
+  const interactive = active && !tryout.workspace_id;
   const finished = !active;
   const evalPlan = useMemo(
     () => evalSetupFromInput(tryout.input_snapshot),
@@ -1653,7 +1654,7 @@ function TryoutChatThread({
 
   async function send() {
     const text = draft.trim();
-    if (!text || sending) return;
+    if (!interactive || !text || sending) return;
     setSending(true);
     setError(null);
     try {
@@ -1677,13 +1678,13 @@ function TryoutChatThread({
   }
 
   async function endSession() {
-    if (ending) return;
+    if (!interactive || ending) return;
     setEnding(true);
     try {
       await submitAgentTryoutTurn(api, tryout.id, { end: true });
       captureWebEvent(WEB_EVENTS.TRYOUT_SESSION_ENDED, { tryout_id: tryout.id });
-    } catch {
-      // best-effort
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not end this session. Try again.");
     } finally {
       setEnding(false);
     }
@@ -1810,7 +1811,7 @@ function TryoutChatThread({
 
       <div className="shrink-0 border-t border-white/[0.07] bg-[#131312]/95 px-4 py-3 backdrop-blur sm:px-8">
         <div className="mx-auto max-w-3xl">
-          {active ? (
+          {interactive ? (
             <>
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs text-white/40">
@@ -1838,6 +1839,8 @@ function TryoutChatThread({
                 compact
               />
             </>
+          ) : tryout.workspace_id ? (
+            <p className="text-center text-sm text-white/45">Saved in your workspace. <Link href={`/workspaces/${tryout.workspace_id}`} className="text-white underline-offset-4 hover:underline">Open workspace</Link></p>
           ) : (
             <p className="text-center text-sm text-white/45">
               Session complete.{" "}
@@ -2346,8 +2349,8 @@ function RerunStrip({
       </div>
       <p className="mt-4 border-t border-white/[0.07] pt-3 text-xs leading-5 text-white/35">
         The bar you wrote is reusable.{" "}
-        <Link href="#save-tryout" className="text-white/60 underline-offset-4 hover:text-white hover:underline">Save this result</Link>{" "}
-        to keep its evidence in your workspace.
+        <Link href={tryout.workspace_id ? `/workspaces/${tryout.workspace_id}` : "#save-tryout"} className="text-white/60 underline-offset-4 hover:text-white hover:underline">{tryout.workspace_id ? "Open workspace" : tryoutIsActive(tryout.status) ? "Session status" : "Save this result"}</Link>{" "}
+        {tryout.workspace_id ? "to revisit its saved evidence." : "to keep its evidence in your workspace."}
       </p>
     </div>
   );
@@ -3320,7 +3323,7 @@ function EvalRoiCalculator({
       </div>
       <p className="mt-3 text-xs text-white/35">
         Adjust the inputs to match your numbers.{" "}
-        <Link href="#save-tryout" className="text-white/55 hover:underline">Save this result</Link>
+        <Link href={tryout.workspace_id ? `/workspaces/${tryout.workspace_id}` : "#save-tryout"} className="text-white/55 hover:underline">{tryout.workspace_id ? "Open workspace" : tryoutIsActive(tryout.status) ? "Session status" : "Save this result"}</Link>
       </p>
     </div>
   );

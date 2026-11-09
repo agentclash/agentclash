@@ -5,7 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { useAccessToken, useAuth } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import { claimAgentTryout } from "@/lib/api/agent-tryouts";
-import type { AgentTryout, UserMeResponse, UserMeWorkspace } from "@/lib/api/types";
+import { tryoutIsActive } from "@/lib/agent-tryout-status";
+import type { AgentTryout, UserMeResponse } from "@/lib/api/types";
 
 export function SaveTryout({ tryout, loginHref, onSaved }: {
   tryout: AgentTryout; loginHref: string; onSaved: (result: AgentTryout) => void;
@@ -15,7 +16,13 @@ export function SaveTryout({ tryout, loginHref, onSaved }: {
   const { getAccessToken } = useAccessToken();
   const token = useRef(getAccessToken);
   useEffect(() => { token.current = getAccessToken; }, [getAccessToken]);
-  const [workspaces, setWorkspaces] = useState<UserMeWorkspace[]>([]);
+  const [membership, setMembership] = useState<UserMeResponse | null>(null);
+  const active = tryoutIsActive(tryout.status);
+  const workspaces = membership?.organizations.flatMap(org => org.workspaces.filter(workspace =>
+    org.role === "org_admin" || ["workspace_admin", "workspace_member"].includes(workspace.role),
+  )) ?? [];
+  const savedWorkspace = membership?.organizations.flatMap(org => org.workspaces).find(workspace => workspace.id === tryout.workspace_id);
+  const saveState = tryout.workspace_id ? "saved" : active ? "active" : tryout.save_eligible === true ? "ready" : "unavailable";
   const [workspaceId, setWorkspaceId] = useState("");
   const [ready, setReady] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
@@ -25,23 +32,21 @@ export function SaveTryout({ tryout, loginHref, onSaved }: {
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
-    let active = true;
-    if (!userId || tryout.save_eligible !== true || tryout.workspace_id) return;
+    let live = true;
+    if (!userId || (!tryout.workspace_id && (active || tryout.save_eligible !== true))) return;
     void token.current().then(async accessToken => {
       if (!accessToken) throw new Error("Sign in again to save this tryout.");
       const me = await createApiClient(accessToken).get<UserMeResponse>("/v1/users/me", { cache: "no-store" });
-      if (!active) return;
+      if (!live) return;
       setNeedsSetup(me.organizations.length === 0);
-      setWorkspaces(me.organizations.flatMap(org => org.workspaces.filter(workspace =>
-        org.role === "org_admin" || ["workspace_admin", "workspace_member"].includes(workspace.role),
-      )));
+      setMembership(me);
       setReady(true);
-    }).catch(err => { if (active) setError(err instanceof Error ? err.message : "Could not load workspaces."); });
-    return () => { active = false; };
-  }, [userId, tryout.id, tryout.workspace_id, tryout.save_eligible, attempt]);
+    }).catch(err => { if (live) setError(err instanceof Error ? err.message : "Could not load workspaces."); });
+    return () => { live = false; };
+  }, [userId, tryout.id, tryout.workspace_id, tryout.save_eligible, active, attempt]);
 
   async function save() {
-    if (saving || tryout.save_eligible !== true || !workspaces.some(workspace => workspace.id === workspaceId)) return;
+    if (saving || active || tryout.save_eligible !== true || !workspaces.some(workspace => workspace.id === workspaceId)) return;
     setSaving(true); setError(null);
     try {
       const accessToken = await token.current();
@@ -56,8 +61,9 @@ export function SaveTryout({ tryout, loginHref, onSaved }: {
     } finally { if (mounted.current) setSaving(false); }
   }
 
-  return <section id="save-tryout" aria-label="Save tryout" className="shrink-0 border-b border-white/10 px-4 py-3 text-sm">
-    {tryout.workspace_id ? <p role="status">Saved result <span className="break-all">{tryout.id}</span> to workspace <span className="break-all">{tryout.workspace_id}</span>.</p>
+  return <section id="save-tryout" aria-label="Save tryout" data-save-state={saveState} data-tryout-id={tryout.id} data-workspace-id={tryout.workspace_id} className="shrink-0 border-b border-white/10 px-4 py-3 text-sm">
+    {tryout.workspace_id ? <p role="status">Saved to <Link href={`/workspaces/${tryout.workspace_id}`} className="underline">{savedWorkspace?.name ?? "your workspace"}</Link>.</p>
+      : active ? <p role="status">Finish or end this session before saving. You can keep replying while it runs.</p>
       : tryout.save_eligible !== true ? <p>This result cannot be saved from this browser. <Link href="/tryouts" className="underline">Start a new tryout</Link>.</p>
       : loading ? <p>Checking your account…</p>
       : !user ? <Link href={loginHref} className="underline">Sign in to save this result</Link>

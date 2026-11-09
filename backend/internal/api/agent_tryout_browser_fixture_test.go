@@ -46,6 +46,17 @@ func (r *browserTryoutRepository) CreateAgentTryout(ctx context.Context, p repos
 	return r.fakeAgentTryoutRepository.CreateAgentTryout(ctx, p)
 }
 
+// Deterministic completion of an accepted creator end turn. No worker/provider runs.
+func (r *browserTryoutRepository) AppendAgentTryoutTurn(ctx context.Context, p repository.AppendAgentTryoutTurnParams) (repository.AgentTryoutTurn, error) {
+	turn, err := r.fakeAgentTryoutRepository.AppendAgentTryoutTurn(ctx, p)
+	if err == nil && p.Role == "system_end" {
+		row := r.tryouts[p.AgentTryoutID]
+		row.Status = repository.AgentTryoutStatusCompleted
+		r.tryouts[row.ID] = row
+	}
+	return turn, err
+}
+
 // An opt-in loopback HTTP fixture using production handlers/managers/CORS. The
 // in-memory repository is deliberately distinct from the real SQL race test.
 func TestTryoutBrowserFixture(t *testing.T) {
@@ -102,7 +113,13 @@ func TestTryoutBrowserFixture(t *testing.T) {
 			w.WriteHeader(404)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"id": row.ID, "workspace_id": row.WorkspaceID, "claimed_by_user_id": row.ClaimedByUserID, "claimed_at": row.ClaimedAt})
+		roles := []string{}
+		for _, turn := range repo.tryoutTurns {
+			if turn.AgentTryoutID == row.ID {
+				roles = append(roles, turn.Role)
+			}
+		}
+		writeJSON(w, 200, map[string]any{"id": row.ID, "status": row.Status, "turn_roles": roles, "workspace_id": row.WorkspaceID, "claimed_by_user_id": row.ClaimedByUserID, "claimed_at": row.ClaimedAt})
 	})
 	router.Post("/__fixture/result/{id}/{mode}", func(w http.ResponseWriter, r *http.Request) {
 		id, err := uuid.Parse(chi.URLParam(r, "id"))
@@ -116,6 +133,10 @@ func TestTryoutBrowserFixture(t *testing.T) {
 			return
 		}
 		switch chi.URLParam(r, "mode") {
+		case "queued":
+			row.Status = repository.AgentTryoutStatusQueued
+		case "running":
+			row.Status = repository.AgentTryoutStatusRunning
 		case "expired":
 			past := time.Now().Add(-time.Hour)
 			row.ExpiresAt = &past

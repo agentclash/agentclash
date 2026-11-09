@@ -24,7 +24,10 @@ membership state; it is not a test of the production onboarding database manager
 The matrix covers new account + workspace creation, existing account + chosen
 workspace, cancelled login, expiry, legacy unclaimable results, tampered workspace,
 UUID substitution and wrong creator cookie. Tests verify no automatic claim,
-exact result/workspace receipts, authenticated reload and idempotent retry.
+human workspace receipts with exact result/workspace identity metadata, authenticated
+reload and idempotent retry. The active-session case covers queued/running save
+rejection, creator reply and end, then explicit terminal save. Historical private
+active rows remain readable without anonymous reply/end controls.
 Cookie attributes are inspected only in memory. Traces, videos, HAR and storage
 state exports are disabled. Artifacts contain synthetic IDs/screenshots only;
 never attach raw request/response headers or cookie values.

@@ -33,7 +33,7 @@ it("requires explicit authorized workspace selection and a real save receipt", a
 });
 it("does not enable an old server's ID-only claim", async () => {
  const ui = await mount({ ...result, save_eligible: undefined } as AgentTryout);
- try { expect(ui.container.textContent).toContain("cannot be saved"); expect(ui.container.querySelector("button")?.disabled ?? true).toBe(true); expect(ui.claims).toEqual([]); } finally { await ui.close(); }
+ try { expect(ui.container.querySelector('[data-save-state="unavailable"]')).not.toBeNull(); expect(ui.container.querySelector("button")?.disabled ?? true).toBe(true); expect(ui.claims).toEqual([]); } finally { await ui.close(); }
 });
 it("keeps forbidden save unsaved and recoverable", async () => {
  const ui = await mount(result, 403);
@@ -41,6 +41,32 @@ it("keeps forbidden save unsaved and recoverable", async () => {
   const select = ui.container.querySelector("select")!;
   await act(async () => { select.value = "workspace"; select.dispatchEvent(new Event("change", { bubbles: true })); });
   await act(async () => ui.container.querySelector("button")!.click());
-  expect(ui.saved).not.toHaveBeenCalled(); expect(ui.container.querySelector('[role="alert"]')?.textContent).toContain("Workspace access denied"); expect(ui.container.querySelector("button")!.disabled).toBe(false);
+  expect(ui.saved).not.toHaveBeenCalled(); expect(ui.container.querySelector('[role="alert"]')).not.toBeNull(); expect(ui.container.querySelector("button")!.disabled).toBe(false);
+ } finally { await ui.close(); }
+});
+
+for (const status of ["queued", "running"] as const) {
+ it(`defers ${status} save even if an older capability says true`, async () => {
+  const ui = await mount({ ...result, status });
+  try {
+   expect(ui.container.querySelector("select")).toBeNull();
+   expect(ui.container.querySelector("button")).toBeNull();
+   expect(ui.container.querySelector('[data-save-state="active"]')).not.toBeNull();
+   expect(ui.claims).toEqual([]);
+  } finally { await ui.close(); }
+ });
+}
+it("names the saved workspace and retains exact identities without a UUID banner", async () => {
+ const id = "c8000000-0000-4000-8000-000000000001";
+ const ui = await mount({ ...result, id, workspace_id: "workspace", save_eligible: false });
+ try {
+  const receipt = ui.container.querySelector('[data-save-state="saved"]')!;
+  expect(receipt?.getAttribute("data-tryout-id")).toBe(id);
+  expect(receipt?.getAttribute("data-workspace-id")).toBe("workspace");
+  const destination = receipt?.querySelector<HTMLAnchorElement>('a[href="/workspaces/workspace"]');
+  expect(destination?.textContent).toBe("My workspace");
+  expect(receipt?.querySelector('[role="status"]')?.textContent).not.toContain(id);
+  expect(receipt?.querySelector("button")).toBeNull();
+  expect(ui.claims).toEqual([]);
  } finally { await ui.close(); }
 });
