@@ -152,6 +152,8 @@ export function buildVibeReturnTo(input: URLSearchParams): string {
   }
   if (input.get("keep") === "1" && params.has("session") && params.has("agent")) params.set("keep", "1");
   const view = input.get("view");
-  if (view && ["build", "try", "checks"].includes(view)) params.set("view", view);
+  // The current panes (agent, tests, results) and the legacy names that
+  // use-vibe-navigation still reads.
+  if (view && ["agent", "tests", "results", "build", "try", "checks"].includes(view)) params.set("view", view);
   return `/vibe-evals${params.size ? `?${params}` : ""}`;
 }

@@ -128,3 +128,12 @@ it("preserves only validated Vibe save identities through sign-in", () => {
   expect(sanitizeReturnTo("/vibe-evals?session=invalid&agent=https://evil.example&keep=1")).toBe("/vibe-evals");
   expect(sanitizeReturnTo("//evil.example/vibe-evals")).toBe("/dashboard");
 });
+
+it("keeps the current Vibe pane through sign-in", () => {
+  const id = "a8000000-0000-4000-8000-000000000001";
+  for (const view of ["agent", "tests", "results", "checks"]) {
+    const next = sanitizeReturnTo(`/vibe-evals?session=${id}&view=${view}`);
+    expect(new URL(next, "http://localhost").searchParams.get("view")).toBe(view);
+  }
+  expect(sanitizeReturnTo(`/vibe-evals?session=${id}&view=javascript:alert(1)`)).toBe(`/vibe-evals?session=${id}`);
+});
