@@ -343,7 +343,7 @@ Run local attribution/identity and state-boundary fixtures:
 ```bash
 (cd web && pnpm exec vitest run src/lib/analytics/attribution.test.ts src/components/posthog-identity-bridge.test.ts)
 # Only after creating and migrating an owned isolated PostgreSQL database:
-(cd backend && VIBE_TEST_DATABASE_URL='postgresql://localhost:55449/vibe_test_acq10?sslmode=disable' go test -race ./internal/api -run 'TestTagged(Claim|SDKImport)Analytics' -v)
+(cd backend && VIBE_TEST_DATABASE_URL='postgresql://localhost:55449/vibe_test_acq10?sslmode=disable' go test -race ./internal/api -run 'TestTagged(Claim|SDKImport)' -v)
 ```
 
 Tagged browser tests mock WorkOS/session responses and retain acquisition on the
