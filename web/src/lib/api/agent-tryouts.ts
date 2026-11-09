@@ -26,7 +26,7 @@ export function createAnonymousAgentTryout(
   api: ApiClient,
   input: CreateAgentTryoutInput,
 ): Promise<AgentTryout> {
-  return api.post<AgentTryout>("/v1/agent-tryouts", input);
+  return api.post<AgentTryout>("/v1/agent-tryouts", input, { credentials: "include", cache: "no-store" });
 }
 
 export function uploadAgentTryoutInputAttachment(
@@ -45,7 +45,7 @@ export function getPublicAgentTryout(
   api: ApiClient,
   tryoutId: string,
 ): Promise<AgentTryout> {
-  return api.get<AgentTryout>(`/v1/agent-tryouts/${tryoutId}`);
+  return api.get<AgentTryout>(`/v1/agent-tryouts/${tryoutId}`, { credentials: "include", cache: "no-store" });
 }
 
 export function submitAgentTryoutTurn(
@@ -56,6 +56,7 @@ export function submitAgentTryoutTurn(
   return api.post<{ status: string }>(
     `/v1/agent-tryouts/${tryoutId}/turns`,
     input,
+    { credentials: "include", cache: "no-store" },
   );
 }
 
@@ -66,7 +67,7 @@ export function getPublicAgentTryoutEvents(
 ): Promise<AgentTryoutEventsResponse> {
   return api.get<AgentTryoutEventsResponse>(
     `/v1/agent-tryouts/${tryoutId}/events`,
-    { params: { after: opts?.after, limit: opts?.limit } },
+    { params: { after: opts?.after, limit: opts?.limit }, credentials: "include", cache: "no-store" },
   );
 }
 
@@ -148,4 +149,12 @@ export function compareAgentTryouts(
     `${workspaceAgentTryoutsPath(workspaceId)}/compare`,
     { tryout_ids: tryoutIds },
   );
+}
+
+export function claimAgentTryout(api: ApiClient, tryoutId: string, workspaceId: string): Promise<AgentTryout> {
+  return api.post<AgentTryout>(`/v1/agent-tryouts/${tryoutId}/claim`, { workspace_id: workspaceId }, { credentials: "include", cache: "no-store" });
+}
+
+export function getSavedAgentTryout(api: ApiClient, tryoutId: string): Promise<AgentTryout> {
+  return api.get<AgentTryout>(`/v1/agent-tryouts/${tryoutId}/saved`, { cache: "no-store" });
 }

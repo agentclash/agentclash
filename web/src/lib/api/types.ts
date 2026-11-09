@@ -2653,6 +2653,8 @@ export interface AgentTryoutInputSchema {
 }
 
 export interface AgentTryout {
+  /** Missing/false means safe creator-proof save is unavailable. */
+  save_eligible?: boolean;
   id: string;
   organization_id?: string;
   workspace_id?: string;

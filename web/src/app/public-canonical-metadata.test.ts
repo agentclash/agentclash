@@ -25,6 +25,9 @@ vi.mock("@workos-inc/authkit-nextjs", () => ({
   withAuth: vi.fn(),
 }));
 
+// Metadata tests do not execute the authenticated browser result controller.
+vi.mock("./tryouts/tryouts-client", () => ({ PublicTryoutsClient: () => null }));
+
 vi.mock("./landing", () => ({
   default: () => null,
 }));

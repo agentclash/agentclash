@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useAccessToken, useAuth } from "@workos-inc/authkit-nextjs/components";
+import { SaveTryout } from "./save-tryout";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
 import {
@@ -28,6 +30,8 @@ import {
 import {
   createAnonymousAgentTryout,
   getPublicAgentTryout,
+  getSavedAgentTryout,
+  getWorkspaceAgentTryoutEvents,
   getPublicAgentTryoutEvents,
   listAgentTryoutTemplates,
   submitAgentTryoutTurn,
@@ -449,6 +453,11 @@ export function PublicTryoutsClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlTryoutId = searchParams.get("tryout") ?? "";
+  const { user, loading: authLoading } = useAuth();
+  const userId = user?.id;
+  const { getAccessToken } = useAccessToken();
+  const tokenRef = useRef(getAccessToken);
+  useEffect(() => { tokenRef.current = getAccessToken; }, [getAccessToken]);
 
   const [templates, setTemplates] = useState<AgentTryoutTemplate[]>(initialTemplates);
   const [templateSlug, setTemplateSlug] = useState(initialTemplates[0]?.slug ?? "");
@@ -592,27 +601,36 @@ export function PublicTryoutsClient({
       return;
     }
 
+    if (authLoading) return;
+    setTryout(null);
+    setEvents([]);
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let nextCursor = initialEvents.reduce(
-      (highest, event) => Math.max(highest, event.cursor),
-      0,
-    );
-    const seen = new Set<number>(initialEvents.map((event) => event.cursor));
+    // Reload the timeline for this authenticated identity. The SSR snapshot
+    // cannot carry the API-origin creator cookie and may contain legacy events.
+    let nextCursor = 0;
+    const seen = new Set<number>();
 
     async function pollTryout() {
       setTryoutLoading(true);
       try {
-        const [nextTryout, page] = await Promise.all([
-          getPublicAgentTryout(api, urlTryoutId),
-          getPublicAgentTryoutEvents(api, urlTryoutId, {
-            after: nextCursor,
-            limit: 200,
-          }),
-        ]);
+        let nextTryout: AgentTryout;
+        let authenticatedApi: ReturnType<typeof createApiClient> | undefined;
+        try {
+          nextTryout = await getPublicAgentTryout(api, urlTryoutId);
+        } catch (err) {
+          if (!(err instanceof ApiError) || err.status !== 404 || !userId) throw err;
+          const accessToken = await tokenRef.current();
+          if (!accessToken) throw err;
+          authenticatedApi = createApiClient(accessToken);
+          nextTryout = await getSavedAgentTryout(authenticatedApi, urlTryoutId);
+        }
+        const page = nextTryout.workspace_id && authenticatedApi
+          ? await getWorkspaceAgentTryoutEvents(authenticatedApi, nextTryout.workspace_id, urlTryoutId, { after: nextCursor, limit: 200 })
+          : await getPublicAgentTryoutEvents(api, urlTryoutId, { after: nextCursor, limit: 200 });
         if (cancelled) return;
 
-        setTryout(nextTryout);
+        setTryout(current => current?.workspace_id && !nextTryout.workspace_id ? current : nextTryout);
         setEvents((current) => {
           const fresh = page.events.filter((event) => {
             if (seen.has(event.cursor)) return false;
@@ -631,8 +649,8 @@ export function PublicTryoutsClient({
         if (!cancelled) {
           setMessage(
             err instanceof ApiError
-              ? err.message
-              : "Could not load this public tryout.",
+              ? err.status === 404 ? "This result is unavailable in this browser. Return to the browser that created it or start a new tryout." : err.message
+              : "Could not load this tryout. Check your connection and try again.",
           );
         }
       } finally {
@@ -640,14 +658,13 @@ export function PublicTryoutsClient({
       }
     }
 
-    if (initialTryout?.id !== urlTryoutId) setEvents([]);
     setMessage(null);
     void pollTryout();
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [urlTryoutId, initialEvents, initialTryout?.id]);
+  }, [urlTryoutId, userId, authLoading]);
 
   const template = useMemo(
     () => templates.find((item) => item.slug === templateSlug) ?? null,
@@ -850,18 +867,19 @@ export function PublicTryoutsClient({
             </Link>
           )}
           <TrackedLink
-            href={loginHref}
+            href={user ? "/dashboard" : loginHref}
             ctaId="tryout.header.signup"
             intent="signup"
             placement="header"
             onClick={() => trackTryoutSignup("header")}
             className="rounded-sm border border-white/15 px-3 py-1.5 text-sm text-white/80 transition hover:border-white/40 hover:text-white"
           >
-            Sign in
+            {user ? "Account" : "Sign in"}
           </TrackedLink>
         </div>
       </header>
 
+      {inSession && tryout && <SaveTryout key={`${tryout.id}:${user?.id ?? "guest"}`} tryout={tryout} loginHref={loginHref} onSaved={setTryout} />}
       {inSession ? (
         <TryoutSession
           tryout={tryout}
@@ -1362,7 +1380,7 @@ function TryoutSession({
   if (!tryout) {
     return (
       <div className="flex flex-1 items-center justify-center px-4 text-sm text-white/55">
-        {message ?? "Could not load this tryout."}
+        <div><p role="alert">{message ?? "Could not load this tryout."}</p><Link href="/tryouts" className="mt-3 inline-block underline">Start a new tryout</Link></div>
       </div>
     );
   }
@@ -1446,7 +1464,6 @@ function TryoutSidebar({
   events,
   outputs,
   scorecard,
-  loginHref,
   compact,
 }: {
   tryout: AgentTryout;
@@ -1513,17 +1530,7 @@ function TryoutSidebar({
 
       <div className="min-h-0 flex-1" />
 
-      <TrackedLink
-        href={loginHref}
-        ctaId="tryout.save-rerun.signup"
-        intent="signup"
-        placement="save_rerun"
-        onClick={() => trackTryoutSignup("save_rerun", tryout.id)}
-        className="mt-5 inline-flex h-9 items-center justify-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
-      >
-        Save and rerun
-        <ArrowRight className="size-4" />
-      </TrackedLink>
+      <Link href="#save-tryout" className="mt-5 inline-flex h-9 items-center justify-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90">Save result</Link>
     </div>
   );
 }
@@ -1834,17 +1841,8 @@ function TryoutChatThread({
           ) : (
             <p className="text-center text-sm text-white/45">
               Session complete.{" "}
-              <TrackedLink
-                href={loginHref}
-                ctaId="tryout.end-session.signup"
-                intent="signup"
-                placement="end_session"
-                onClick={() => trackTryoutSignup("end_session", tryout.id)}
-                className="text-white underline-offset-4 hover:underline"
-              >
-                Sign in
-              </TrackedLink>{" "}
-              to save this run and wire it into evals.
+              <Link href="#save-tryout" className="text-white underline-offset-4 hover:underline">Save this result</Link>{" "}
+              to keep its evidence in your workspace.
             </p>
           )}
           {error ? <p className="mt-2 text-xs text-white/50">{error}</p> : null}
@@ -2294,7 +2292,6 @@ function modelKeyFromPolicy(policy: unknown): string {
 function RerunStrip({
   tryout,
   judge,
-  loginHref,
 }: {
   tryout: AgentTryout;
   judge: TryoutJudgeSection;
@@ -2349,17 +2346,8 @@ function RerunStrip({
       </div>
       <p className="mt-4 border-t border-white/[0.07] pt-3 text-xs leading-5 text-white/35">
         The bar you wrote is reusable.{" "}
-        <TrackedLink
-          href={loginHref}
-          ctaId="tryout.eval-plan.signup"
-          intent="signup"
-          placement="eval_plan"
-          onClick={() => trackTryoutSignup("eval_plan", tryout.id)}
-          className="text-white/60 underline-offset-4 hover:text-white hover:underline"
-        >
-          Save this eval
-        </TrackedLink>{" "}
-        and it grades every future run, automatically.
+        <Link href="#save-tryout" className="text-white/60 underline-offset-4 hover:text-white hover:underline">Save this result</Link>{" "}
+        to keep its evidence in your workspace.
       </p>
     </div>
   );
@@ -3248,7 +3236,6 @@ function parseMonthlyVolume(raw: string | undefined): number | null {
 
 function EvalRoiCalculator({
   tryout,
-  loginHref,
   initialVolume,
 }: {
   tryout: AgentTryout;
@@ -3333,16 +3320,7 @@ function EvalRoiCalculator({
       </div>
       <p className="mt-3 text-xs text-white/35">
         Adjust the inputs to match your numbers.{" "}
-        <TrackedLink
-          href={loginHref}
-          ctaId="tryout.roi.signup"
-          intent="signup"
-          placement="roi"
-          onClick={() => trackTryoutSignup("roi", tryout.id)}
-          className="text-white/55 hover:underline"
-        >
-          Save this analysis →
-        </TrackedLink>
+        <Link href="#save-tryout" className="text-white/55 hover:underline">Save this result</Link>
       </p>
     </div>
   );
