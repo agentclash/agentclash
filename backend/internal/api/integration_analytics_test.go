@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -154,6 +156,31 @@ func TestTaggedClaimAnalyticsPostgreSQL(t *testing.T) {
 				t.Fatal(fmt.Sprintf("durable claim events=%d err=%v", spy.count(), err))
 			}
 			t.Logf("synthetic PostgreSQL claim (terminal row seeded, no execution): host=%s user=%s tryout=%s event_uuid=%s", host, h.user, trial.ID, spy.last().UUID)
+		})
+	}
+}
+
+func TestTaggedSDKImportHTTPAnalytics(t *testing.T) {
+	for _, host := range []string{"claude", "codex"} {
+		t.Run(host, func(t *testing.T) {
+			h, _, a := sdkHarness(t)
+			spy := &recordingPostHog{}
+			h.svc.Store.WithProductAnalytics(productanalytics.New(spy))
+			routes := (&VibeHandler{Service: h.svc, Auth: NewDevelopmentAuthenticator()}).Routes()
+			in := vibe.SDKReportImport{EnvelopeVersion: 1, SourceKind: "agent_result", SourceSchemaVersion: 1, SourceJSON: `{"input":"fixture","output":"supplied"}`, Metadata: vibe.SDKImportMetadata{ArtifactID: a.ID, CaptureScope: vibe.UnknownCaptureScope(), Cases: []vibe.SDKCaseBinding{{SourceCaseID: "local", CaseKey: "eligible"}}}}
+			r := httptest.NewRequest("POST", "/sessions/"+h.session.ID.String()+"/reports", bytes.NewReader(mustJSON(t, in)))
+			r.Header.Set("Content-Type", "application/json")
+			r.Header.Set("Authorization", "Bearer fixture")
+			r.Header.Set(headerUserID, h.user.String())
+			r.Header.Set("User-Agent", "agentclash-cli/dev (cmd=report.import; host="+host+")")
+			w := httptest.NewRecorder()
+			routes.ServeHTTP(w, r)
+			if w.Code != 201 {
+				t.Fatalf("%d %s", w.Code, w.Body.String())
+			}
+			if spy.count() != 1 || spy.last().Properties["observed_host"] != host || spy.last().Properties["surface"] != "cli" {
+				t.Fatalf("host did not cross actual HTTP route: %#v", spy.last())
+			}
 		})
 	}
 }

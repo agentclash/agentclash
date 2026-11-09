@@ -72,3 +72,19 @@ it("sanitizes tampered storage before identifying a person", () => {
   }));
   expect(attributionSetOnce()).toEqual({ acquisition_entry_path: "/auth/callback", acquisition_channel: "codex", acquisition_utm_source: "codex" });
 });
+
+it("does not turn an original unknown touch into a later tagged acquisition", () => {
+  window.localStorage.clear();
+  window.history.replaceState({}, "", "/pricing");
+  recordFirstTouch();
+  window.history.replaceState({}, "", "/onboarding?utm_source=codex");
+  recordFirstTouch();
+  expect(attributionSetOnce().acquisition_channel).toBe("unknown");
+});
+
+it("drops unsafe or unbounded persisted path values", () => {
+  for (const entry_path of ["/users/private@example.com", "/users/private%40example.com", "/" + "x".repeat(600)]) {
+    window.localStorage.setItem(attributionStorageKeyForTests, JSON.stringify({ first_touch: { entry_path, expires_at: Date.now() + 10000 } }));
+    expect(attributionSetOnce().acquisition_entry_path).toBe("/");
+  }
+});

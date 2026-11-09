@@ -28,6 +28,8 @@ interface AttributionState {
 }
 
 function safePathname(pathname: string): string {
+  // Reject encoded/freeform or oversized persisted paths before identification.
+  if (pathname.length > 512 || /[%@\\\x00-\x1f]/.test(pathname)) return "/";
   const pathOnly = pathname.split(/[?#]/, 1)[0] || "/";
   const normalized = pathOnly.startsWith("/") ? pathOnly : `/${pathOnly}`;
   return normalized

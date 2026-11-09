@@ -1,3 +1,4 @@
+import taggedFixtures from "../../../scripts/posthog/tagged-journey-fixtures.json";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -100,10 +101,15 @@ describe("identified PostHog sessions", () => {
     window.history.replaceState({}, "", "/onboarding?utm_source=other");
     recordFirstTouch();
     document.cookie = "ac_auth_completed=1; Path=/; SameSite=Lax";
-    const userID = host === "claude" ? "11111111-1111-4111-8111-111111111111" : "22222222-2222-4222-8222-222222222222";
+    const receipt = taggedFixtures.journeys.find((journey) => journey.host === host)!;
+    const userID = receipt.internal_user_id;
     identifyPostHogSession({ user_id: userID, organization_memberships: [], workspace_memberships: [] });
     expect(posthog.identify).toHaveBeenCalledWith(userID, {org_ids: [], workspace_ids: []}, expect.objectContaining({acquisition_channel: host, acquisition_entry_path: "/tryouts"}));
     expect(posthog.capture.mock.calls.map(([name]) => name)).not.toContain("product.account.signup_completed");
+    // Replay the sanitized durable receipt identity through the browser bridge.
+    // This validates the join contract, not a live WorkOS/DB end-to-end session.
+    expect(posthog.identify.mock.calls.at(-1)?.[0]).toBe(receipt.internal_user_id);
+    expect(receipt.event).toBe("product.sdk_report.imported");
   });
 
   it("does not restore the old identity when logout races a session fetch", async () => {
