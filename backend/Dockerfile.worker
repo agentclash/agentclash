@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && useradd --system --uid 10001 --create-home worker
 COPY backend/internal/vibe/inputs/requirements.txt /tmp/pdf-requirements.txt
 RUN python3 -m venv /opt/vibe-pdf-runtime \
-    && /opt/vibe-pdf-runtime/bin/pip install --no-cache-dir -r /tmp/pdf-requirements.txt \
+    && /opt/vibe-pdf-runtime/bin/pip install --no-cache-dir --no-deps -r /tmp/pdf-requirements.txt \
     && rm /tmp/pdf-requirements.txt
 COPY --from=builder /app /app
 ENV VIBE_PDF_RUNTIME=/opt/vibe-pdf-runtime

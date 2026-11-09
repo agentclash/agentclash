@@ -208,7 +208,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bubblewrap python3-venv
           /usr/bin/python3 -m venv "$RUNNER_TEMP/vibe-pdf-runtime"
-          "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install -r backend/internal/vibe/inputs/requirements.txt
+          "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install --no-deps -r backend/internal/vibe/inputs/requirements.txt
       - name: Compile API fixture before the browser server startup deadline
         working-directory: backend
         run: go test -p 1 ./internal/api -run '^$' -count=1
@@ -249,7 +249,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bubblewrap python3-venv
           /usr/bin/python3 -m venv "$RUNNER_TEMP/vibe-pdf-runtime"
-          "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install -r backend/internal/vibe/inputs/requirements.txt
+          "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install --no-deps -r backend/internal/vibe/inputs/requirements.txt
       - name: Actual extraction and denial of secrets, network, writes and excess memory
         working-directory: backend
         run: VIBE_TEST_PDF_RUNTIME="$RUNNER_TEMP/vibe-pdf-runtime" go test -v ./internal/vibe/inputs -count=1

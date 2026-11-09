@@ -130,13 +130,22 @@ The former pdfminer.six 20250506 pin had HIGH CVE-2025-64512 and CVE-2025-70559;
 the updated pair removes those findings without rewriting historical extraction
 receipts. The reader's resource limits and isolation flags are unchanged.
 
-Publication currently remains blocked for this runtime. Trivy 0.74 inventories
-Alpine and all eight Python distributions, but its image report omits bundled
-PDFium and OpenSSL as separate native components. Scanning cryptography's own
-OpenSSL SBOM returns an empty result inventory. Neither a zero finding count nor
-the Python distribution version establishes native coverage; the image gate
-refuses that incomplete inventory. A reviewed scanner/build solution for the
-entire installed native graph is required before publication.
+Trivy does not name a native library that a wheel bundles. A wheel version does
+not identify a bundled OpenSSL or PDFium. Thus the runtime installs no wheel
+that contains native code:
+
+- Text extraction does not use Pillow or pypdfium2. The runtime does not
+  install them. pdfplumber loads them only to draw page images.
+- cryptography, cffi, pycparser and charset-normalizer come from Alpine
+  packages. These packages link the system OpenSSL and libffi.
+- pip installs only pdfplumber and pdfminer.six. Both are `py3-none-any`
+  wheels. The graph refuses a wheel that contains a compiled file.
+
+`requirements.txt` is the complete Python import graph. The lock gives one
+provider for each requirement: a wheel, or an Alpine package (`system_python`)
+with the same version. The image gate refuses any other Python distribution. It
+requires the Alpine packages that carry the native code in the OS inventory. The
+OS scan then matches them to Alpine advisories.
 
 The exact worker image must also pass the existing real extraction and isolation
 tests with production UID, read-only filesystem, tmpfs, default seccomp, dropped

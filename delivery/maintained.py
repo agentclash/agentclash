@@ -11,6 +11,7 @@ import tarfile
 import time
 import urllib.error
 import urllib.request
+import zipfile
 
 from common import require
 from release_contract import canonical, recipe_hash, DERIVED, UPSTREAM, PLATFORM
@@ -152,6 +153,24 @@ def inspect(run, ref, expected_hash=None):
     return value
 
 
+def require_pure_wheel(path):
+    """Refuse a wheel that contains native code.
+
+    The image scanner reads Python distribution metadata, but it does not name
+    a native library that a wheel bundles. Native code must come from Alpine
+    packages, which the OS scan matches against Alpine advisories.
+    """
+    path = Path(path)
+    require(path.name.endswith("-py3-none-any.whl"), "PDF runtime wheels must be pure Python")
+    native = (".so", ".pyd", ".dylib", ".dll", ".a", ".exe")
+    with zipfile.ZipFile(path) as wheel:
+        members = [name.lower() for name in wheel.namelist()]
+    require(
+        members and not any(name.endswith(native) or ".so." in name.rsplit("/", 1)[-1] for name in members),
+        "PDF runtime wheels must not contain native code",
+    )
+
+
 def worker_runtime(root, directory, run, runtime_image):
     """Build the worker-only reader from verified, offline Python/native inputs."""
     root, directory = Path(root), Path(directory)
@@ -162,7 +181,20 @@ def worker_runtime(root, directory, run, runtime_image):
     normalized = lambda name: re.sub(r"[-_.]+", "-", name.lower())
     expected = {normalized(name): version for name, version in (line.split("==") for line in requirements.read_text().splitlines() if line and not line.startswith("#"))}
     pinned = {normalized(entry["name"]): entry["version"] for entry in lock["wheels"].values()}
-    require(pinned == expected and len(pinned) == len(lock["wheels"]), "PDF wheel inventory differs from the requirements contract")
+    # Each requirement has one provider: a pure-Python wheel or an Alpine package.
+    system = {normalized(name): package for name, package in lock["system_python"].items()}
+    apks = {entry["name"]: entry["version"] for entry in lock["apks"].values()}
+    require(
+        len(pinned) == len(lock["wheels"])
+        and not set(pinned) & set(system)
+        and set(pinned) | set(system) == set(expected)
+        and all(pinned[name] == expected[name] for name in pinned),
+        "PDF wheel inventory differs from the requirements contract",
+    )
+    require(
+        all(re.fullmatch(re.escape(expected[name]) + r"-r[0-9]+", apks.get(package, "")) for name, package in system.items()),
+        "PDF system Python packages differ from the requirements contract",
+    )
     context = directory / "pdf-runtime-context"
     context.mkdir(mode=0o700)
     for group in ("apks", "wheels"):
@@ -170,6 +202,8 @@ def worker_runtime(root, directory, run, runtime_image):
         for filename, entry in lock[group].items():
             require(Path(filename).name == filename, "Invalid PDF package filename")
             fetch(entry, context / group / filename)
+            if group == "wheels":
+                require_pure_wheel(context / group / filename)
     (context / "requirements.txt").write_text("".join(
         entry["name"] + "==" + entry["version"] + " --hash=sha256:" + entry["sha256"] + "\n"
         for entry in lock["wheels"].values()

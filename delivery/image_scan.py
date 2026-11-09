@@ -68,21 +68,27 @@ def coverage(report, role):
             for result in results if result.get("Type") == "python-pkg"
             for package in result.get("Packages", [])
         }
+        # Wheel distribution metadata is insufficient for bundled native code:
+        # a wheel version does not identify a bundled OpenSSL or PDFium. Only
+        # the reviewed pure-Python wheels are allowed in the Python inventory.
         require(
-            {"pdfplumber", "pdfminer.six", "pillow", "pypdfium2", "cryptography", "charset-normalizer", "cffi", "pycparser"} <= python,
+            {"pdfplumber", "pdfminer.six"} <= python,
             "PDF reader Python dependency inventory is incomplete",
         )
-        # Wheel distribution metadata is insufficient for bundled native code.
-        # In particular, Alpine libcrypto does not cover cryptography's static
-        # OpenSSL, and pypdfium2's version does not identify its PDFium binary.
-        native = {
-            package.get("Name", "").lower()
-            for result in results if result.get("Class") != "os-pkgs" and result.get("Type") != "python-pkg"
+        require(
+            python <= {"pdfplumber", "pdfminer.six"},
+            "PDF reader Python inventory contains a distribution that can bundle native code; publication blocked",
+        )
+        # The native code comes from Alpine packages. The OS scan matches these
+        # packages, and the OpenSSL and libffi that they link, to Alpine advisories.
+        system = {
+            package.get("Name", "")
+            for result in results if result.get("Type") == "alpine"
             for package in result.get("Packages", []) if package.get("Version")
         }
         require(
-            {"pdfium", "openssl"} <= native,
-            "Bundled PDFium/OpenSSL native dependency coverage is missing; publication blocked",
+            {"python3", "bubblewrap", "py3-cryptography", "py3-cffi", "py3-cparser", "py3-charset-normalizer", "libssl3", "libcrypto3", "libffi"} <= system,
+            "PDF reader native dependency inventory is missing from the OS packages; publication blocked",
         )
 
 

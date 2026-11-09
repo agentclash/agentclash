@@ -8,13 +8,19 @@ import tempfile
 import unittest
 import urllib.error
 from unittest.mock import patch
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "delivery"), str(ROOT / "deploy/aws/scripts")]
 from common import Refused
 from image_scan import coverage, reconcile, Scanner
-from maintained import fetch, local_base, selection, normalize_context
+from maintained import fetch, local_base, selection, normalize_context, require_pure_wheel
 from release_contract import APPLICATIONS, DERIVED, PLATFORM, UPSTREAM, validate_images
+
+PDF_SYSTEM_PACKAGES = (
+    "python3", "bubblewrap", "py3-cryptography", "py3-cffi", "py3-cparser",
+    "py3-charset-normalizer", "libssl3", "libcrypto3", "libffi",
+)
 
 
 def os_report(version="3.5.8-r0", vulnerable=False):
@@ -76,11 +82,60 @@ def platform_remediations(before, after, role="caddy"):
 
 
 class ImageGateTests(unittest.TestCase):
-    def test_python_wheel_inventory_cannot_cover_bundled_native_libraries(self):
+    def pdf_report(self, python=("pdfplumber", "pdfminer.six"), system=PDF_SYSTEM_PACKAGES):
         value = os_report()
-        value["Results"].append({"Type": "python-pkg", "Target": "Python", "Class": "lang-pkgs", "Packages": [{"Name": name, "Version": "fixture"} for name in ("pdfplumber", "pdfminer.six", "pillow", "pypdfium2", "cryptography", "charset-normalizer", "cffi", "pycparser")]})
-        with self.assertRaisesRegex(Refused, "native dependency coverage"):
-            coverage(value, "pdf-runtime")
+        value["Results"][0]["Packages"] += [{"Name": name, "Version": "fixture-r0"} for name in system if name != "libssl3"]
+        value["Results"].append({"Type": "python-pkg", "Target": "Python", "Class": "lang-pkgs", "Packages": [{"Name": name, "Version": "fixture"} for name in python]})
+        return value
+
+    def test_pure_python_reader_with_os_native_packages_is_covered(self):
+        for role in ("pdf-runtime", "worker"):
+            report = self.pdf_report()
+            if role == "worker":
+                report["Results"].append({"Type": "gobinary", "Target": "app", "Packages": [{"Name": "stdlib", "Version": "fixture"}]})
+            coverage(report, role)
+
+    def test_python_wheel_inventory_cannot_cover_bundled_native_libraries(self):
+        # A wheel version does not identify a bundled OpenSSL or PDFium.
+        for extra in ("pypdfium2", "pillow", "cryptography", "cffi", "unreviewed-package"):
+            with self.subTest(extra=extra), self.assertRaisesRegex(Refused, "can bundle native code"):
+                coverage(self.pdf_report(python=("pdfplumber", "pdfminer.six", extra)), "pdf-runtime")
+
+    def test_reader_native_code_must_be_in_the_os_inventory(self):
+        for missing in ("py3-cryptography", "libcrypto3", "libffi", "bubblewrap"):
+            system = tuple(name for name in PDF_SYSTEM_PACKAGES if name != missing)
+            with self.subTest(missing=missing), self.assertRaisesRegex(Refused, "native dependency inventory is missing"):
+                coverage(self.pdf_report(system=system), "pdf-runtime")
+        with self.assertRaisesRegex(Refused, "Python dependency inventory is incomplete"):
+            coverage(self.pdf_report(python=("pdfplumber",)), "pdf-runtime")
+
+    def test_runtime_wheels_must_be_pure_python(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pure = Path(directory) / "reader-1.0-py3-none-any.whl"
+            with zipfile.ZipFile(pure, "w") as wheel:
+                wheel.writestr("reader/__init__.py", "")
+            require_pure_wheel(pure)
+            for name, member in (
+                ("bundled-1.0-py3-none-any.whl", "bundled.libs/libpdfium.so"),
+                ("versioned-1.0-py3-none-any.whl", "versioned.libs/libssl.so.3"),
+                ("compiled-1.0-cp314-cp314-musllinux_1_2_x86_64.whl", "compiled/__init__.py"),
+            ):
+                path = Path(directory) / name
+                with zipfile.ZipFile(path, "w") as wheel:
+                    wheel.writestr(member, "")
+                with self.subTest(name=name), self.assertRaises(Refused):
+                    require_pure_wheel(path)
+
+    def test_runtime_lock_matches_the_requirements_contract(self):
+        lock = json.loads((ROOT / "deploy/aws/platform/pdf-runtime.lock.json").read_text())
+        requirements = (ROOT / "backend/internal/vibe/inputs/requirements.txt").read_bytes()
+        self.assertEqual(hashlib.sha256(requirements).hexdigest(), lock["requirements_sha256"])
+        self.assertTrue(all(name.endswith("-py3-none-any.whl") for name in lock["wheels"]))
+        packages = {entry["name"] for entry in lock["apks"].values()}
+        self.assertLessEqual(set(PDF_SYSTEM_PACKAGES), packages)
+        names = {line.split("==")[0].lower() for line in requirements.decode().splitlines() if line and not line.startswith("#")}
+        self.assertEqual(names, {"pdfplumber", "pdfminer.six", "cryptography", "cffi", "pycparser", "charset-normalizer"})
+        self.assertEqual(set(lock["system_python"]), names - {"pdfplumber", "pdfminer.six"})
     def test_official_mirror_fallback_still_requires_exact_pinned_bytes(self):
         from contextlib import redirect_stdout
 
