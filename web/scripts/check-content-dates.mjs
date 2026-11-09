@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
-import yaml from "js-yaml";
+import { JSON_SCHEMA, load } from "js-yaml";
 
 const roots = process.argv.slice(2);
 if (!roots.length) roots.push("content/blog", "content/docs", "content/benchmarks");
@@ -12,7 +12,7 @@ function checkFile(file) {
   let data;
   try {
     data = matter(fs.readFileSync(file, "utf8"), {
-      engines: { yaml: (source) => yaml.load(source, { schema: yaml.JSON_SCHEMA }) },
+      engines: { yaml: (source) => load(source, { schema: JSON_SCHEMA }) },
     }).data;
   } catch (error) {
     console.error(`${file}: invalid frontmatter: ${error.message}`);

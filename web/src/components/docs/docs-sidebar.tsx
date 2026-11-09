@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { MessageSquare, BookOpen, Map, Github } from "lucide-react";
+import { MessageSquare, BookOpen, Map } from "lucide-react";
+import { GitHubIcon } from "@/components/icons/github-icon";
 import type { DocNavSection } from "@/lib/docs";
 
 export function DocsSidebar({
@@ -38,7 +39,7 @@ export function DocsSidebar({
           rel="noopener noreferrer"
           className="flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium text-white/45 transition-colors hover:bg-white/[0.04] hover:text-white/80"
         >
-          <Github className="size-4" />
+          <GitHubIcon className="size-4" />
           GitHub
         </a>
       </div>

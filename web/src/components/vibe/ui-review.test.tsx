@@ -161,7 +161,7 @@ it("Results header tabs use transparent underline states and retain a single row
   expect(idle.color).toBe("var(--vibe-muted)");
   expect(selected.borderBottomColor).toBe("var(--vibe-ink)");
   expect(selected.color).toBe("var(--vibe-fg)");
-  expect(selected.background).toBe("rgba(0, 0, 0, 0)");
+  expect(selected.backgroundColor).toBe("rgba(0, 0, 0, 0)");
   expect(getComputedStyle(node.querySelector(".vibe-nav")!).flexWrap).toBe("nowrap");
 });
 
@@ -170,7 +170,9 @@ it("Results identity and metadata use display and data fonts; header tools stay 
   expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-heading)");
   expect(getComputedStyle(node.querySelector("p")!).fontFamily).toBe("var(--vibe-font-data)");
   for (const tool of node.querySelectorAll("button")) expect(getComputedStyle(tool).height).toBe("44px");
-  expect(getComputedStyle(node.querySelector(".vibe-project-guide")!).background).toBe("var(--vibe-surface-2)");
+  // jsdom 30 does not keep a var() value of the background shorthand in the computed style. Thus, the test reads the rule.
+  expect(node.querySelector(".vibe-project-guide")!.matches(".vibe-project-tools .vibe-project-guide")).toBe(true);
+  expect(css).toContain(".vibe-project-tools .vibe-project-guide { background: var(--vibe-surface-2);");
 });
 
 it("Results rows use fixed status columns, unboxed rules and mobile detail stacking", async () => {
