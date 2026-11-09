@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { doorButton, showView, startCopy, startComposer } from "../vibe/entry-model";
+import { chooseDoor, doorButton, improveSource, showView, startCopy, startComposer } from "../vibe/entry-model";
 
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const task = "Summarize meeting notes, including decisions and action owners.";
@@ -115,23 +115,39 @@ test("bad PDF offers paste without creating an agent or silently shortening inpu
   await expect(page.getByRole("textbox",{name:"Text to work on",exact:true})).toBeEnabled();
 });
 
-
-test("authored reference definition downloads and reimports with matching pasted attachment", async ({ page }, info) => {
-  const errors: string[] = [];
-  page.on("pageerror", error => errors.push(error.message));
-  await page.goto("/vibe-evals");
-  await page.getByRole("button", { name: /Build an agent/ }).click();
+async function pasteMaterial(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "Add a file or text", exact: true }).click();
   await page.getByRole("tab", { name: "Paste text" }).click();
   await page.getByRole("textbox", { name: "Text to work on" }).fill(notes);
   const uploaded = page.waitForResponse(response => response.url().endsWith("/inputs") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Attach text", exact: true }).click();
   const material = await (await uploaded).json();
-  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready");
+  await expect(page.locator(".vibe-material-chip-status")).toHaveText(/^Ready/);
   await page.getByRole("button", { name: "Close material dialog", exact: true }).click();
-  await page.getByRole("textbox", { name: "Message Vibe Evals", exact: true }).fill(task);
-  await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  return material;
+}
+// A new Improve project imports the definition through the visible start screen.
+async function importDefinition(page: import("@playwright/test").Page, name: string, buffer: Buffer) {
+  const previous = new URL(page.url()).searchParams.get("session");
+  await page.getByRole("button", { name: "New project", exact: true }).click();
+  await chooseDoor(page, "improve");
+  await improveSource(page, "import", { name, mimeType: "application/json", buffer });
+  await expect.poll(() => new URL(page.url()).searchParams.get("session"), { timeout: 30_000 }).not.toBe(previous);
+  await expect(page.getByRole("region", { name: "Missing references", exact: true })).toBeVisible();
+}
+
+test("authored reference definition downloads and reimports with matching pasted attachment", async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/vibe-evals");
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "build" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
+  const material = await pasteMaterial(page);
+  await startComposer(page, "build").fill(task);
+  const send = page.getByRole("button", { name: startCopy.build.primary, exact: true });
+  await expect(send).toBeEnabled();
+  await send.click();
   await expect.poll(async () => (await saved(page)).session.document.build?.phase, { timeout: 90_000 }).toBe("results");
   const initial = await saved(page);
   const initialArtifact = initial.session.document.artifacts.at(-1);
@@ -141,25 +157,18 @@ test("authored reference definition downloads and reimports with matching pasted
     agent_prompt: initialArtifact.agent_prompt, evaluation: initialArtifact.blueprint,
     input_contract: initialArtifact.input_contract, required_capabilities: initialArtifact.required_capabilities,
     references: [{ key: "meeting-notes", content_hash: material.content_hash, usage: "reference", name: material.name, format: material.kind }] };
-  await page.getByRole("button", { name: "New agent", exact: true }).click();
-  await page.getByRole("button", { name: /Improve an existing agent/ }).click();
-  await page.getByRole("button", { name: "Import a test pack", exact: true }).click();
-  await page.locator('input[type="file"][accept=".json,.yaml,.yml"]').setInputFiles({ name: "source-definition.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(manifest)) });
-  await expect(page.getByRole("region", { name: "Missing references", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Add a file or text", exact: true }).click();
-  await page.getByRole("tab", { name: "Paste text" }).click();
-  await page.getByRole("textbox", { name: "Text to work on" }).fill(notes);
-  await page.getByRole("button", { name: "Attach text", exact: true }).click();
-  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready");
-  await page.getByRole("button", { name: "Close material dialog", exact: true }).click();
+  await importDefinition(page, "source-definition.json", Buffer.from(JSON.stringify(manifest)));
+  await pasteMaterial(page);
   await page.getByRole("region", { name: "Missing references", exact: true }).getByRole("button", { name: /^Attach / }).click();
   await expect(page.getByRole("region", { name: "Missing references", exact: true })).not.toBeVisible();
   const source = await saved(page);
   const sourceArtifact = source.session.document.artifacts.at(-1);
   expect(sourceArtifact.reference_inputs).toHaveLength(1);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Details", exact: true }).click();
+  await page.locator('[aria-label="Project details"]').getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings and details", exact: true });
   const downloaded = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download agent instructions and tests", exact: true }).click();
+  await settings.getByRole("button", { name: "Download agent instructions and tests", exact: true }).click();
   const download = await downloaded;
   const bytes = await readFile((await download.path())!);
   const definition = JSON.parse(bytes.toString());
@@ -169,25 +178,15 @@ test("authored reference definition downloads and reimports with matching pasted
   expect(bytes.toString()).not.toContain(sourceArtifact.reference_inputs[0].input_id);
   expect(bytes.toString()).not.toContain(notes);
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).not.toBeVisible();
-  await page.getByRole("button", { name: "New agent", exact: true }).click();
-  await page.getByRole("button", { name: /Improve an existing agent/ }).click();
-  await page.getByRole("button", { name: "Import a test pack", exact: true }).click();
-  await page.locator('input[type="file"][accept=".json,.yaml,.yml"]').setInputFiles({ name: "agent-definition.json", mimeType: "application/json", buffer: bytes });
-  await expect(page.getByRole("region", { name: "Missing references", exact: true })).toBeVisible();
+  await expect(settings).not.toBeVisible();
+  await importDefinition(page, "agent-definition.json", bytes);
   const imported = await saved(page);
   const importedArtifact = imported.session.document.artifacts.at(-1);
   expect(importedArtifact.missing_references).toHaveLength(1);
   expect(imported.session.operations).toHaveLength(0);
   expect(imported.calls).toHaveLength(source.calls.length);
   expect(imported.attempt_count).toBe(0);
-  await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeDisabled();
-  await page.getByRole("button", { name: "Add a file or text", exact: true }).click();
-  await page.getByRole("tab", { name: "Paste text" }).click();
-  await page.getByRole("textbox", { name: "Text to work on" }).fill(notes);
-  await page.getByRole("button", { name: "Attach text", exact: true }).click();
-  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready");
-  await page.getByRole("button", { name: "Close material dialog", exact: true }).click();
+  await pasteMaterial(page);
   const bindingResponse = page.waitForResponse(response => response.url().endsWith(`/sessions/${imported.session.id}/references`) && response.request().method() === "POST");
   await page.getByRole("region", { name: "Missing references", exact: true }).getByRole("button", { name: /^Attach / }).click();
   const binding = await bindingResponse;
@@ -202,7 +201,7 @@ test("authored reference definition downloads and reimports with matching pasted
   expect(bound.session.operations).toHaveLength(0);
   expect(bound.attempt_count).toBe(0);
   expect(bound.calls).toHaveLength(source.calls.length);
-  expect(new URL(page.url()).searchParams.get("agent")).toBe(boundArtifact.id);
+  await expect.poll(() => new URL(page.url()).searchParams.get("agent")).toBe(boundArtifact.id);
   await page.screenshot({ path: info.outputPath("reattached-reference.png"), fullPage: true });
   expect(errors).toEqual([]);
 });

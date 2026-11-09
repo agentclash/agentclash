@@ -475,7 +475,7 @@ return (
           {advancedReceipt&&<a className="underline" href={advancedURL(advancedReceipt.workspace_id,advancedReceipt.draft_id,saveReturnPath,session?projectTitle(session):undefined)}>Open advanced editor and keep a return link</a>}
           {saveAccess === "loading" ? <p role="status" className="text-sm vibe-muted">Loading your workspaces…</p>
             : saveAccess === "error" ? <Button onClick={() => setLoadAttempt(n => n + 1)}>Try again</Button>
-            : saveAccess === "ready" && !workspaces.length ? <p className="text-sm">You need a workspace you can save to. <Link className="underline" onClick={rememberSave} href={`/dashboard?${new URLSearchParams({ returnTo: keepReturnURL(sessionID || "", artifact?.id || "", workspace, saveBaseline) })}`}>Open your workspace</Link>, or ask its owner for access. Your work is still here.</p>
+            : saveAccess === "ready" && !workspaces.length ? <p className="text-sm">You need a workspace you can save to. <Link className="underline" onClick={rememberSave} href={`/dashboard?${new URLSearchParams({ returnTo: keepReturnURL(sessionID || "", saveArtifact?.id || "", workspace, saveBaseline, saveReturnPath, saveAdvanced) })}`}>Open your workspace</Link>, or ask its owner for access. Your work is still here.</p>
             : saveAccess === "ready" ? (
             <>
               <label className="text-sm">

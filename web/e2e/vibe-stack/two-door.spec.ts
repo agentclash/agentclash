@@ -118,24 +118,32 @@ test("clear Build goes through real worker to three results, scoped export and i
  await openView(page,'Results');
  await expect(buildResult(page)).toContainText(resultCopy.headline(3, 3));
  expect((await evidence(page)).calls).toHaveLength(afterTrial.calls.length);
- const firstThread = new URL(page.url()).searchParams.get('thread');
+ // Each retained trial thread keeps its own messages and unsent draft, also after a reload.
+ const trial=page.getByRole('region',{name:'Try your agent',exact:true});
+ const conversation=trial.getByRole('combobox',{name:'Trial conversation',exact:true});
+ const message=trial.getByRole('textbox',{name:'Message your agent',exact:true});
+ await buildResult(page).getByRole('button',{name:'Try your agent',exact:true}).click();
+ await expect(conversation).toBeVisible();
+ const firstThread=await conversation.locator('option').nth(1).getAttribute('value');
  expect(firstThread).toBeTruthy();
- await page.getByRole('button', {name:'New conversation',exact:true}).click();
- await page.getByRole('textbox', {name:'Message your agent',exact:true}).fill('My item is unopened and I bought it 20 days ago.');
- await page.getByRole('button', {name:'Send to prototype',exact:true}).click();
+ await trial.getByRole('button',{name:'New conversation',exact:true}).click();
+ await message.fill('My item is unopened and I bought it 20 days ago.');
+ await trial.getByRole('button',{name:'Send to agent',exact:true}).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.operations.at(-1)?.state;}).toBe('COMPLETED');
- const secondThread = new URL(page.url()).searchParams.get('thread');
+ await expect(conversation.locator('option')).toHaveCount(3);
+ const secondThread=await conversation.inputValue();
  expect(secondThread).toBeTruthy(); expect(secondThread).not.toBe(firstThread);
- await page.getByLabel('Trial conversation', {exact:true}).selectOption(firstThread!);
- await expect(page.locator('[data-build-entry]').filter({hasText:'My item is unopened and I bought it 10 days ago.'})).toBeVisible();
- await page.getByRole('textbox', {name:'Message your agent',exact:true}).fill('A draft for the earlier conversation');
- await page.getByLabel('Trial conversation', {exact:true}).selectOption(secondThread!);
- await expect(page.getByRole('textbox', {name:'Message your agent',exact:true})).toHaveValue('');
- await page.getByLabel('Trial conversation', {exact:true}).selectOption(firstThread!);
- await expect(page.getByRole('textbox', {name:'Message your agent',exact:true})).toHaveValue('A draft for the earlier conversation');
+ await conversation.selectOption(firstThread!);
+ await expect(trial.getByRole('log')).toContainText('My item is unopened and I bought it 10 days ago.');
+ await message.fill('A draft for the earlier conversation');
+ await conversation.selectOption(secondThread);
+ await expect(message).toHaveValue('');
+ await conversation.selectOption(firstThread!);
+ await expect(message).toHaveValue('A draft for the earlier conversation');
  await page.reload();
- await expect(page.getByLabel('Trial conversation', {exact:true})).toHaveValue(firstThread!);
- await expect(page.getByRole('textbox', {name:'Message your agent',exact:true})).toHaveValue('A draft for the earlier conversation');
+ if(!(await trial.isVisible())) await buildResult(page).getByRole('button',{name:'Try your agent',exact:true}).click();
+ await expect(conversation).toHaveValue(firstThread!);
+ await expect(message).toHaveValue('A draft for the earlier conversation');
 });
 
 test("mobile loading exposes Stop and cancelling does not restart the initial check",async({page},info)=>{

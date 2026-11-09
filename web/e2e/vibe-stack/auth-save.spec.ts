@@ -1,7 +1,16 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { chooseDoor, composer as entryComposer, doorButton, doorReady, sendButton } from "../vibe/entry-model";
 
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const description = "Answer shop return questions. Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund. Prepare exactly three tests.";
+
+// Occasional result actions stay in one disclosure.
+async function openMoreActions(page: Page) {
+  const more = page.locator("details.vibe-results-more");
+  await expect(more).toHaveCount(1);
+  if (!(await more.evaluate(el => (el as HTMLDetailsElement).open))) await more.locator(":scope > summary").click();
+  await expect(more).toHaveJSProperty("open", true);
+}
 
 test("guest setup resumes the exact selected prototype and baseline before explicit Save", async ({ page, context }, info) => {
   const errors: string[] = [];
@@ -16,29 +25,34 @@ test("guest setup resumes the exact selected prototype and baseline before expli
     await page.screenshot({ path: info.outputPath(`landing-navigation-${viewport.width}.png`) });
     await page.getByRole("link", { name: "Try Vibe Evals", exact: true }).click();
     await expect(page).toHaveURL(/\/vibe-evals$/);
-    await expect(page.getByRole("button", { name: /Build an agent/ })).toBeVisible();
-    if (viewport.width < 1024) await page.getByRole("button", { name: "Open agents", exact: true }).click();
+    await expect(doorButton(page, "build")).toBeVisible();
+    // The entry top bar opens the projects drawer at every width; its footer links Home.
+    await page.getByRole("button", { name: "Open projects", exact: true }).click();
     await page.getByRole("link", { name: "Home", exact: true }).click();
     await expect(page).toHaveURL(/\/$/);
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/vibe-evals");
-  await page.getByRole("button", { name: /Build an agent/ }).click();
-  await page.getByRole("textbox", { name: "Message Vibe Evals" }).fill(description);
-  await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await chooseDoor(page, "build");
+  await doorReady(page, "build");
+  await entryComposer(page).fill(description);
+  await expect(sendButton(page)).toBeEnabled();
+  await sendButton(page).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get("session"), { timeout: 30_000 }).toMatch(/^[0-9a-f-]{36}$/);
   const session = new URL(page.url()).searchParams.get("session")!;
   const evidence = async () => (await page.request.get(`${api}/__fixture/evidence?session=${session}`)).json();
   await expect.poll(async () => (await evidence()).session.document.build?.phase, { timeout: 90_000 }).toBe("results");
   const before = await evidence();
   const artifact = before.session.document.artifacts.at(-1).id;
+  await openMoreActions(page);
   await page.getByRole("button", { name: "Download / save", exact: true }).click();
   // Save intent selects the current immutable prototype, not a later result.
   await page.getByRole("button", { name: "Save to my account", exact: true }).click();
-  const baseline = new URL((await page.getByRole("link", { name: /Sign in/ }).getAttribute("href"))!, "http://localhost").searchParams.get("returnTo")!;
+  const signIn = page.getByRole("dialog").getByRole("link", { name: /Sign in/ });
+  const baseline = new URL((await signIn.getAttribute("href"))!, "http://localhost").searchParams.get("returnTo")!;
   const baselineID = new URL(baseline, "http://localhost").searchParams.get("keep_run");
   expect(baselineID).toBe(before.session.operations.at(-1).id);
-  await page.getByRole("link", { name: /Sign in/ }).click();
+  await signIn.click();
   await context.addCookies([{ name: "fixture-auth-failure", value: "once", url: "http://127.0.0.1:55442", sameSite: "Lax" }]);
   await page.getByRole("button", { name: /Continue with/ }).first().click();
   await expect(page).toHaveURL(/error=callback_failed/);
@@ -48,7 +62,7 @@ test("guest setup resumes the exact selected prototype and baseline before expli
   expect((await evidence()).calls).toHaveLength(before.calls.length);
   await page.getByRole("button", { name: /Continue with/ }).first().click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  await page.getByRole("link", { name: "Open your workspace" }).click();
+  await page.getByRole("dialog").getByRole("link", { name: "Open your workspace" }).click();
   await expect(page).toHaveURL(/\/onboard\?/);
   await page.getByRole("textbox").first().fill(`Vibe onboarding ${Date.now()}`);
   await page.getByRole("button", { name: /Continue/ }).click();
@@ -61,7 +75,7 @@ test("guest setup resumes the exact selected prototype and baseline before expli
   expect((await evidence()).calls).toHaveLength(before.calls.length);
   expect((await evidence()).session.saved_draft_id).toBeFalsy();
   const persistence = page.waitForResponse(response => response.url().endsWith(`/sessions/${session}/save`) && response.request().method() === "POST");
-  await page.getByRole("dialog").getByRole("button", { name: "Keep these tests", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /^(Keep these tests|Save and iterate)$/ }).click();
   const response = await persistence;
   expect(response.ok(), await response.text()).toBeTruthy();
   expect(response.request().postDataJSON()).toMatchObject({ artifact_id: artifact, baseline_operation_id: baselineID });
