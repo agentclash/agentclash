@@ -78,7 +78,6 @@ Optional branches (load when the workflow applies):
 ```text
 • agentclash-multi-turn-operator     → human takeover during multi_turn runs
 • agentclash-dataset-workflows       → dataset eval, gate, traces, regression sync
-• agentclash-prompt-eval-playground  → prompt-eval YAML + playground experiments
 • agentclash-agent-harness-setup     → E2B coding-agent harness tasks and suites
 • agentclash-workspace-admin         → org/workspace CRUD and membership (teams)
 • agentclash-security-evaluation     → client-side security stress harnesses
@@ -120,9 +119,8 @@ Read skills in this order when multiple apply:
 20. `agentclash-agent-harness-setup`
 21. `agentclash-multi-turn-operator`
 22. `agentclash-dataset-workflows`
-23. `agentclash-prompt-eval-playground`
-24. `agentclash-workspace-admin`
-25. `agentclash-security-evaluation`
+23. `agentclash-workspace-admin`
+24. `agentclash-security-evaluation`
 
 > To author or change skills, browse the web catalog at
 > https://www.agentclash.dev/docs/agent-skills — it is documentation, not an
@@ -156,7 +154,6 @@ Each skill folder name matches its `name` in frontmatter. When a skill lists **R
 | `agentclash-agent-harness-setup` | E2B coding-agent harness tasks, suites, failure review |
 | `agentclash-multi-turn-operator` | Human takeover turns in multi_turn packs |
 | `agentclash-dataset-workflows` | Dataset eval, CI gate, traces, regression sync |
-| `agentclash-prompt-eval-playground` | Prompt eval YAML and playground experiments |
 | `agentclash-workspace-admin` | Org/workspace CRUD and membership administration |
 | `agentclash-security-evaluation` | Security pack stress-run and vault harnesses |
 

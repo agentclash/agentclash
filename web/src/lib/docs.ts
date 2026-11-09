@@ -507,13 +507,6 @@ export const DOCS_NAV: DocNavSection[] = [
         href: "/docs/agent-skills/agentclash-dataset-workflows",
       },
       {
-        title: "Prompt Eval Playground Skill",
-        description:
-          "Scaffold, validate, and run prompt eval configs and playground experiments.",
-        slug: ["agent-skills", "agentclash-prompt-eval-playground"],
-        href: "/docs/agent-skills/agentclash-prompt-eval-playground",
-      },
-      {
         title: "Workspace Admin Skill",
         description:
           "Administer organizations, workspaces, and membership beyond basic CLI login.",

@@ -20,7 +20,7 @@ Configure and operate Agent Harnesses — workspace-scoped autonomous coding tas
 ## Do Not Use When
 - The workload is a standard challenge-pack eval — use `agentclash-eval-runner`.
 - The user only needs deployments or runtime resources — use agent-build skills first.
-- The task is prompt A/B testing without a repo harness — use `agentclash-prompt-eval-playground`.
+- The task is prompt A/B testing without a repo harness — use a `prompt_eval` challenge pack (`agentclash-challenge-pack-yaml-author`).
 
 ## Inputs Needed
 - Workspace with provider secrets configured (`openai_api_key_secret_name` or `--api-key-secret`).
