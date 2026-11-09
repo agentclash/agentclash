@@ -147,3 +147,19 @@ func TestTryoutLegacyCannotBeClaimedOrMutated(t *testing.T) {
 		t.Fatal("legacy ID-only claim accepted")
 	}
 }
+
+func TestTryoutCreationRequiresCreatorDigest(t *testing.T) {
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+	for _, proof := range []string{"", "invalid", strings.Repeat("z", 64)} {
+		_, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
+			TemplateSlug: "meeting-minutes", Input: json.RawMessage(`{"notes":"fixture"}`), OwnerProofHash: proof,
+		})
+		if err == nil {
+			t.Fatal("creation without a valid creator digest accepted")
+		}
+	}
+	if len(repo.tryouts) != 0 {
+		t.Fatal("invalid ownership created a proofless legacy-shaped record")
+	}
+}

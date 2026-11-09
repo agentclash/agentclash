@@ -296,6 +296,10 @@ func normalizeSelectedHarnessKind(kind string) (*string, error) {
 }
 
 func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input CreateAnonymousAgentTryoutInput) (repository.AgentTryout, error) {
+	digest, err := hex.DecodeString(input.OwnerProofHash)
+	if err != nil || len(digest) != sha256.Size || input.OwnerProofHash != strings.ToLower(input.OwnerProofHash) {
+		return repository.AgentTryout{}, fmt.Errorf("%w: creator proof is required", ErrInvalidAgentTryoutInput)
+	}
 	template, err := m.lookupTemplate(input.TemplateSlug)
 	if err != nil {
 		return repository.AgentTryout{}, err
@@ -350,10 +354,7 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		now = m.now()
 	}
 	expiresAt := now.UTC().Add(defaultAgentTryoutTTL)
-	var ownerProofHash *string
-	if input.OwnerProofHash != "" {
-		ownerProofHash = &input.OwnerProofHash
-	}
+	ownerProofHash := &input.OwnerProofHash
 	createParams := repository.CreateAgentTryoutParams{
 		TemplateSlug:             template.Slug,
 		Status:                   repository.AgentTryoutStatusQueued,

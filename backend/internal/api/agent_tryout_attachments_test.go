@@ -63,7 +63,8 @@ func TestAgentTryoutManagerResolvesInputAttachments(t *testing.T) {
 	}
 
 	tryout, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
-		TemplateSlug: "meeting-minutes",
+		OwnerProofHash: testTryoutOwnerProofHash,
+		TemplateSlug:   "meeting-minutes",
 		Input: json.RawMessage(`{
 			"notes":"Summarize the attached brief",
 			"input_attachments":[{"id":"` + attachment.ID + `"}]
@@ -111,7 +112,8 @@ func TestAgentTryoutManagerRejectsForeignInputAttachment(t *testing.T) {
 	}
 
 	_, err = manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
-		TemplateSlug: "meeting-minutes",
+		OwnerProofHash: testTryoutOwnerProofHash,
+		TemplateSlug:   "meeting-minutes",
 		Input: json.RawMessage(`{
 			"notes":"Summarize the attached brief",
 			"input_attachments":[{"id":"` + attachment.ID + `"}]

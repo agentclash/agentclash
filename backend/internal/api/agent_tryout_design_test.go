@@ -247,6 +247,7 @@ func TestCreateAnonymousTryoutStoresAgentDesign(t *testing.T) {
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
 	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"ship it"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -280,6 +281,7 @@ func TestCreateAnonymousTryoutRejectsOversizeInstructions(t *testing.T) {
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
 	_, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"ship it"}`),
 		AnonymousFingerprint: "203.0.113.10",

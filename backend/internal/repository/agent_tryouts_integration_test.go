@@ -296,6 +296,7 @@ func TestRepositoryAgentTryoutLifecycle(t *testing.T) {
 
 	expiresAt := time.Now().UTC().Add(24 * time.Hour)
 	anonymousHash := "anon-hash"
+	ownerProofHash := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	created, err := repo.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{
 		TemplateSlug:             "meeting-minutes",
 		Status:                   repository.AgentTryoutStatusQueued,
@@ -309,6 +310,7 @@ func TestRepositoryAgentTryoutLifecycle(t *testing.T) {
 		CostLimitUSD:             0.25,
 		MaxDurationSeconds:       120,
 		AnonymousFingerprintHash: &anonymousHash,
+		AnonymousOwnerProofHash:  &ownerProofHash,
 		ExpiresAt:                &expiresAt,
 	})
 	if err != nil {
@@ -323,6 +325,7 @@ func TestRepositoryAgentTryoutLifecycle(t *testing.T) {
 
 	claimed, err := repo.ClaimAgentTryout(ctx, repository.ClaimAgentTryoutParams{
 		ID:              created.ID,
+		OwnerProofHash:  ownerProofHash,
 		OrganizationID:  fixture.organizationID,
 		WorkspaceID:     fixture.workspaceID,
 		ClaimedByUserID: fixture.userID,
@@ -346,13 +349,14 @@ func TestRepositoryAgentTryoutLifecycle(t *testing.T) {
 
 	_, err = repo.ClaimAgentTryout(ctx, repository.ClaimAgentTryoutParams{
 		ID:              created.ID,
+		OwnerProofHash:  ownerProofHash,
 		OrganizationID:  fixture.organizationID,
 		WorkspaceID:     fixture.workspaceID,
 		ClaimedByUserID: fixture.userID,
 		ClaimedAt:       time.Now().UTC(),
 	})
-	if !errors.Is(err, repository.ErrAgentTryoutAlreadyClaimed) {
-		t.Fatalf("second ClaimAgentTryout error = %v, want ErrAgentTryoutAlreadyClaimed", err)
+	if err != nil {
+		t.Fatalf("same claim retry returned error: %v", err)
 	}
 
 	latency := int64(1500)
