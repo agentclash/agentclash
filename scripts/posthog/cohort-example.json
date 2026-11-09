@@ -1,0 +1,9 @@
+{
+  "observationScope": "synthetic",
+  "cutoff": "2026-01-01T00:00:00Z",
+  "asOf": "2026-02-01T00:00:00Z",
+  "exclusionsReviewed": true,
+  "excludedUserIds": [],
+  "excludedWorkspaceIds": [],
+  "excludedRunIds": []
+}

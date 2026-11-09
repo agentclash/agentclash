@@ -12,15 +12,24 @@
  *   POSTHOG_API_SCOPE=projects|environments
  */
 
-const PROJECT_ID = process.env.POSTHOG_PROJECT_ID;
-const API_KEY = process.env.POSTHOG_PERSONAL_API_KEY;
-const HOST = (process.env.POSTHOG_HOST ?? "https://us.posthog.com").replace(/\/$/, "");
-const SCOPE = process.env.POSTHOG_API_SCOPE ?? "projects";
-const RAW_CUTOFF = process.env.POSTHOG_CANONICAL_CUTOFF;
+import { readFileSync } from "node:fs";
+import { cohortInsights, validateCohortConfig } from "./cohorts.mjs";
+
+const DRY_RUN = process.argv.includes("--dry-run");
+const configIndex = process.argv.indexOf("--config");
+const COHORT_CONFIG = configIndex >= 0
+  ? validateCohortConfig(JSON.parse(readFileSync(process.argv[configIndex + 1], "utf8"))) : null;
+if (DRY_RUN && !COHORT_CONFIG) throw new Error("--dry-run requires --config with explicit synthetic or reviewed boundaries");
+
+const PROJECT_ID = DRY_RUN ? null : process.env.POSTHOG_PROJECT_ID;
+const API_KEY = DRY_RUN ? null : process.env.POSTHOG_PERSONAL_API_KEY;
+const HOST = ((DRY_RUN ? null : process.env.POSTHOG_HOST) ?? "https://us.posthog.com").replace(/\/$/, "");
+const SCOPE = DRY_RUN ? "projects" : (process.env.POSTHOG_API_SCOPE ?? "projects");
+const RAW_CUTOFF = COHORT_CONFIG?.cutoff ?? process.env.POSTHOG_CANONICAL_CUTOFF;
 const EVENT_CONTRACT_VERSION = 1;
 const DASHBOARD_NAME = "AgentClash — Acquisition to first run";
 
-if (!PROJECT_ID || !API_KEY || !RAW_CUTOFF) {
+if (!DRY_RUN && (!PROJECT_ID || !API_KEY || !RAW_CUTOFF)) {
   console.error(
     "Missing env. Required: POSTHOG_PROJECT_ID, POSTHOG_PERSONAL_API_KEY, " +
       "POSTHOG_CANONICAL_CUTOFF (the API/worker milestone deployment timestamp).",
@@ -247,7 +256,14 @@ async function findInsightByName(name) {
   return (response.results ?? []).find((insight) => insight.name === name) ?? null;
 }
 
+if (COHORT_CONFIG) INSIGHTS.push(...cohortInsights(COHORT_CONFIG));
+
 async function main() {
+  if (DRY_RUN) {
+    console.log(JSON.stringify({ dry_run: true, cohort_config: COHORT_CONFIG, insights: INSIGHTS }, null, 2));
+    return;
+  }
+  if (COHORT_CONFIG?.observationScope === "synthetic") throw new Error("Synthetic cohort configuration cannot provision production insights");
   console.log(`PostHog reconciliation against ${base}`);
   const dashboardDescription =
     `Canonical contract v${EVENT_CONTRACT_VERSION}. API/worker cutoff: ${CUTOFF}. ` +

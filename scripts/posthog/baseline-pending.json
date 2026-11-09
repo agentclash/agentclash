@@ -1,0 +1,33 @@
+{
+  "status": "pending_production_validation",
+  "apiDeployment": null,
+  "apiNewRecordingDeployedAtUTC": null,
+  "webDeployment": null,
+  "webAcquisitionDeployedAtUTC": null,
+  "workerDeployment": null,
+  "workerCanonicalRecordingDeployedAtUTC": null,
+  "minimumReleasedCLIHostMarkerVersion": null,
+  "cliHostMarkerReleasedAtUTC": null,
+  "posthogDatasetAndQueryValidation": null,
+  "taggedProductionIdentityAndEventCoverage": null,
+  "cohortConfig": {
+    "observationScope": "production",
+    "cutoff": null,
+    "asOf": null,
+    "exclusionsReviewed": false,
+    "excludedUserIds": [],
+    "excludedWorkspaceIds": [],
+    "excludedRunIds": []
+  },
+  "exclusionReviewEvidence": null,
+  "firstBaselinePeriodUTC": null,
+  "matureNewAccounts": null,
+  "accountsWithHostedRunWithinSevenDays": null,
+  "accountsWithImportedEvidenceWithinSevenDays": null,
+  "observedActiveUsersByHost": null,
+  "observedActiveWorkspacesByHost": null,
+  "unknownAcquisitionAndHostCoverage": null,
+  "unmatchedCompletions": null,
+  "invitedAndUnknownSignupKinds": null,
+  "interpretation": "Pending. Empty or immature cohorts are not a zero-conversion baseline. No uplift claim."
+}
