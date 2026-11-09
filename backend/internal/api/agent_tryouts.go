@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/runtime/domain"
@@ -184,6 +185,7 @@ type AgentTryoutQuotaConfig struct {
 }
 
 type AgentTryoutManager struct {
+	analytics               productanalytics.ProductAnalytics
 	authorizer              WorkspaceAuthorizer
 	repo                    AgentTryoutRepository
 	now                     func() time.Time
@@ -202,6 +204,12 @@ type AgentTryoutManager struct {
 // artifacts. Without it, artifact listing still works but omits download links.
 func (m *AgentTryoutManager) WithArtifactSigner(signer ArtifactContentSigner) *AgentTryoutManager {
 	m.artifactSigner = signer
+	return m
+}
+
+// WithProductAnalytics installs optional, best-effort canonical telemetry.
+func (m *AgentTryoutManager) WithProductAnalytics(recorder productanalytics.ProductAnalytics) *AgentTryoutManager {
+	m.analytics = recorder
 	return m
 }
 
@@ -1100,7 +1108,7 @@ func (m *AgentTryoutManager) ClaimTryout(ctx context.Context, caller Caller, inp
 	if now.IsZero() {
 		now = m.now()
 	}
-	return m.repo.ClaimAgentTryout(ctx, repository.ClaimAgentTryoutParams{
+	claimed, err := m.repo.ClaimAgentTryout(ctx, repository.ClaimAgentTryoutParams{
 		ID:              input.ID,
 		OwnerProofHash:  tryoutProofFromContext(ctx),
 		OrganizationID:  orgID,
@@ -1108,6 +1116,18 @@ func (m *AgentTryoutManager) ClaimTryout(ctx context.Context, caller Caller, inp
 		ClaimedByUserID: caller.UserID,
 		ClaimedAt:       now,
 	})
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
+	// A normal retry is a read of an existing claim, not another success.
+	// Concurrent first claims still share the recorder's deterministic UUID.
+	if tryout.WorkspaceID == nil {
+		productanalytics.Record(m.analytics, ctx, productanalytics.Event{
+			Name: productanalytics.TryoutClaimed, DistinctID: caller.UserID, EntityID: claimed.ID,
+			OrganizationID: orgID, WorkspaceID: input.WorkspaceID,
+		})
+	}
+	return claimed, nil
 }
 
 func (m *AgentTryoutManager) CreatePrivateShare(ctx context.Context, caller Caller, id uuid.UUID) (CreateAgentTryoutShareResult, error) {

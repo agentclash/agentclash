@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/vibe/access"
 	"github.com/agentclash/agentclash/backend/internal/vibe/inputs"
 	"github.com/google/uuid"
@@ -19,9 +20,16 @@ import (
 )
 
 type Store struct {
+	analytics    productanalytics.ProductAnalytics
 	DB           *pgxpool.Pool
 	Inputs       *inputs.Repository
 	localTesting bool
+}
+
+// WithProductAnalytics installs optional analytics without changing product persistence.
+func (s *Store) WithProductAnalytics(recorder productanalytics.ProductAnalytics) *Store {
+	s.analytics = recorder
+	return s
 }
 
 func NewStore(db *pgxpool.Pool, cfg Config) *Store {
