@@ -23,7 +23,6 @@ const skillSlugs = [
   "agentclash-eval-runner",
   "agentclash-hub",
   "agentclash-multi-turn-operator",
-  "agentclash-prompt-eval-playground",
   "agentclash-quickstart",
   "agentclash-regression-flywheel",
   "agentclash-scorecard-reader",
@@ -116,15 +115,6 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash dataset test");
     expect(doc?.content).toContain("agentclash dataset sync-regression-suite");
     expect(doc?.content).toContain("agentclash dataset import-traces");
-  });
-
-  it("generates the prompt eval playground skill", () => {
-    const doc = getDocBySlug(["agent-skills", "agentclash-prompt-eval-playground"]);
-
-    expect(doc?.title).toBe("Prompt Eval Playground Skill");
-    expect(doc?.content).toContain("agentclash prompt-eval validate");
-    expect(doc?.content).toContain("agentclash prompt-eval run");
-    expect(doc?.content).toContain("agentclash playground list");
   });
 
   it("generates the security evaluation skill", () => {
