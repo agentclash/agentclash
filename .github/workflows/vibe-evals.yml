@@ -3,11 +3,19 @@ on:
   pull_request:
     paths:
       - 'backend/internal/vibe/**'
+      - 'backend/internal/worker/**'
+      - 'backend/cmd/worker/**'
+      - 'backend/.env.example'
+      - 'deploy/aws/**'
+      - 'delivery/**'
       - 'backend/internal/enquiries/**'
       - 'backend/internal/email/**'
       - 'backend/internal/mutation/**'
       - 'backend/Dockerfile.worker'
       - 'backend/internal/api/vibe*'
+      - 'backend/internal/api/auth*'
+      - 'backend/internal/api/onboarding*'
+      - 'backend/internal/api/users*'
       - 'backend/internal/api/runs*'
       - 'web/src/app/(workspace)/workspaces/*/runs/**'
       - 'backend/internal/api/regression*'
@@ -45,6 +53,17 @@ on:
       - 'runtime/scoring/**'
       - 'runtime/challengepack/**'
       - 'web/src/app/vibe-evals/**'
+      - 'web/src/app/auth/**'
+      - 'web/src/app/landing.tsx'
+      - 'web/src/app/page.tsx'
+      - 'web/src/app/dashboard/**'
+      - 'web/src/app/onboard/**'
+      - 'web/src/components/marketing/**'
+      - 'web/src/lib/auth/**'
+      - 'web/src/lib/marketing-nav.ts'
+      - 'web/src/components/app-shell/**'
+      - 'web/src/lib/public-http.ts'
+      - 'web/src/middleware*'
       - 'web/src/components/vibe/**'
       - 'web/src/components/ui/**'
       - 'web/src/app/globals.css'
@@ -105,7 +124,7 @@ jobs:
           go -C backend build ./...
           go -C backend vet ./...
       - name: Material and enquiry transaction regressions
-        run: python3 scripts/vibe/fixture.py -- go -C backend test -race ./internal/enquiries ./internal/vibe/inputs -count=1
+        run: python3 scripts/vibe/fixture.py -- go -C backend test -race ./internal/enquiries ./internal/vibe/inputs ./internal/worker -count=1
       - name: Canonical connector and native owners on an owned child database
         run: |
           python3 scripts/vibe/fixture.py --database-env DATABASE_URL --label task7 -- go -C backend test -race ./internal/repository -run 'EvalSession|TestConnector|GetRunAgentExecutionContext|WorkspaceSecret|CreateQueuedRun|CreateEvalSessionWithQueuedRuns|ListActiveAgentDeployments|Regression|ReleaseGate|CIProfile' -count=1
@@ -144,7 +163,7 @@ jobs:
       - name: Typecheck and safe Markdown tests
         run: |
           npx tsc --noEmit --incremental false
-          npx vitest run "src/app/(workspace)/workspaces/[workspaceId]/runs/[runId]/run-detail-client.test.tsx" src/lib/ci-setup.test.ts "src/app/(workspace)/workspaces/[workspaceId]/ci-setup/ci-setup-client.test.tsx" src/components/share/report-snapshot.test.tsx src/components/share/workspace-reports.test.tsx src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts src/lib/vibe-controllers.test.tsx src/lib/vibe-export.test.ts src/lib/vibe-reports.test.ts src/components/challenge-packs/vibe-return.test.tsx src/lib/vibe-build-analytics.test.ts src/lib/use-vibe-inputs.test.tsx src/lib/vibe-request-recovery.test.ts src/lib/vibe-presentation.test.ts src/lib/vibe-project.test.ts
+          npx vitest run "src/app/(workspace)/workspaces/[workspaceId]/runs/[runId]/run-detail-client.test.tsx" src/lib/ci-setup.test.ts "src/app/(workspace)/workspaces/[workspaceId]/ci-setup/ci-setup-client.test.tsx" src/components/share/report-snapshot.test.tsx src/components/share/workspace-reports.test.tsx src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts src/lib/vibe-controllers.test.tsx src/lib/vibe-export.test.ts src/lib/vibe-reports.test.ts src/components/challenge-packs/vibe-return.test.tsx src/lib/vibe-build-analytics.test.ts src/lib/use-vibe-inputs.test.tsx src/lib/vibe-request-recovery.test.ts src/lib/vibe-presentation.test.ts src/lib/vibe-project.test.ts src/lib/auth src/middleware.authkit.test.ts
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -189,7 +208,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bubblewrap python3-venv
           /usr/bin/python3 -m venv "$RUNNER_TEMP/vibe-pdf-runtime"
-          "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install -r backend/internal/vibe/inputs/requirements.txt
+          "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install --no-deps -r backend/internal/vibe/inputs/requirements.txt
       - name: Compile API fixture before the browser server startup deadline
         working-directory: backend
         run: go test -p 1 ./internal/api -run '^$' -count=1
@@ -200,7 +219,7 @@ jobs:
           python3 scripts/vibe/verify_lifecycle.py interrupt
       - name: Browser to real API, PostgreSQL and Temporal worker (fake inference)
         working-directory: web
-        run: npx playwright test --config playwright.vibe-stack.config.ts interpretation.spec.ts journey.spec.ts two-door.spec.ts sdk-reports.spec.ts connectors.spec.ts report-snapshots.spec.ts roundtrip.spec.ts
+        run: npx playwright test --config playwright.vibe-stack.config.ts interpretation.spec.ts journey.spec.ts two-door.spec.ts sdk-reports.spec.ts connectors.spec.ts report-snapshots.spec.ts roundtrip.spec.ts auth-save.spec.ts
       - name: Supplied-text output, recovery and contact journey (fake inference)
         working-directory: web
         env:
@@ -230,7 +249,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bubblewrap python3-venv
           /usr/bin/python3 -m venv "$RUNNER_TEMP/vibe-pdf-runtime"
-          "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install -r backend/internal/vibe/inputs/requirements.txt
+          "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install --no-deps -r backend/internal/vibe/inputs/requirements.txt
       - name: Actual extraction and denial of secrets, network, writes and excess memory
         working-directory: backend
         run: VIBE_TEST_PDF_RUNTIME="$RUNNER_TEMP/vibe-pdf-runtime" go test -v ./internal/vibe/inputs -count=1

@@ -50,7 +50,9 @@ export type EvaluationProposal = {
   scenarios?: { input: string; expected: string }[];
   success_criteria: string;
 };
+export type ReferenceRequirement = { key: string; content_hash: string; usage: "reference"; name?: string; format?: "text" | "pdf"; page_count?: number };
 export type Artifact = {
+  missing_references?: ReferenceRequirement[];
  original?:{id:string;artifact_id:string;filename:string;media_type:string;content_sha256:string;size_bytes:number};
   input_contract?: { version: number; formats: string[]; label: string };
   required_capabilities?: string[];
@@ -409,21 +411,6 @@ export function caseInput(input: unknown): string {
     : JSON.stringify(input, null, 2);
 }
 
-export function exportAgent(artifact: Artifact, models: Models) {
-  downloadVibe(
-    "agentclash-agent.json",
-    JSON.stringify(
-      {
-        format: "agentclash-vibe-v1",
-        agent_prompt: artifact.agent_prompt,
-        evaluation: artifact.blueprint,
-        models,
-      },
-      null,
-      2,
-    ),
-  );
-}
 export function downloadVibe(
   name: string,
   text: string,

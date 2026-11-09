@@ -1,5 +1,5 @@
 import { NextRequest, type NextFetchEvent } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const authkitMock = vi.hoisted(() =>
   vi.fn(async () => {
@@ -21,6 +21,16 @@ function request(path: string) {
 }
 
 describe("middleware AuthKit coverage", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(["GET", "HEAD"])("keeps private Vibe %s on the HTML AuthKit route", async method => {
+    vi.stubEnv("MARKDOWN_NEGOTIATION_ENABLED", "true");
+    const response = await middleware(new NextRequest("https://www.agentclash.dev/vibe-evals?session=private", { method, headers: { accept: "text/markdown" } }), event);
+    expect(authkitMock).toHaveBeenCalledOnce();
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(response.headers.get("link")).toBeNull();
+  });
+
   beforeEach(() => {
     authkitMock.mockClear();
   });

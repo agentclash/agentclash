@@ -6,7 +6,7 @@ export type TaskMaterial = {
   id: string; session_id: string; client_id: string; kind: "text" | "pdf"; name: string;
   status: "uploaded" | "extracting" | "ready" | "unreadable" | "failed" | "deleted" | "expired";
   content_hash: string; warnings: string[]; error?: string; expires_at?: string;
-  pages?: { number: number; text: string }[];
+  page_count?: number; pages?: { number: number; text: string }[];
 };
 export const inputPath = (session: string, id?: string) => `/sessions/${session}/inputs${id ? `/${id}` : ""}`;
 export function uploadMaterial(session: string, client: string, value: File | string, token?: string | null) {

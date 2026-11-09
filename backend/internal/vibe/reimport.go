@@ -51,10 +51,11 @@ func (s *Service) Reimport(ctx context.Context, actor string, id uuid.UUID, in R
 	if base == nil {
 		return out, fault("artifact_required", "Choose the exact version to compare.")
 	}
-	b, prompt, _, err := importDefinition([]byte(in.Content), s.Config.Limits(v.Anonymous))
+	definition, err := importDefinition([]byte(in.Content), s.Config.Limits(v.Anonymous))
 	if err != nil {
 		return out, err
 	}
+	b, prompt := definition.Blueprint, definition.AgentPrompt
 	var envelope struct {
 		ArtifactID uuid.UUID  `json:"artifact_id"`
 		Artifacts  []Artifact `json:"artifacts"`

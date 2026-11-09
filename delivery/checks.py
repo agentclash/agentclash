@@ -137,6 +137,7 @@ def check(group, evidence, part=None):
             run(["go", "test", "-short", "-race", "-count=1", "./..."], ROOT / group)
         if group == "backend" and selected("migrator"):
             run([sys.executable, "scripts/db/test-migrator.py"])
+            run([sys.executable, "deploy/aws/tests/rehearse-vibe-worker.py"], timeout=240)
     elif group == "terminal":
         # Bun resolves the linked core package through its owning workspace in
         # a full checkout. A fresh runner also needs that workspace's locked

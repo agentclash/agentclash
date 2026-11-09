@@ -1,6 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
+import { UserMenu } from "@/components/app-shell/user-menu";
+import { sanitizeReturnTo } from "@/lib/auth/return-to";
 import { useVibeEvidenceOwner } from "@/lib/use-vibe-evidence-owner";
 import { projectTitle, sidebarPreference, setSidebarPreference } from "@/lib/vibe-project";
 import type { CollectionStatus } from "@/lib/use-vibe-collection";
@@ -34,26 +38,10 @@ import { useVibeConnection } from "@/lib/vibe-connection";
 import { VIBE_CONTACT_EMAIL } from "@/lib/vibe-contact";
 import { TalkToUs } from "./talk-to-us";
 import { terminal, type Session } from "@/lib/vibe";
-import { workingBuildArtifact, buildVersion } from "@/lib/vibe-build-timeline";
+import { evaluationIdentity } from "@/lib/vibe-build-timeline";
 import { DeleteProject } from "./delete-project";
 import { VibeButton } from "./vibe-button";
 
-export function evaluationIdentity(session: Session) {
-  const artifacts = session.document.artifacts;
-  const artifact =
-    session.document.evaluation?.door === "build"
-      ? workingBuildArtifact(session)
-      : artifacts.at(-1);
-  const title = projectTitle(session);
-  const version = artifact ? buildVersion(session, artifact) : 0;
-  const scope =
-    artifact?.kind === "conversation_evaluation"
-      ? "Recorded replies"
-      : artifact?.agent_prompt
-        ? `${artifact.sample ? "Sample agent" : "Agent"} v${version}`
-        : artifact ? `Tests v${version}` : session.document.evaluation?.door === "test" ? "No tests yet" : "No agent yet";
-  return { title, scope };
-}
 
 type Props = {
   actorScope?: string;
@@ -80,6 +68,9 @@ type Props = {
 
 // Navigation consumes existing context data. It never creates a session or runs a model.
 export function EvaluationNavigation(p: Props) {
+  const { user, loading } = useAuth();
+  const params = useSearchParams();
+  const returnTo = sanitizeReturnTo(`/vibe-evals?${params}`);
   const life = useVibeEvidenceOwner(p.actorScope, p.session?.id);
   const [deleting, setDeleting] = useState<Session>();
   const [talking, setTalking] = useState(false);
@@ -298,6 +289,7 @@ export function EvaluationNavigation(p: Props) {
           <span className="vibe-sidebar-contact-copy"><span>Talk to us</span><small id={mobile ? "vibe-contact-email-mobile" : "vibe-contact-email"}>{contactEmail}</small></span>
         </button>
         <Link href="/"><House aria-hidden="true" />Home</Link>
+        {user ? <><Link href="/dashboard">Dashboard</Link><UserMenu displayName={[user.firstName, user.lastName].filter(Boolean).join(" ")} email={user.email} avatarUrl={user.profilePictureUrl || undefined} /></> : !loading && <Link href={`/auth/login?${new URLSearchParams({ returnTo, mode: "signin" })}`}>Sign in</Link>}
         <details>
           <summary><CircleHelp aria-hidden="true" />Help<ChevronRight className="vibe-chevron" aria-hidden="true" /></summary>
           <p>

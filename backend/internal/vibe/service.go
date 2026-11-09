@@ -94,6 +94,16 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 			return Operation{}, fault("invalid_message", question)
 		}
 	}
+	if sub.ArtifactID != nil {
+		for _, a := range v.Document.Artifacts {
+			if a.ID == *sub.ArtifactID {
+				if err = artifactReady(a, s.Config.MaterialBuild); err != nil {
+					return Operation{}, err
+				}
+				break
+			}
+		}
+	}
 	if err = s.validateSubmissionModels(sub, v); err != nil {
 		return Operation{}, err
 	}
@@ -107,6 +117,9 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 			return Operation{}, e
 		}
 		return *receipt, nil
+	}
+	if len(sub.Inputs) > 0 && !s.Config.MaterialBuild {
+		return Operation{}, fault("hosted_disabled", "Material-based execution is unavailable. Remove the selected materials explicitly to continue with instructions only.")
 	}
 	if len(sub.Inputs) > 0 && sub.Kind != "message" && sub.Kind != "playground" {
 		return Operation{}, fault("invalid_input", "Materials can be used for preparation or a prototype trial, not as replacement check inputs.")
@@ -168,8 +181,10 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 				break
 			}
 		}
-		if p.Artifact != nil && p.Artifact.UnavailableReason != "" {
-			return Operation{}, fault("unsupported_capability", p.Artifact.UnavailableReason)
+		if p.Artifact != nil {
+			if err = artifactReady(*p.Artifact, s.Config.MaterialBuild); err != nil {
+				return Operation{}, err
+			}
 		}
 		if p.Artifact != nil && p.Artifact.IsTestPlan() {
 			return Operation{}, fault("artifact_required", "This is a test plan. Review or export it to test in your own environment; it cannot run a customer trial or evaluation here.")
@@ -304,10 +319,11 @@ func (s *Service) importVersion(ctx context.Context, actor string, id uuid.UUID,
 	if err = s.Gate.Check(ctx, actor, l); err != nil {
 		return err
 	}
-	b, agentPrompt, sample, err := importDefinition(content, l)
+	definition, err := importDefinition(content, l)
 	if err != nil {
 		return err
 	}
+	b := definition.Blueprint
 	var envelope map[string]json.RawMessage
 	_ = json.Unmarshal(b, &envelope)
 	artifactID := uuid.New()
@@ -330,7 +346,12 @@ func (s *Service) importVersion(ctx context.Context, actor string, id uuid.UUID,
 					return fault("attachment_limit", "This pack exceeds the attachment allowance.")
 				}
 				current.Document.AttachmentCount++
-				a := Artifact{ParentID: parent, Original: &original, ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: "Imported challenge pack", Blueprint: b, AgentPrompt: agentPrompt, CreatedAt: timestamp(), UnavailableReason: capability.Message}
+				a := definition
+				a.ParentID, a.Original = parent, &original
+				a.ID, a.Kind, a.Provenance, a.CreatedAt, a.UnavailableReason = artifactID, "test_suite", "imported", timestamp(), capability.Message
+				if a.Title == "" {
+					a.Title = "Imported challenge pack"
+				}
 				current.Document.Artifacts = append(current.Document.Artifacts, a)
 				current.Document.ActiveArtifactID = &a.ID
 				current.Document.TestJourney = true
@@ -356,7 +377,14 @@ func (s *Service) importVersion(ctx context.Context, actor string, id uuid.UUID,
 		v.Document.Messages = append(v.Document.Messages, msg)
 		replyID := uuid.New()
 		v.Document.TestJourney = true
-		v.Document.Artifacts = append(v.Document.Artifacts, Artifact{ParentID: parent, Original: &original, ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: c.Bundle.Pack.Name, Sample: sample, ScopeNote: prototypeScope, AgentPrompt: agentPrompt, Blueprint: b, SourceMessageID: msg.ID, ProposalMessageID: &replyID, CreatedAt: timestamp()})
+		definition.ParentID, definition.Original = parent, &original
+		definition.ID, definition.Kind, definition.Provenance = artifactID, "test_suite", "imported"
+		definition.SourceMessageID, definition.ProposalMessageID, definition.CreatedAt = msg.ID, &replyID, timestamp()
+		if definition.Title == "" {
+			definition.Title = c.Bundle.Pack.Name
+		}
+		v.Document.Artifacts = append(v.Document.Artifacts, definition)
+		v.Document.ActiveArtifactID = &artifactID
 		v.Document.Messages = append(v.Document.Messages, Message{ID: replyID, Role: "assistant", Content: fmt.Sprintf("Your %d imported tests are ready to review.", len(c.Cases)), ArtifactID: &artifactID, CreatedAt: timestamp()})
 		return nil
 	})
@@ -413,73 +441,4 @@ func (s *Service) SaveWithBaseline(ctx context.Context, actor string, id uuid.UU
 		return uuid.Nil, err
 	}
 	return s.Store.saveDraft(ctx, actor, id, revision, ws, *artifact, c.Composition, models, selected != nil, baseline, approve...)
-}
-
-func importDefinition(content []byte, l Limits) (json.RawMessage, string, string, error) {
-	b, err := ImportJSON(content, l)
-	if err != nil {
-		return nil, "", "", err
-	}
-	// Round-trip our explicitly versioned export. Model preferences are data;
-	// importing a file cannot change the active model policy or start execution.
-	agentPrompt := ""
-	sample := ""
-	var envelope map[string]json.RawMessage
-	if err = json.Unmarshal(b, &envelope); err != nil {
-		return nil, "", "", err
-	}
-	if string(envelope["format"]) == `"agentclash-evaluation-v1"` || string(envelope["format"]) == `"agentclash-evaluation-v2"` {
-		var exported struct {
-			Format           string          `json:"format"`
-			SessionID        uuid.UUID       `json:"session_id,omitempty"`
-			Title            string          `json:"title,omitempty"`
-			CapturedAt       string          `json:"captured_at,omitempty"`
-			Selection        json.RawMessage `json:"selection,omitempty"`
-			Evidence         json.RawMessage `json:"evidence,omitempty"`
-			CaseMappings     json.RawMessage `json:"case_mappings,omitempty"`
-			Omissions        json.RawMessage `json:"omissions,omitempty"`
-			Manifest         json.RawMessage `json:"manifest,omitempty"`
-			ArtifactID       uuid.UUID       `json:"artifact_id"`
-			Artifacts        []Artifact      `json:"artifacts"`
-			Scope            string          `json:"scope"`
-			Sample           *string         `json:"sample"`
-			Rules            json.RawMessage `json:"rules"`
-			Runs             json.RawMessage `json:"runs"`
-			SDKReports       json.RawMessage `json:"sdk_reports,omitempty"`
-			CanonicalResults json.RawMessage `json:"canonical_results,omitempty"`
-		}
-		if err = Decode(b, l, &exported); err != nil {
-			return nil, "", "", err
-		}
-		found := false
-		for _, a := range exported.Artifacts {
-			if a.ID == exported.ArtifactID {
-				b, agentPrompt, sample = a.Blueprint, a.AgentPrompt, a.Sample
-				found = true
-				break
-			}
-		}
-		if !found || len(agentPrompt) > l.MessageBytes {
-			return nil, "", "", fault("invalid_pack", "The export does not identify a bounded agent version.")
-		}
-		// Historical scores and source claims are evidence, never imported as
-		// new successful runs or automatically accepted business requirements.
-		envelope = map[string]json.RawMessage{}
-	}
-	if _, ok := envelope["format"]; ok {
-		var exported struct {
-			Format      string          `json:"format"`
-			AgentPrompt string          `json:"agent_prompt"`
-			Evaluation  json.RawMessage `json:"evaluation"`
-			Models      Models          `json:"models"`
-		}
-		if err = Decode(b, l, &exported); err != nil {
-			return nil, "", "", err
-		}
-		if exported.Format != "agentclash-vibe-v1" || strings.TrimSpace(exported.AgentPrompt) == "" || len(exported.AgentPrompt) > l.MessageBytes {
-			return nil, "", "", fault("invalid_pack", "The agent export format or instructions are invalid.")
-		}
-		agentPrompt, b = exported.AgentPrompt, exported.Evaluation
-	}
-	return b, agentPrompt, sample, nil
 }

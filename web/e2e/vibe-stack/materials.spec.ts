@@ -1,5 +1,6 @@
+import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { doorButton, showView, startCopy, startComposer } from "../vibe/entry-model";
+import { chooseDoor, doorButton, improveSource, showView, startCopy, startComposer } from "../vibe/entry-model";
 
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const task = "Summarize meeting notes, including decisions and action owners.";
@@ -112,4 +113,95 @@ test("bad PDF offers paste without creating an agent or silently shortening inpu
   await page.getByRole("button",{name:"Detach",exact:true}).click();
   await page.getByRole("tab",{name:"Paste text"}).click();
   await expect(page.getByRole("textbox",{name:"Text to work on",exact:true})).toBeEnabled();
+});
+
+async function pasteMaterial(page: import("@playwright/test").Page) {
+  await page.getByRole("button", { name: "Add a file or text", exact: true }).click();
+  await page.getByRole("tab", { name: "Paste text" }).click();
+  await page.getByRole("textbox", { name: "Text to work on" }).fill(notes);
+  const uploaded = page.waitForResponse(response => response.url().endsWith("/inputs") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Attach text", exact: true }).click();
+  const material = await (await uploaded).json();
+  await expect(page.locator(".vibe-material-chip-status")).toHaveText(/^Ready/);
+  await page.getByRole("button", { name: "Close material dialog", exact: true }).click();
+  return material;
+}
+// A new Improve project imports the definition through the visible start screen.
+async function importDefinition(page: import("@playwright/test").Page, name: string, buffer: Buffer) {
+  const previous = new URL(page.url()).searchParams.get("session");
+  await page.getByRole("button", { name: "New project", exact: true }).click();
+  await chooseDoor(page, "improve");
+  await improveSource(page, "import", { name, mimeType: "application/json", buffer });
+  await expect.poll(() => new URL(page.url()).searchParams.get("session"), { timeout: 30_000 }).not.toBe(previous);
+  await expect(page.getByRole("region", { name: "Missing references", exact: true })).toBeVisible();
+}
+
+test("authored reference definition downloads and reimports with matching pasted attachment", async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/vibe-evals");
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "build" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
+  const material = await pasteMaterial(page);
+  await startComposer(page, "build").fill(task);
+  const send = page.getByRole("button", { name: startCopy.build.primary, exact: true });
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect.poll(async () => (await saved(page)).session.document.build?.phase, { timeout: 90_000 }).toBe("results");
+  const initial = await saved(page);
+  const initialArtifact = initial.session.document.artifacts.at(-1);
+  // An authored portable manifest uses an actual compiled pack and actual uploaded hash.
+  // Import/binding remain production API transitions; no operation receipts are supplied.
+  const manifest = { format: "agentclash-vibe-v2", title: initialArtifact.title,
+    agent_prompt: initialArtifact.agent_prompt, evaluation: initialArtifact.blueprint,
+    input_contract: initialArtifact.input_contract, required_capabilities: initialArtifact.required_capabilities,
+    references: [{ key: "meeting-notes", content_hash: material.content_hash, usage: "reference", name: material.name, format: material.kind }] };
+  await importDefinition(page, "source-definition.json", Buffer.from(JSON.stringify(manifest)));
+  await pasteMaterial(page);
+  await page.getByRole("region", { name: "Missing references", exact: true }).getByRole("button", { name: /^Attach / }).click();
+  await expect(page.getByRole("region", { name: "Missing references", exact: true })).not.toBeVisible();
+  const source = await saved(page);
+  const sourceArtifact = source.session.document.artifacts.at(-1);
+  expect(sourceArtifact.reference_inputs).toHaveLength(1);
+  await page.getByRole("button", { name: "Details", exact: true }).click();
+  await page.locator('[aria-label="Project details"]').getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings and details", exact: true });
+  const downloaded = page.waitForEvent("download");
+  await settings.getByRole("button", { name: "Download agent instructions and tests", exact: true }).click();
+  const download = await downloaded;
+  const bytes = await readFile((await download.path())!);
+  const definition = JSON.parse(bytes.toString());
+  expect(definition.format).toBe("agentclash-vibe-v2");
+  expect(definition.references).toHaveLength(1);
+  expect(definition.references[0].content_hash).toBe(sourceArtifact.reference_inputs[0].content_hash);
+  expect(bytes.toString()).not.toContain(sourceArtifact.reference_inputs[0].input_id);
+  expect(bytes.toString()).not.toContain(notes);
+  await page.keyboard.press("Escape");
+  await expect(settings).not.toBeVisible();
+  await importDefinition(page, "agent-definition.json", bytes);
+  const imported = await saved(page);
+  const importedArtifact = imported.session.document.artifacts.at(-1);
+  expect(importedArtifact.missing_references).toHaveLength(1);
+  expect(imported.session.operations).toHaveLength(0);
+  expect(imported.calls).toHaveLength(source.calls.length);
+  expect(imported.attempt_count).toBe(0);
+  await pasteMaterial(page);
+  const bindingResponse = page.waitForResponse(response => response.url().endsWith(`/sessions/${imported.session.id}/references`) && response.request().method() === "POST");
+  await page.getByRole("region", { name: "Missing references", exact: true }).getByRole("button", { name: /^Attach / }).click();
+  const binding = await bindingResponse;
+  expect(binding.ok(), await binding.text()).toBeTruthy();
+  const bound = await saved(page);
+  const boundArtifact = bound.session.document.artifacts.at(-1);
+  expect(boundArtifact.parent_id).toBe(importedArtifact.id);
+  expect(boundArtifact.missing_references || []).toHaveLength(0);
+  expect(boundArtifact.blueprint).toEqual(importedArtifact.blueprint);
+  expect(boundArtifact.agent_prompt).toBe(importedArtifact.agent_prompt);
+  expect(boundArtifact.reference_inputs).toHaveLength(1);
+  expect(bound.session.operations).toHaveLength(0);
+  expect(bound.attempt_count).toBe(0);
+  expect(bound.calls).toHaveLength(source.calls.length);
+  await expect.poll(() => new URL(page.url()).searchParams.get("agent")).toBe(boundArtifact.id);
+  await page.screenshot({ path: info.outputPath("reattached-reference.png"), fullPage: true });
+  expect(errors).toEqual([]);
 });

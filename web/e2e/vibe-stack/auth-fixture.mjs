@@ -4,6 +4,8 @@
 import { createServer } from "node:http";
 import { createHash, generateKeyPairSync, randomUUID, sign } from "node:crypto";
 
+// Reports use users 4 and 5 as members. The onboarding journey needs a user without memberships.
+export const unonboardedUser = "a8000000-0000-4000-8000-000000000006";
 export const fixtureUser = "a8000000-0000-4000-8000-000000000001";
 export async function startAuthFixture(port, webOrigin) {
   const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -28,7 +30,14 @@ export async function startAuthFixture(port, webOrigin) {
       if (url.pathname === "/user_management/authorize") {
         const redirect = new URL(url.searchParams.get("redirect_uri"));
         if (redirect.origin !== webOrigin || redirect.pathname !== "/auth/callback") return json(400, { error: "unknown callback" });
-        const code = randomUUID(); codes.set(code, {challenge:url.searchParams.get("code_challenge"),user: /vibe-fixture-user=(a8000000-0000-4000-8000-00000000000[145])/.exec(req.headers.cookie||"")?.[1] || fixtureUser});
+        if ((req.headers.cookie || "").split("; ").includes("fixture-auth-failure=once")) {
+          redirect.searchParams.set("state", url.searchParams.get("state"));
+          redirect.searchParams.set("error", "access_denied");
+          res.writeHead(302, { Location: redirect.href, "Set-Cookie": "fixture-auth-failure=; Max-Age=0; Path=/; SameSite=Lax" });
+          return res.end();
+        }
+        const unonboarded = (req.headers.cookie || "").split("; ").includes("fixture-identity=unonboarded");
+        const code = randomUUID(); codes.set(code, {challenge:url.searchParams.get("code_challenge"),user: unonboarded ? unonboardedUser : /vibe-fixture-user=(a8000000-0000-4000-8000-00000000000[145])/.exec(req.headers.cookie||"")?.[1] || fixtureUser});
         redirect.searchParams.set("state", url.searchParams.get("state")); redirect.searchParams.set("code", code);
         res.writeHead(302, { Location: redirect.href }); return res.end();
       }

@@ -14,6 +14,7 @@ WORKDIR /src/backend
 # Compile the shared dependency graph once for the three application targets.
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -mod=readonly -trimpath -ldflags="-s -w" -o /out/ ./cmd/api-server ./cmd/worker ./cmd/db-migrate
 FROM ${RUNTIME_IMAGE}
+USER root
 ARG TARGET=api-server
 COPY --from=build /out/${TARGET} /app
 COPY backend/db/migrations /migrations

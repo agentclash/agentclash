@@ -4,6 +4,9 @@ import { expect, it, vi } from "vitest";
 import { EvaluationNavigation } from "./evaluation-navigation";
 import type { Session } from "@/lib/vibe";
 import type { CollectionStatus } from "@/lib/use-vibe-collection";
+// The sidebar reads the signed-in user and the current URL for its Sign in link.
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
+vi.mock("@workos-inc/authkit-nextjs/components", () => ({ useAuth: () => ({ loading: false, user: null }) }));
 vi.mock("framer-motion", () => ({ useReducedMotion: () => true, motion: { aside: ({children}: React.PropsWithChildren) => <aside>{children}</aside>, span: ({children}: React.PropsWithChildren) => <span>{children}</span> } }));
 vi.mock("@/components/ui/sheet", () => ({ Sheet: ({children}: React.PropsWithChildren) => <>{children}</>, SheetContent: () => null, SheetDescription: () => null, SheetTitle: () => null, SheetTrigger: ({children}: React.PropsWithChildren) => <button>{children}</button> }));
 it("discards obsolete metadata failures and resets pending controls on project switch", async () => {

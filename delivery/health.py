@@ -4,6 +4,7 @@ import json
 import time
 import urllib.request
 import urllib.parse
+from pathlib import Path
 
 from common import Refused, require, run
 
@@ -46,10 +47,42 @@ def drained(host, settings):
     # The pinned CLI omits zero-valued count fields. An empty workflow list
     # proves the same drain condition without depending on that encoding.
     require(json.loads(raw) == [], "Open Temporal work remains or response is invalid")
+    inventory = json.loads(database_query(host, (Path(__file__).parent / "vibe-drain.sql").read_text()))
+    require(
+        isinstance(inventory, dict)
+        and set(inventory) == {"operations", "outbox", "continuations", "attempts", "holds", "input_work", "cleanup", "enquiries"}
+        and all(type(count) is int and count == 0 for count in inventory.values()),
+        "Vibe database work or unreconciled holds remain",
+    )
     require(
         settings["delivery"]["namespace"] == "agentclash-prod",
         "Use an isolated cluster for rehearsal",
     )
+
+
+def database_query(host, query):
+    return host.compose(
+        "run", "--rm", "-T", "--no-deps", "database-admin",
+        "psql", "-X", "-At", "-d", "agentclash", "-c", query,
+        timeout=30,
+    )
+
+
+def vibe_runtime(host):
+    # The candidate worker reads its own pinned secret generation and validates
+    # its installed parser. No inference, workflow or database work is started.
+    value = json.loads(host.compose(
+        "run", "--rm", "-T", "--no-deps", "worker", "/app", "--check-vibe-runtime",
+        timeout=30,
+    ))
+    require(
+        isinstance(value, dict)
+        and set(value) == {"enabled", "pdf_required", "pdf_available"}
+        and all(type(flag) is bool for flag in value.values()),
+        "Invalid Vibe runtime receipt",
+    )
+    require(not value["pdf_required"] or value["pdf_available"], "Required PDF reader is unavailable")
+    return value
 
 
 def no_database_writers(host):
@@ -80,6 +113,7 @@ def poller_times(value):
 
 
 def ready(host, manifest, started_at, timeout=240):
+    expected = vibe_runtime(host)
     deadline = time.monotonic() + timeout
     while True:
         try:
@@ -110,7 +144,10 @@ def ready(host, manifest, started_at, timeout=240):
                         c["State"].get("Health", {}).get("Status") == "healthy",
                         "Application not ready",
                     )
-            for queue in ("execution", "scoring", "background"):
+            queues = ["execution", "scoring", "background"]
+            if expected["enabled"]:
+                queues.append("vibe-evals")
+            for queue in queues:
                 for kind in ("workflow", "activity"):
                     value = json.loads(
                         host.compose(
@@ -141,6 +178,12 @@ def ready(host, manifest, started_at, timeout=240):
                         ),
                         "Missing fresh worker pollers",
                     )
+            if expected["pdf_required"]:
+                # Heartbeats carry a 90-second lease. Requiring its inferred
+                # last update after this deployment excludes old workers.
+                fresh_after = max(started_at, time.time() - 90)
+                raw = database_query(host, "SELECT EXISTS(SELECT 1 FROM vibe_input_workers WHERE expires_at>now() AND expires_at-interval '90 seconds'>=to_timestamp(" + str(fresh_after) + "));" )
+                require(raw.strip() == b"t", "Missing fresh PDF reader heartbeat")
             return
         except (Refused, KeyError, ValueError):
             require(

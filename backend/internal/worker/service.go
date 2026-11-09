@@ -11,6 +11,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
+	"github.com/agentclash/agentclash/backend/internal/vibe"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/sandbox"
@@ -27,6 +28,11 @@ type TemporalWorker interface {
 type OrphanRunReaper interface {
 	Start(ctx context.Context)
 }
+
+// BackgroundTask adapts maintenance loops to the coordinator's joined lifecycle.
+type BackgroundTask func(context.Context)
+
+func (task BackgroundTask) Start(ctx context.Context) { task(ctx) }
 
 // multiQueueWorker hosts one Temporal worker per configured task queue class.
 type multiQueueWorker struct {
@@ -74,6 +80,7 @@ func NewTemporalWorker(
 	githubClient workflowpkg.GitHubPullRequestClient,
 	executionHooks workflowpkg.FakeWorkHooks,
 	artifactStore storage.Store,
+	vibeRunner *vibe.Runner,
 	productAnalytics ...productanalytics.ProductAnalytics,
 ) TemporalWorker {
 	queues := cfg.TaskQueues
@@ -106,6 +113,9 @@ func NewTemporalWorker(
 		workflowpkg.RegisterForTaskQueue(w, activities, queue)
 		workflowpkg.RegisterDatasetGenerationForTaskQueue(w, datasetActivities, queue)
 		workers = append(workers, w)
+	}
+	if vibeRunner != nil {
+		workers = append(workers, vibe.NewWorker(client, vibeRunner, temporalWorkerOptions(cfg, vibe.TaskQueue, drain)))
 	}
 
 	return &multiQueueWorker{workers: workers, activities: drain}

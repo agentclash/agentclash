@@ -4,6 +4,8 @@ on:
     paths:
       - 'backend/internal/vibe/**'
       - 'backend/internal/api/vibe*'
+      - 'backend/internal/worker/**'
+      - 'backend/.env.example'
       - 'backend/db/migrations/**'
       - 'backend/go.*'
       - 'runtime/**'

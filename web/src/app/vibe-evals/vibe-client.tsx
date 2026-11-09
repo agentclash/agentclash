@@ -22,6 +22,7 @@ import { instructionChangeBaseline } from "@/lib/vibe-build-timeline";
 import { VibeConnection } from "@/lib/vibe-connection";
 
 
+import { MissingReferences } from "@/components/vibe/missing-references";
 import { TaskInput } from "@/components/vibe/task-input";
 
 
@@ -173,10 +174,10 @@ return (
         takeStartFocus={takeStartFocus}
         onSample={() => sendMessage("I don’t know. Use a clearly labelled sample policy or a narrower sample demonstration.")}
         onDemo={id => sendMessage("Try a sample email assistant", undefined, id)}
-        materialInput={config?.material_build && buildJourney && buildStart ? <TaskInput key={`${sessionID}:${materialScope}`} configure inputs={materials} pdfAvailable={!!config?.pdf_uploads} disabled={busy} /> : undefined}
+        materialInput={(config?.material_build || !!materials.items.length) && buildJourney && buildStart ? <TaskInput key={`${sessionID}:${materialScope}`} configure inputs={materials} pdfAvailable={!!config?.material_build && !!config?.pdf_uploads} disabled={busy || !config?.material_build} /> : undefined}
         runInferenceUnavailable={!runInferenceAvailable}
         inferenceUnavailable={!inferenceAvailable || !session && !entryAvailable}
-        sendBlocked={!inferenceAvailable || !!messageError || buildStart && (!quoteMatches || materials.blocked)}
+        sendBlocked={!inferenceAvailable || !!messageError || !!artifact?.missing_references?.length || (!!materials.bindings.length && !config?.material_build) || buildStart && (!quoteMatches || materials.blocked)}
         sendError={messageError || (buildStart ? quoteError : undefined)}
         testJourney={testJourney}
         interactionActions={config?.interaction_actions}
@@ -308,6 +309,8 @@ return (
             )}</>}
         notice={
           <>
+            {session && artifact && !!artifact.missing_references?.length && <MissingReferences session={session} artifact={artifact} inputs={materials} busy={busy || dirtyArtifact} token={token} onBoundSession={(incoming, boundArtifactID) => { if (snapshots.accept(incoming)) setSelectedArtifactID(boundArtifactID); }} />}
+            {session && artifact && !!artifact.missing_references?.length && <TaskInput inputs={materials} pdfAvailable={!!config?.material_build && !!config?.pdf_uploads} disabled={busy || dirtyArtifact || !config?.enabled || !config?.material_build} />}
             {!newEvaluation && !saveOpen && error && (feedbackTarget === "project" || /selected result is unavailable/.test(error) || !artifact && view !== "build") && <p role="alert">{error}</p>}
             {config && !inferenceAvailable && !choosingEntry && <p role="status">{unavailableReason}</p>}
             {!choosingEntry && !config && !configError && <p className="vibe-connection-status" role="status">Connecting…</p>}
@@ -417,8 +420,8 @@ return (
           </>
         }
         preview={
-          <PrototypeTrial workspace notice={trialSubmission ? submissionRecovery : undefined} sessionID={session?.id} sendError={feedbackTarget === "trial" ? error : undefined} error={new TextEncoder().encode(trialText).length > messageLimit ? `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.` : undefined} inline={buildJourney} dock={false} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} busy={busy} inferenceBlocked={!inferenceAvailable || dirtyArtifact || trialMaterials.blocked} text={trialText} hasMaterial={trialMaterials.bindings.length > 0}
-            materialInput={config?.material_build && buildJourney ? <TaskInput key={`${sessionID}:${materialScope}`} inputs={trialMaterials} pdfAvailable={!!config?.pdf_uploads} disabled={busy || dirtyArtifact} /> : undefined}
+          <PrototypeTrial workspace notice={trialSubmission ? submissionRecovery : undefined} sessionID={session?.id} sendError={feedbackTarget === "trial" ? error : undefined} error={new TextEncoder().encode(trialText).length > messageLimit ? `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.` : undefined} inline={buildJourney} dock={false} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} busy={busy} inferenceBlocked={!inferenceAvailable || dirtyArtifact || trialMaterials.blocked || !!artifact?.missing_references?.length || (!!trialMaterials.bindings.length && !config?.material_build)} text={trialText} hasMaterial={trialMaterials.bindings.length > 0}
+            materialInput={(config?.material_build || !!trialMaterials.items.length) && buildJourney ? <TaskInput key={`${sessionID}:${materialScope}`} inputs={trialMaterials} pdfAvailable={!!config?.material_build && !!config?.pdf_uploads} disabled={busy || dirtyArtifact || !config?.material_build} /> : undefined}
             onText={setTrialText} onSend={() => { setFeedbackTarget("trial"); void submit("playground", trialText); }}
             onBack={() => navigate("build")} onNew={newTrial} thread={threadID}
             history={trialHistory} messages={trialMessages}
@@ -433,7 +436,7 @@ return (
       />
       }
       </EvaluationNavigation></ImproveRunProvider></VibeConnection.Provider>
-      <AgentSettings reimport={session && artifact && artifact.kind !== "test_plan" ? <ReimportReview key={`${authUser?.id}:${session.id}:${artifact.id}`} actor={authUser?.id || "guest"} session={session} artifact={artifact} token={token} disabled={busy || dirtyArtifact} onApplied={updated => { if (accept(updated)) { const next = updated.document.artifacts.at(-1); if (next) navigate("tests", next.id, ""); setSettingsOpen(false); } }} /> : undefined} open={settingsOpen} onOpenChange={setSettingsOpen}
+      <AgentSettings loadMaterials={materials.list} reimport={session && artifact && artifact.kind !== "test_plan" ? <ReimportReview key={`${authUser?.id}:${session.id}:${artifact.id}`} actor={authUser?.id || "guest"} session={session} artifact={artifact} token={token} disabled={busy || dirtyArtifact} onApplied={updated => { if (accept(updated)) { const next = updated.document.artifacts.at(-1); if (next) navigate("tests", next.id, ""); setSettingsOpen(false); } }} /> : undefined} open={settingsOpen} onOpenChange={setSettingsOpen}
         onOpenChangeComplete={open => { const action = afterSettings.current; afterSettings.current = null; if (!open) action?.(); }}
         config={config} session={session} artifact={artifact} artifacts={artifacts}
         models={models} busy={busy || dirtyArtifact} workspace={workspace}
@@ -472,7 +475,7 @@ return (
           {advancedReceipt&&<a className="underline" href={advancedURL(advancedReceipt.workspace_id,advancedReceipt.draft_id,saveReturnPath,session?projectTitle(session):undefined)}>Open advanced editor and keep a return link</a>}
           {saveAccess === "loading" ? <p role="status" className="text-sm vibe-muted">Loading your workspaces…</p>
             : saveAccess === "error" ? <Button onClick={() => setLoadAttempt(n => n + 1)}>Try again</Button>
-            : saveAccess === "ready" && !workspaces.length ? <p className="text-sm">You need a workspace you can save to. <Link className="underline" href="/dashboard">Open your workspace</Link>, or ask its owner for access. Your work is still here.</p>
+            : saveAccess === "ready" && !workspaces.length ? <p className="text-sm">You need a workspace you can save to. <Link className="underline" onClick={rememberSave} href={`/dashboard?${new URLSearchParams({ returnTo: keepReturnURL(sessionID || "", saveArtifact?.id || "", workspace, saveBaseline, saveReturnPath, saveAdvanced) })}`}>Open your workspace</Link>, or ask its owner for access. Your work is still here.</p>
             : saveAccess === "ready" ? (
             <>
               <label className="text-sm">

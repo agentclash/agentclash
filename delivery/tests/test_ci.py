@@ -248,10 +248,12 @@ class CITests(unittest.TestCase):
 
         go_build, go_vet = "go build ./...", "go vet ./..."
         go_test, migrator = "go test -short", "python scripts/db/test-migrator.py"
+        # The migrator part also runs the production Vibe worker factory with disposable services.
+        worker = "python deploy/aws/tests/rehearse-vibe-worker.py"
         self.assertEqual(commands("backend", "compile"), [go_build, go_vet])
         self.assertEqual(commands("backend", "test"), [go_test])
-        self.assertEqual(commands("backend", "migrator"), [migrator])
-        self.assertEqual(commands("backend"), [go_build, go_vet, go_test, migrator])
+        self.assertEqual(commands("backend", "migrator"), [migrator, worker])
+        self.assertEqual(commands("backend"), [go_build, go_vet, go_test, migrator, worker])
         self.assertEqual(commands("runtime", "test"), [go_test])
         self.assertEqual(
             commands("frontend", "static"),

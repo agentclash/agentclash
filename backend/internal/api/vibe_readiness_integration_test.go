@@ -223,6 +223,15 @@ func checkVibeWorkerLifecycle(t *testing.T, free bool) {
 			}
 		})
 	}
+	// A project from before the outage stays readable and deletable while
+	// inference is disabled. Create it while inference is still enabled.
+	created := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(`{"door":"build","id":"`+uuid.NewString()+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	routes.ServeHTTP(created, req)
+	if created.Code != 201 {
+		t.Fatalf("project create before the outage: %d %s", created.Code, created.Body)
+	}
 	// Dependency readiness is still healthy when inference is disabled.
 	svc.Config.Enabled = false
 	for k, v := range deps.DependencyChecks(context.Background()) {
@@ -233,13 +242,16 @@ func checkVibeWorkerLifecycle(t *testing.T, free bool) {
 	if a := getAvailability()["workspace"]; a.Available || a.ReasonCode != "hosted_disabled" {
 		t.Fatalf("disabled inference: %+v", a)
 	}
-	// The same signed trial can still load and delete its historical project.
-	created := httptest.NewRecorder()
-	req := httptest.NewRequest("POST", "/sessions", strings.NewReader(`{"door":"build","id":"`+uuid.NewString()+`"}`))
-	req.Header.Set("Content-Type", "application/json")
-	routes.ServeHTTP(created, req)
-	if created.Code != 201 {
-		t.Fatalf("offline project create: %d %s", created.Code, created.Body)
+	// Disabled inference also refuses new projects before a cookie or a write.
+	refused := httptest.NewRecorder()
+	refusal := httptest.NewRequest("POST", "/sessions", strings.NewReader(`{"door":"build","id":"`+uuid.NewString()+`"}`))
+	refusal.Header.Set("Content-Type", "application/json")
+	for _, c := range created.Result().Cookies() {
+		refusal.AddCookie(c)
+	}
+	routes.ServeHTTP(refused, refusal)
+	if refused.Code != 503 || !strings.Contains(refused.Body.String(), `"code":"hosted_disabled"`) {
+		t.Fatalf("disabled inference created a project: %d %s", refused.Code, refused.Body)
 	}
 	var project vibe.Session
 	if err := json.Unmarshal(created.Body.Bytes(), &project); err != nil {

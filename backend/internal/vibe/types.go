@@ -112,6 +112,7 @@ type Requirement struct {
 	Change            string     `json:"change,omitempty"`
 }
 type Artifact struct {
+	MissingReferences      []ReferenceRequirement  `json:"missing_references,omitempty"`
 	Original               *ImportOriginal         `json:"original,omitempty"`
 	InputContract          *InputContract          `json:"input_contract,omitempty"`
 	RequiredCapabilities   []string                `json:"required_capabilities,omitempty"`

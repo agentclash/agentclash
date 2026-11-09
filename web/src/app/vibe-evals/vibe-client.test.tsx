@@ -5178,3 +5178,41 @@ it.each([false, true])("PR7 fix2 keeps an existing empty Improve chat on its bou
   expect(requests.filter(request => request.path === "/sessions" && request.method === "POST" || request.method === "DELETE")).toEqual([]);
   expect(new URL(window.location.href).searchParams.get("session")).toBe(session.id);
 });
+
+it("keeps authorized saving available while disabled execution makes no inference requests", async () => {
+  acceptedDraft();
+  signedInWorkspace();
+  respond = async (path, options) => {
+    if (path === "/config")
+      return json({ enabled: false, availability: { guest: { available: false }, workspace: { available: false } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Mini" }] });
+    if (path === "/saved-checks") return json([]);
+    if (path.endsWith("/save")) {
+      Object.assign(session, { workspace_id: "workspace-one", saved_draft_id: "canonical-one", saved_artifact_id: JSON.parse(String(options.body)).artifact_id });
+      session.revision++;
+      session.event_cursor = session.revision;
+      return json({ draft_id: "canonical-one", workspace_id: "workspace-one" });
+    }
+    return json(session);
+  };
+  await render();
+  await type("Preserve this unsent draft");
+  expect(button("Send message").disabled).toBe(true);
+  await click("Save agent");
+  await click("Save and iterate");
+  expect(requests.some(request => request.path.endsWith("/save") && request.method === "POST")).toBe(true);
+  expect(requests.filter(request => /\/(messages|build-quote|run-quote)$/.test(request.path))).toHaveLength(0);
+  expect(composer().value).toBe("Preserve this unsent draft");
+});
+
+it("reports a signed-in token failure for the reference definition download without guest requests", async () => {
+  acceptedDraft();
+  signedInWorkspace();
+  session.document.artifacts[0].reference_inputs = [{ input_id: "private-reference", content_hash: "a".repeat(64), usage: "reference" }];
+  await render();
+  await openSettings();
+  harness.token.mockRejectedValue(new Error("Token refresh failed"));
+  const requestCount = requests.filter(request => request.path.includes("/inputs")).length;
+  await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(node => node.textContent === "Download agent instructions and tests")!.click());
+  expect(document.querySelector('[role="dialog"] [role="alert"]')?.textContent).toMatch(/Sign in again/);
+  expect(requests.filter(request => request.path.includes("/inputs"))).toHaveLength(requestCount);
+});

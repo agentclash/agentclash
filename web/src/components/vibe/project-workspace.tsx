@@ -12,7 +12,7 @@ import { useVibeEditorDraft } from "@/lib/use-vibe-editor-draft";
 import { editorSource, readEditorDraft } from "@/lib/vibe-build-drafts";
 import type { EvaluationWorkspaceProps } from "./evaluation-workspace";
 import { AppearanceControl } from "./appearance";
-import { evaluationIdentity } from "./evaluation-navigation";
+import { evaluationIdentity } from "@/lib/vibe-build-timeline";
 import { GradeReviews } from "./grade-reviews";
 import { ValidationHistory } from "./validation-review";
 import { ResultComparison } from "./result-comparison";

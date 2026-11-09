@@ -1,5 +1,6 @@
 import { terminal, type Artifact, type Operation, type Session } from "./vibe";
 import { testCount } from "./vibe-presentation";
+import { projectTitle } from "./vibe-project";
 
 export function workingBuildArtifact(session: Session): Artifact | undefined {
   const id = session.document.active_artifact_id || session.document.build?.artifact_id;
@@ -129,4 +130,21 @@ export function buildStageLabel(operation?: Operation, phase?: string) {
   if (phase === "clarifying" || operation?.state === "AWAITING_INPUT") return "Needs your answer";
   const stage = buildStageIndex(operation, phase);
   return stage === 3 ? `Run tests (${operation?.progress?.completed_cases || 0} of ${operation?.progress?.total_cases || 3})` : buildStages[stage];
+}
+
+export function evaluationIdentity(session: Session) {
+  const artifacts = session.document.artifacts;
+  const artifact =
+    session.document.evaluation?.door === "build"
+      ? workingBuildArtifact(session)
+      : artifacts.at(-1);
+  const title = projectTitle(session);
+  const version = artifact ? buildVersion(session, artifact) : 0;
+  const scope =
+    artifact?.kind === "conversation_evaluation"
+      ? "Recorded replies"
+      : artifact?.agent_prompt
+        ? `${artifact.sample ? "Sample agent" : "Agent"} v${version}`
+        : artifact ? `Tests v${version}` : session.document.evaluation?.door === "test" ? "No tests yet" : "No agent yet";
+  return { title, scope };
 }

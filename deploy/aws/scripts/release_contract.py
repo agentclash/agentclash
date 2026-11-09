@@ -27,6 +27,7 @@ def platform_files(root):
     names = {
         "delivery/release.py",
         "delivery/health.py",
+        "delivery/vibe-drain.sql",
         "delivery/tools.lock.json",
         "delivery/maintained.py",
         "deploy/aws/compose.yaml",

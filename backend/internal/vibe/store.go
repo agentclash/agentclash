@@ -448,9 +448,13 @@ func (s *Store) updateDocument(ctx context.Context, tx pgx.Tx, v Session) error 
 	return err
 }
 func (s *Store) Edit(ctx context.Context, actor string, id uuid.UUID, revision int64, fn func(*Session) error) error {
-	return s.editOriginal(ctx, actor, id, revision, nil, fn)
+	return s.edit(ctx, actor, id, revision, nil, func(_ context.Context, _ pgx.Tx, v *Session) error { return fn(v) })
 }
 func (s *Store) editOriginal(ctx context.Context, actor string, id uuid.UUID, revision int64, original *ImportOriginal, fn func(*Session) error) error {
+	return s.edit(ctx, actor, id, revision, original, func(_ context.Context, _ pgx.Tx, v *Session) error { return fn(v) })
+}
+
+func (s *Store) edit(ctx context.Context, actor string, id uuid.UUID, revision int64, original *ImportOriginal, fn func(context.Context, pgx.Tx, *Session) error) error {
 	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
 		if err != nil {
@@ -472,7 +476,7 @@ func (s *Store) editOriginal(ctx context.Context, actor string, id uuid.UUID, re
 		if busy {
 			return fault("operation_running", "Wait for the current response or stop it before editing.")
 		}
-		if err = fn(&v); err != nil {
+		if err = fn(ctx, tx, &v); err != nil {
 			return err
 		}
 		if original != nil {

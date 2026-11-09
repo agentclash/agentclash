@@ -1,8 +1,10 @@
-pdfplumber==0.11.7
-pdfminer.six==20250506
-Pillow==12.3.0
-pypdfium2==5.13.0
-charset-normalizer==3.5.1
-cryptography==50.0.1
-cffi==2.1.1
+# The complete Python import graph of the PDF text reader. Install with --no-deps.
+# The AWS worker image gets cryptography, cffi, pycparser and charset-normalizer
+# from Alpine packages. Those packages link the system OpenSSL and libffi.
+# Text extraction does not use Pillow or pypdfium2. Do not add them.
+pdfplumber==0.11.10
+pdfminer.six==20260107
+cryptography==47.0.0
+cffi==2.0.0
 pycparser==3.0
+charset-normalizer==3.4.9

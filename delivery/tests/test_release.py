@@ -91,9 +91,9 @@ class FixtureHost(Host):
 class ReleaseTests(unittest.TestCase):
     def test_temporal_drain_uses_bounded_empty_list(self):
         host = Mock()
-        host.compose.return_value = b"[]"
+        host.compose.side_effect = [b"[]", canonical(dict.fromkeys(("operations", "outbox", "continuations", "attempts", "holds", "input_work", "cleanup", "enquiries"), 0))]
         health.drained(host, {"delivery": {"namespace": "agentclash-prod"}})
-        host.compose.assert_called_once_with(
+        self.assertEqual(host.compose.call_args_list[0].args, (
             "run",
             "--rm",
             "-T",
@@ -108,7 +108,17 @@ class ReleaseTests(unittest.TestCase):
             "1",
             "--output",
             "json",
-        )
+        ))
+
+    def test_empty_temporal_drain_does_not_hide_unsettled_vibe_work(self):
+        for field in ("operations", "outbox", "continuations", "attempts", "holds", "input_work", "cleanup", "enquiries"):
+            with self.subTest(field=field):
+                inventory = dict.fromkeys(("operations", "outbox", "continuations", "attempts", "holds", "input_work", "cleanup", "enquiries"), 0)
+                inventory[field] = 1
+                host = Mock()
+                host.compose.side_effect = [b"[]", canonical(inventory)]
+                with self.assertRaises(Refused):
+                    health.drained(host, {"delivery": {"namespace": "agentclash-prod"}})
 
     def test_temporal_drain_refuses_work_or_unexpected_response(self):
         for raw in (
@@ -146,7 +156,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertGreaterEqual(health.poller_times(value)[0], int(now))
         host = Mock()
         host.compose.side_effect = lambda *args, **kwargs: (
-            b"one two three" if args[0] == "ps" else canonical(value)
+            b"one two three" if args[0] == "ps" else canonical({"enabled": False, "pdf_required": False, "pdf_available": False}) if "--check-vibe-runtime" in args else canonical(value)
         )
         states = [
             {
@@ -165,6 +175,30 @@ class ReleaseTests(unittest.TestCase):
             value["pollers"][0]["last_access_time"]["seconds"] = int(now - 600)
             with self.assertRaises(Refused):
                 health.ready(host, self.manifest, now - 3600, timeout=0)
+
+    def test_enabled_vibe_requires_both_poller_kinds_and_required_pdf_heartbeat(self):
+        now = time.time()
+        states = [{"Config": {"Image": self.manifest["images"][name], "Labels": {"com.docker.compose.service": name}}, "State": {"Running": True, "Health": {"Status": "healthy"}}} for name in ("api", "worker", "terminal")]
+        for enabled, required, missing_kind, heartbeat, accepted in (
+            (False, False, "activity", False, True),
+            (True, False, "activity", False, False),
+            (True, False, "workflow", False, False),
+            (True, False, None, False, True),
+            (True, True, None, False, False),
+            (True, True, None, True, True),
+        ):
+            with self.subTest(enabled=enabled, required=required, missing_kind=missing_kind, heartbeat=heartbeat):
+                def compose(*args, **kwargs):
+                    if args[0] == "ps": return b"one two three"
+                    if "--check-vibe-runtime" in args: return canonical({"enabled": enabled, "pdf_required": required, "pdf_available": True})
+                    if "psql" in args: return b"t" if heartbeat else b"f"
+                    missing = "vibe-evals" in args and missing_kind in args
+                    return canonical({"pollers": [] if missing else [{"last_access_time": {"seconds": int(now)}}]})
+                host = Mock(); host.compose.side_effect = compose
+                with patch("health.run", return_value=canonical(states)):
+                    if accepted: health.ready(host, self.manifest, now - 5, timeout=0)
+                    else:
+                        with self.assertRaises(Refused): health.ready(host, self.manifest, now - 5, timeout=0)
 
     def test_failed_edge_reload_stops_the_public_listener(self):
         h = Host.__new__(Host)

@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import type { TaskMaterial } from "@/lib/vibe-inputs";
 import {advancedURL} from "@/lib/vibe-keep";
 import {projectTitle} from "@/lib/vibe-project";
 import { Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { type Artifact, type Models, type Session, type VibeConfig } from "@/lib/vibe";
+import { exportAgent } from "@/lib/vibe-export";
 import { ModelSelect } from "./model-select";
 import { VibeButton } from "./vibe-button";
 
@@ -32,12 +34,23 @@ type Props = {
   onCredits: () => void;
   onImport: () => void;
   onExportConversation: () => void;
+  loadMaterials?: () => Promise<TaskMaterial[]>;
 };
 
 // Actions that open another dialog (Credits, Save, Export) close Settings first;
 // the parent opens the next dialog from onOpenChangeComplete.
-export function AgentSettings({reimport,open, onOpenChange, onOpenChangeComplete, config, session, artifact, artifacts, models, busy, workspace, testJourney, projectReturnPath,savedDraft, onModels, onVersion, onSave, onCredits, onImport, onExportConversation}: Props) {
+export function AgentSettings({reimport,open, onOpenChange, onOpenChangeComplete, config, session, artifact, artifacts, models, busy, workspace, testJourney, projectReturnPath,savedDraft, onModels, onVersion, onSave, onCredits, onImport, onExportConversation, loadMaterials}: Props) {
   const savable = !!artifact && artifact.kind !== "test_plan" && artifact.kind !== "conversation_evaluation";
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  // The portable definition names reference files by hash. It never contains private input IDs or file text.
+  async function downloadDefinition() {
+    if (!artifact || exporting) return;
+    setExporting(true); setExportError("");
+    try { exportAgent(artifact, models, artifact.reference_inputs?.length && loadMaterials ? await loadMaterials() : []); }
+    catch (issue) { setExportError(issue instanceof Error ? issue.message : "Could not download the definition. Try again."); }
+    finally { setExporting(false); }
+  }
   return (
       <Dialog open={open} onOpenChange={onOpenChange} onOpenChangeComplete={onOpenChangeComplete}>
         <DialogContent className="vibe-workspace vibe-dialog">
@@ -154,7 +167,17 @@ export function AgentSettings({reimport,open, onOpenChange, onOpenChangeComplete
               Export selected version / result
             </Button>
           )}
+          {savable && (
+              <Button
+                variant="outline"
+                disabled={exporting}
+                onClick={() => void downloadDefinition()}
+              >
+                {exporting ? "Preparing download…" : "Download agent instructions and tests"}
+            </Button>
+          )}
           </div>}
+          {exportError && <p role="alert" className="text-sm text-builder-warn">{exportError}</p>}
           <details className="text-sm">
             <summary className="cursor-pointer">
               Available capabilities and documentation

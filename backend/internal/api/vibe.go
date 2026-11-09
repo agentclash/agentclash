@@ -102,6 +102,7 @@ func (h *VibeHandler) Routes() http.Handler {
 	r.Post("/sessions/{sessionID}/messages", h.submit)
 	r.Post("/sessions/{sessionID}/actions", h.interact)
 	r.Post("/sessions/{sessionID}/import", h.importFile)
+	r.Post("/sessions/{sessionID}/references", h.bindReference)
 	r.Post("/sessions/{sessionID}/reimport", h.reimport)
 	r.Post("/sessions/{sessionID}/evidence", h.addEvidence)
 	r.Post("/sessions/{sessionID}/grade-reviews", h.gradeReviews)
@@ -361,6 +362,11 @@ func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.ID == uuid.Nil {
 		vibeError(w, &vibe.Fault{Code: "invalid_request", Message: "A client-generated session ID is required."})
+		return
+	}
+	// Reject invalid input first. Then refuse new work before a cookie or a database write.
+	if !h.Service.Config.Enabled {
+		vibeError(w, mutation.Reject(&vibe.Fault{Code: "hosted_disabled", Message: "New evaluations are unavailable. Your existing work can still be read, saved or downloaded."}))
 		return
 	}
 	actor, err := h.actor(r)

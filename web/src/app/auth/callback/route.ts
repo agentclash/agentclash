@@ -1,3 +1,4 @@
+import { callbackIntentCookie, readCallbackIntent } from "@/lib/auth/callback-intent";
 import { handleAuth } from "@workos-inc/authkit-nextjs";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
@@ -11,7 +12,7 @@ function logAuthCallbackError(error: unknown, request: NextRequest) {
     path: request.nextUrl.pathname,
     hasCode: request.nextUrl.searchParams.has("code"),
     hasState: request.nextUrl.searchParams.has("state"),
-    hasPkceCookie: request.cookies.has("wos-auth-verifier"),
+    hasPkceCookie: request.cookies.getAll().some(cookie => cookie.name === "wos-auth-verifier" || cookie.name.startsWith("wos-auth-verifier-")),
   });
 }
 
@@ -20,7 +21,7 @@ const configuredCallback = process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI;
 // configured, trusted callback origin so the same browser cookies survive.
 const callbackOrigin = configuredCallback ? new URL(configuredCallback).origin : undefined;
 
-export const GET = handleAuth({
+const authHandler = handleAuth({
   baseURL: callbackOrigin,
   returnPathname: "/dashboard",
   onSuccess: async () => {
@@ -54,6 +55,21 @@ export const GET = handleAuth({
 
     const loginUrl = new URL("/auth/login", callbackOrigin || request.url);
     loginUrl.searchParams.set("error", "callback_failed");
+    const state = request.nextUrl.searchParams.get("state") || "";
+    const trustedOrigin = !!callbackOrigin && (request.nextUrl.origin === callbackOrigin || request.headers.get("host") === new URL(callbackOrigin).host);
+    const intent = trustedOrigin ? readCallbackIntent(state, request.cookies.get(callbackIntentCookie(state))?.value) : null;
+    if (intent) { loginUrl.searchParams.set("returnTo", intent.destination); loginUrl.searchParams.set("mode", intent.mode); }
     return NextResponse.redirect(loginUrl);
   },
 });
+
+export async function GET(request: NextRequest) {
+  const response = await authHandler(request);
+  const state = request.nextUrl.searchParams.get("state");
+  if (state && state.length <= 8192) {
+    const result = new NextResponse(response.body, response);
+    result.cookies.set(callbackIntentCookie(state), "", { path: "/auth", maxAge: 0, httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" });
+    return result;
+  }
+  return response;
+}

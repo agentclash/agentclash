@@ -33,8 +33,7 @@ import { useCallback, useEffect, useRef, useState, type SetStateAction } from "r
 
 
 
-import { workingBuildArtifact } from "@/lib/vibe-build-timeline";
-import { evaluationIdentity } from "@/components/vibe/evaluation-navigation";
+import { evaluationIdentity, workingBuildArtifact } from "@/lib/vibe-build-timeline";
 
 
 
@@ -623,7 +622,7 @@ export function useVibeWorkspace() {
   const continuingBuild = (session?.document.build?.phase === "clarifying" || session?.document.build?.phase === "waiting");
   const quoteMatches = !!buildQuote && buildQuote.request.content === content && JSON.stringify(buildQuote.request.inputs || []) === materialFingerprint && JSON.stringify(buildQuote.request.adopt_rules || []) === adoptionFingerprint && JSON.stringify(buildQuote.request.models) === JSON.stringify(models) && Date.parse(buildQuote.expires_at) > serverNow;
   useEffect(() => {
-    if (!config || configError || !inferenceAvailable || !buildStart || !session?.document.messages.length || !sessionID || !content.trim() || new TextEncoder().encode(content).length > messageLimit) { setBuildQuote(undefined); setQuoteError(""); return; }
+    if (!config || configError || !inferenceAvailable || !buildStart || !session?.document.messages.length || !sessionID || !content.trim() || new TextEncoder().encode(content).length > messageLimit || !!artifact?.missing_references?.length || (!!materials.bindings.length && !config.material_build)) { setBuildQuote(undefined); setQuoteError(""); return; }
     let live = true;
     setQuoteError(""); setQuotePreparing(true);
     const timer = setTimeout(() => {
@@ -632,7 +631,7 @@ export function useVibeWorkspace() {
         .then(q => { if (live) { syncClock(q.server_time); setClock(Date.now()); setBuildQuote(q); } }).catch(e => { captureVibeAttempt("build", "estimate", sessionID, e instanceof VibeError ? e.code : "transport_failed"); if (live) setQuoteError(e.message); }).finally(() => { if (live) setQuotePreparing(false); });
     }, 400);
     return () => { live = false; clearTimeout(timer); };
-  }, [config, configError, buildStart, sessionID, content, models, token, materialFingerprint, adoptionFingerprint, quoteAttempt, inferenceAvailable]);
+  }, [config, configError, buildStart, sessionID, content, models, token, materialFingerprint, adoptionFingerprint, quoteAttempt, inferenceAvailable, artifact?.missing_references, materials.bindings.length]);
   const buildQuoteState = quoteError ? "failure" : quotePreparing || !buildQuote ? "preparation" : !quoteMatches ? "expired" : "current";
   const refreshBuildQuote = () => setQuoteAttempt(attempt => attempt + 1);
   const quoteScopeMatches = !!runQuote && runQuote.selectionArtifact === artifact?.id && JSON.stringify(runQuote.requestModels) === JSON.stringify(runQuote.baseline ? { ...models, evaluator: runQuote.baseline.models.evaluator } : models);
@@ -809,7 +808,7 @@ export function useVibeWorkspace() {
   }
   async function requestPreparation(text: string, count: number, artifactID: string) {
     const scope = scopeRef.current;
-    if (!session || busy || !inferenceAvailable) return;
+    if (!session || busy || !inferenceAvailable || artifacts.find(item => item.id === artifactID)?.missing_references?.length) return;
     quoteTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const clientID = crypto.randomUUID();
     const extra = { client_id: clientID, additional_examples: count, artifact_id: artifactID };
@@ -826,6 +825,8 @@ export function useVibeWorkspace() {
     const scope = scopeRef.current;
     if (!evaluationAvailable(baseline,purpose) || dirtyArtifact) return;
     if (recordedArtifactID && (!baseline || recordedUpdate?.baseline.id !== baseline.id || recordedUpdate.artifactID !== recordedArtifactID || artifact?.id !== recordedArtifactID || artifact.conversation_evaluation?.evidence_set_id !== evidenceID)) return;
+    if (artifact?.missing_references?.length) return;
+    if (materials.bindings.length && !config?.material_build) { setError("Materials are unavailable. Remove the attachment explicitly before continuing."); return; }
     quoteTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const extra = { ...selection, artifact_id: selection?.artifact_id || artifact?.id, ...(purpose ? {purpose} : {}), ...(evidenceID ? { evidence_set_id: evidenceID } : {}), ...(baseline?.source?.kind === "provided_conversations" ? { artifact_id: recordedArtifactID || baseline.source.artifact_id } : {}) };
     const kind = baseline ? "retest" : "check";
@@ -865,6 +866,8 @@ export function useVibeWorkspace() {
   ) {
     if (sending.current || busy || submission.current || !(["check","retest"].includes(kind) ? evaluationAvailable(baseline,extra.purpose) : inferenceAvailable)) return;
     if (new TextEncoder().encode(text).length > messageLimit) { setError(`Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.`); return; }
+    if (artifact?.missing_references?.length) return;
+    if ((kind === "playground" ? trialMaterials.bindings.length : materials.bindings.length) && !config?.material_build) { setError("Materials are unavailable. Remove the attachment explicitly before continuing."); return; }
     if (kind === "message" && !text.trim()) return;
     if (
       dirtyArtifact ||
@@ -1385,6 +1388,7 @@ export function useVibeWorkspace() {
     } }
   }
   async function operationAction(id: string, action: "stop" | "approve") {
+    if (action === "approve" && !config?.enabled) return;
     const scope = scopeRef.current;
     if (action === "stop" && buildJourney && session) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_RECOVERY_CLICKED, { session_id: session.id, operation_id: id, action: "stop" });
     setPending(true);

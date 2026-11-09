@@ -34,6 +34,7 @@ type Binding struct {
 	AcceptPartial bool      `json:"accept_partial,omitempty"`
 }
 type Record struct {
+	PageCount   int        `json:"page_count,omitempty"`
 	ID          uuid.UUID  `json:"id"`
 	SessionID   uuid.UUID  `json:"session_id"`
 	ClientID    uuid.UUID  `json:"client_id"`

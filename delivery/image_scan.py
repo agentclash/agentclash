@@ -62,6 +62,34 @@ def coverage(report, role):
             any(r.get("Type") == "node-pkg" and r.get("Packages") for r in results),
             "Terminal dependency coverage is missing",
         )
+    if role in ("worker", "pdf-runtime"):
+        python = {
+            package.get("Name", "").lower().replace("_", "-")
+            for result in results if result.get("Type") == "python-pkg"
+            for package in result.get("Packages", [])
+        }
+        # Wheel distribution metadata is insufficient for bundled native code:
+        # a wheel version does not identify a bundled OpenSSL or PDFium. Only
+        # the reviewed pure-Python wheels are allowed in the Python inventory.
+        require(
+            {"pdfplumber", "pdfminer.six"} <= python,
+            "PDF reader Python dependency inventory is incomplete",
+        )
+        require(
+            python <= {"pdfplumber", "pdfminer.six"},
+            "PDF reader Python inventory contains a distribution that can bundle native code; publication blocked",
+        )
+        # The native code comes from Alpine packages. The OS scan matches these
+        # packages, and the OpenSSL and libffi that they link, to Alpine advisories.
+        system = {
+            package.get("Name", "")
+            for result in results if result.get("Type") == "alpine"
+            for package in result.get("Packages", []) if package.get("Version")
+        }
+        require(
+            {"python3", "bubblewrap", "py3-cryptography", "py3-cffi", "py3-cparser", "py3-charset-normalizer", "libssl3", "libcrypto3", "libffi"} <= system,
+            "PDF reader native dependency inventory is missing from the OS packages; publication blocked",
+        )
 
 
 def _caddy_jose_replacement(after, result, finding):

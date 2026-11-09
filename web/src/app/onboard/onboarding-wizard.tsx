@@ -16,7 +16,7 @@ import { Loader2, ArrowRight, Sparkles } from "lucide-react";
 
 type Step = "org" | "workspace";
 
-export function OnboardingWizard() {
+export function OnboardingWizard({ returnTo }: { returnTo?: string }) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
 
@@ -62,12 +62,12 @@ export function OnboardingWizard() {
       });
 
       toast.success("You're all set!");
-      router.push(`/workspaces/${result.workspace.id}`);
+      router.push(returnTo || `/workspaces/${result.workspace.id}`);
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.code === "already_onboarded") {
           toast.error("You're already onboarded — redirecting...");
-          router.push("/dashboard");
+          router.push(returnTo || "/dashboard");
           return;
         }
         toast.error(err.message);

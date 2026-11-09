@@ -11,6 +11,8 @@
 !backend/internal/**/*.sql
 !backend/internal/**/*.json
 !backend/internal/engine/assets/mock_agent_vault.py
+!backend/internal/vibe/inputs/parser.py
+!backend/internal/vibe/inputs/requirements.txt
 !backend/db/
 !backend/db/migrations/
 !backend/db/migrations/*.sql
