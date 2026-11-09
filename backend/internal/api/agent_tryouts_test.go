@@ -510,7 +510,8 @@ func TestAgentTryoutManagerDoesNotApplyAnonymousQuotaToWorkspaceTryout(t *testin
 }
 
 func TestAgentTryoutManagerCreateWorkspaceClaimAndShare(t *testing.T) {
-	ctx := context.Background()
+	proofHash := hashTryoutProof(strings.Repeat("A", 43))
+	ctx := context.WithValue(context.Background(), tryoutProofContextKey{}, proofHash)
 	orgID := uuid.New()
 	workspaceID := uuid.New()
 	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
@@ -529,7 +530,7 @@ func TestAgentTryoutManagerCreateWorkspaceClaimAndShare(t *testing.T) {
 		t.Fatalf("workspace tryout scope = org %v workspace %v, want org %s workspace %s", tryout.OrganizationID, tryout.WorkspaceID, orgID, workspaceID)
 	}
 
-	anonymous, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+	anonymous, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{OwnerProofHash: proofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"claim this"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -1040,28 +1041,28 @@ func TestGetWorkspaceAgentTryoutHandlerValidatesWorkspaceIDBeforeServiceCall(t *
 }
 
 type fakeAgentTryoutRepository struct {
-	orgID               uuid.UUID
-	workspaceID         uuid.UUID
-	tryouts             map[uuid.UUID]repository.AgentTryout
-	harnessBySlug       map[string]repository.AgentHarness
-	executionsByRunID   map[uuid.UUID]repository.AgentHarnessExecution
-	createdHarnesses    []repository.CreateAgentHarnessParams
-	createdExecutions   []repository.CreateAgentHarnessExecutionParams
-	transitionedStatus  repository.AgentHarnessExecutionStatus
-	transitionedReason  *string
-	transitionErr       error
-	omitExecutionRunID  bool
-	updateStatusCalls   int
-	share               repository.PublicShareLink
-	countAnonymousErr   error
-	sumAnonymousErr     error
-	hostedSpendUSD      float64
-	runEvents           []repository.RunEvent
-	tryoutEvents        []repository.AgentTryoutEvent
-	tryoutTurns         []repository.AgentTryoutTurn
-	runEventsErr        error
-	artifacts           []repository.Artifact
-	artifactsErr        error
+	orgID              uuid.UUID
+	workspaceID        uuid.UUID
+	tryouts            map[uuid.UUID]repository.AgentTryout
+	harnessBySlug      map[string]repository.AgentHarness
+	executionsByRunID  map[uuid.UUID]repository.AgentHarnessExecution
+	createdHarnesses   []repository.CreateAgentHarnessParams
+	createdExecutions  []repository.CreateAgentHarnessExecutionParams
+	transitionedStatus repository.AgentHarnessExecutionStatus
+	transitionedReason *string
+	transitionErr      error
+	omitExecutionRunID bool
+	updateStatusCalls  int
+	share              repository.PublicShareLink
+	countAnonymousErr  error
+	sumAnonymousErr    error
+	hostedSpendUSD     float64
+	runEvents          []repository.RunEvent
+	tryoutEvents       []repository.AgentTryoutEvent
+	tryoutTurns        []repository.AgentTryoutTurn
+	runEventsErr       error
+	artifacts          []repository.Artifact
+	artifactsErr       error
 }
 
 func newFakeAgentTryoutRepository(orgID, workspaceID uuid.UUID) *fakeAgentTryoutRepository {
@@ -1175,6 +1176,7 @@ func (r *fakeAgentTryoutRepository) CreateAgentTryout(_ context.Context, params 
 		LatencyMS:                params.LatencyMS,
 		MaxDurationSeconds:       params.MaxDurationSeconds,
 		AnonymousFingerprintHash: params.AnonymousFingerprintHash,
+		AnonymousOwnerProofHash:  params.AnonymousOwnerProofHash,
 		CreatedByUserID:          params.CreatedByUserID,
 		ParentTryoutID:           params.ParentTryoutID,
 		ExpiresAt:                params.ExpiresAt,
@@ -1397,13 +1399,23 @@ func (r *fakeAgentTryoutRepository) ClaimAgentTryout(_ context.Context, params r
 	if !ok {
 		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
 	}
+	if tryout.AnonymousOwnerProofHash == nil || *tryout.AnonymousOwnerProofHash != params.OwnerProofHash {
+		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
+	}
 	if tryout.WorkspaceID != nil {
-		return repository.AgentTryout{}, repository.ErrAgentTryoutAlreadyClaimed
+		if *tryout.WorkspaceID == params.WorkspaceID && tryout.ClaimedByUserID != nil && *tryout.ClaimedByUserID == params.ClaimedByUserID {
+			return tryout, nil
+		}
+		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
+	}
+	if tryout.ExpiresAt == nil || !tryout.ExpiresAt.After(time.Now()) {
+		return repository.AgentTryout{}, repository.ErrAgentTryoutExpired
 	}
 	tryout.OrganizationID = &params.OrganizationID
 	tryout.WorkspaceID = &params.WorkspaceID
 	tryout.ClaimedByUserID = &params.ClaimedByUserID
 	tryout.ClaimedAt = &params.ClaimedAt
+	tryout.ExpiresAt = nil
 	r.tryouts[tryout.ID] = tryout
 	return tryout, nil
 }
@@ -1481,12 +1493,14 @@ func (s *fakeAgentTryoutService) SubmitAnonymousTryoutTurn(_ context.Context, _ 
 }
 
 func TestSubmitAnonymousTryoutTurnValidatesAndAppends(t *testing.T) {
-	ctx := context.Background()
+	proofHash := hashTryoutProof(strings.Repeat("A", 43))
+	ctx := context.WithValue(context.Background(), tryoutProofContextKey{}, proofHash)
+	expires := time.Now().Add(time.Hour)
 	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
 	publicID := uuid.New()
-	repo.tryouts[publicID] = repository.AgentTryout{ID: publicID, Status: repository.AgentTryoutStatusRunning}
+	repo.tryouts[publicID] = repository.AgentTryout{ID: publicID, Status: repository.AgentTryoutStatusRunning, AnonymousOwnerProofHash: &proofHash, ExpiresAt: &expires}
 
 	// Empty message rejected.
 	if err := manager.SubmitAnonymousTryoutTurn(ctx, publicID, SubmitAgentTryoutTurnInput{}); err == nil {

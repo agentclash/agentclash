@@ -6439,6 +6439,11 @@ paths:
     post:
       operationId: createAnonymousAgentTryout
       summary: Create an anonymous agent tryout
+      description: >-
+        Issues a host-only HttpOnly creator cookie scoped to this result on the API
+        origin. The secret is not returned as JSON. Browsers must include credentials
+        from an explicitly allowed same-site web origin. Older clients that do not
+        retain the cookie cannot reopen, change or claim newly created results.
       tags: [AgentTryouts]
       security: []
       requestBody:
@@ -6463,6 +6468,7 @@ paths:
     post:
       operationId: submitAnonymousAgentTryoutTurn
       summary: Send a chat turn to a live anonymous agent tryout session
+      description: Requires the result creator cookie, an unexpired lifetime and an active anonymous result. Legacy proofless results cannot be changed.
       tags: [AgentTryouts]
       security: []
       parameters:
@@ -6494,11 +6500,19 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "410":
+          description: The creator's anonymous result has expired. Start a new tryout.
+
 
   /v1/agent-tryouts/{id}:
     get:
       operationId: getPublicAgentTryout
       summary: Get an anonymous agent tryout
+      description: >-
+        New results require their creator cookie and an unexpired anonymous lifetime.
+        Missing or wrong proof and workspace-owned results return 404. Legacy results
+        without creator proof retain redacted public reads but cannot be claimed or
+        changed. Previously public data is not retroactively private.
       tags: [AgentTryouts]
       security: []
       parameters:
@@ -6514,6 +6528,9 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "410":
+          description: The creator's anonymous result has expired. Start a new tryout.
+
 
   /v1/agent-tryouts/{id}/events:
     get:
@@ -6521,7 +6538,8 @@ paths:
       summary: Get the live evidence timeline for an anonymous agent tryout
       description: >-
         Returns a cursor-paginated timeline of product-level events for an
-        anonymous (unclaimed) tryout. Event payloads are redacted to a
+        anonymous (unclaimed) tryout. New results require the creator cookie and an
+        unexpired lifetime, as on the detail endpoint. Event payloads are redacted to a
         non-sensitive allow-list because this endpoint is unauthenticated. Poll
         with the returned `next_cursor` as `after` to resume; `has_more`
         indicates whether further events are immediately available.
@@ -6542,6 +6560,9 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "410":
+          description: The creator's anonymous result has expired. Start a new tryout.
+
 
   /v1/agent-tryouts/shared/{token}/events:
     get:
@@ -6642,6 +6663,31 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenError"
 
+  /v1/agent-tryouts/{id}/saved:
+    get:
+      operationId: getSavedAgentTryout
+      summary: Reopen a saved tryout after workspace authorization
+      tags: [AgentTryouts]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      responses:
+        "200":
+          description: Workspace tryout detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/workspaces/{workspaceID}/agent-tryouts/{id}:
     get:
       operationId: getWorkspaceAgentTryout
@@ -6735,6 +6781,12 @@ paths:
     post:
       operationId: claimAgentTryout
       summary: Claim an anonymous tryout into a workspace
+      description: >-
+        Explicit save requires authenticated workspace write access, the independent
+        creator cookie and an unexpired anonymous result. Ownership and expiry are
+        checked atomically. Retrying the same proof, claimant and workspace returns
+        the original receipt without another ownership transition. Legacy proofless
+        results cannot be saved. Clients must require save_eligible=true before enabling save.
       tags: [AgentTryouts]
       security:
         - bearerJWT: []
@@ -6763,6 +6815,9 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "409":
           $ref: "#/components/responses/ConflictError"
+        "410":
+          description: The creator's anonymous result has expired. Start a new tryout.
+
 
   /v1/agent-tryouts/{id}/share:
     post:
@@ -15078,6 +15133,10 @@ components:
       type: object
       required: [id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, cost_limit_usd, max_duration_seconds, created_at, updated_at]
       properties:
+        save_eligible:
+          type: boolean
+          default: false
+          description: Safe creator-proof claim is supported for this result. Missing or false disables save.
         id:
           type: string
           format: uuid

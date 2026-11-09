@@ -18,6 +18,7 @@ INSERT INTO agent_tryouts (
     latency_ms,
     max_duration_seconds,
     anonymous_fingerprint_hash,
+    anonymous_owner_proof_hash,
     created_by_user_id,
     parent_tryout_id,
     expires_at
@@ -41,6 +42,7 @@ VALUES (
     sqlc.narg('latency_ms'),
     @max_duration_seconds,
     sqlc.narg('anonymous_fingerprint_hash'),
+    sqlc.narg('anonymous_owner_proof_hash'),
     sqlc.narg('created_by_user_id'),
     sqlc.narg('parent_tryout_id'),
     sqlc.narg('expires_at')
@@ -73,7 +75,17 @@ WHERE id = @id
   AND organization_id IS NULL
   AND workspace_id IS NULL
   AND claimed_by_user_id IS NULL
+  AND anonymous_owner_proof_hash = @owner_proof_hash::text
+  AND expires_at > CURRENT_TIMESTAMP
 RETURNING *;
+
+-- name: GetClaimedAgentTryoutRetry :one
+SELECT * FROM agent_tryouts
+WHERE id = @id
+  AND workspace_id = @workspace_id
+  AND organization_id = @organization_id
+  AND claimed_by_user_id = @claimed_by_user_id
+  AND anonymous_owner_proof_hash = @owner_proof_hash::text;
 
 -- name: UpdateAgentTryoutStatus :one
 UPDATE agent_tryouts
@@ -123,7 +135,14 @@ ORDER BY id ASC
 LIMIT @limit_count;
 
 -- name: AppendAgentTryoutTurn :one
-WITH next_turn AS (
+WITH owned_tryout AS (
+    SELECT id FROM agent_tryouts
+    WHERE id = @agent_tryout_id AND workspace_id IS NULL
+      AND organization_id IS NULL AND claimed_by_user_id IS NULL
+      AND anonymous_owner_proof_hash = @owner_proof_hash::text
+      AND expires_at > CURRENT_TIMESTAMP AND status IN ('queued', 'running')
+    FOR UPDATE
+), next_turn AS (
     SELECT COALESCE(MAX(turn_index), -1) + 1 AS turn_index
     FROM agent_tryout_turns
     WHERE agent_tryout_id = @agent_tryout_id
@@ -141,7 +160,7 @@ SELECT
     @role,
     @message,
     'pending'
-FROM next_turn
+FROM next_turn, owned_tryout
 RETURNING *;
 
 -- name: ClaimNextPendingAgentTryoutTurn :one

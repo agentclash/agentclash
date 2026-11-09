@@ -118,6 +118,7 @@ type AgentTryoutTemplate struct {
 }
 
 type CreateAnonymousAgentTryoutInput struct {
+	OwnerProofHash       string
 	TemplateSlug         string
 	Input                json.RawMessage
 	SelectedHarnessKind  string
@@ -349,6 +350,10 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		now = m.now()
 	}
 	expiresAt := now.UTC().Add(defaultAgentTryoutTTL)
+	var ownerProofHash *string
+	if input.OwnerProofHash != "" {
+		ownerProofHash = &input.OwnerProofHash
+	}
 	createParams := repository.CreateAgentTryoutParams{
 		TemplateSlug:             template.Slug,
 		Status:                   repository.AgentTryoutStatusQueued,
@@ -363,6 +368,7 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		CostLimitUSD:             template.MaxCostUSD,
 		MaxDurationSeconds:       template.MaxDurationSeconds,
 		AnonymousFingerprintHash: &fingerprintHash,
+		AnonymousOwnerProofHash:  ownerProofHash,
 		ExpiresAt:                &expiresAt,
 	}
 
@@ -409,8 +415,8 @@ func (m *AgentTryoutManager) SubmitAnonymousTryoutTurn(ctx context.Context, id u
 	if err != nil {
 		return err
 	}
-	if tryout.WorkspaceID != nil {
-		return repository.ErrAgentTryoutNotFound
+	if err := m.authorizeAnonymousTryout(ctx, tryout, true); err != nil {
+		return err
 	}
 	if tryout.Status != repository.AgentTryoutStatusRunning &&
 		tryout.Status != repository.AgentTryoutStatusQueued {
@@ -430,9 +436,10 @@ func (m *AgentTryoutManager) SubmitAnonymousTryoutTurn(ctx context.Context, id u
 		}
 	}
 	if _, err := m.repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{
-		AgentTryoutID: id,
-		Role:          role,
-		Message:       message,
+		AgentTryoutID:  id,
+		OwnerProofHash: tryoutProofFromContext(ctx),
+		Role:           role,
+		Message:        message,
 	}); err != nil {
 		return err
 	}
@@ -485,10 +492,14 @@ func (m *AgentTryoutManager) GetPublicTryout(ctx context.Context, id uuid.UUID) 
 	if err != nil {
 		return repository.AgentTryout{}, err
 	}
-	if tryout.WorkspaceID != nil {
-		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
+	if err := m.authorizeAnonymousTryout(ctx, tryout, false); err != nil {
+		return repository.AgentTryout{}, err
 	}
-	return m.refreshTryoutFromExecution(ctx, tryout), nil
+	tryout = m.refreshTryoutFromExecution(ctx, tryout)
+	if err := m.authorizeAnonymousTryout(ctx, tryout, false); err != nil {
+		return repository.AgentTryout{}, err
+	}
+	return tryout, nil
 }
 
 func (m *AgentTryoutManager) GetWorkspaceTryout(ctx context.Context, caller Caller, id uuid.UUID) (repository.AgentTryout, error) {
@@ -1059,8 +1070,23 @@ func mustAgentTryoutJSON(value any) json.RawMessage {
 }
 
 func (m *AgentTryoutManager) ClaimTryout(ctx context.Context, caller Caller, input ClaimAgentTryoutInput) (repository.AgentTryout, error) {
+	if caller.UserID == uuid.Nil {
+		return repository.AgentTryout{}, ErrAgentTryoutSignInRequired
+	}
 	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionManagePlaygrounds); err != nil {
 		return repository.AgentTryout{}, err
+	}
+	tryout, err := m.repo.GetAgentTryoutByID(ctx, input.ID)
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
+	if !ownsAnonymousTryout(ctx, tryout) {
+		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
+	}
+	if tryout.WorkspaceID == nil {
+		if err := m.authorizeAnonymousTryout(ctx, tryout, true); err != nil {
+			return repository.AgentTryout{}, err
+		}
 	}
 	orgID, err := m.repo.GetOrganizationIDByWorkspaceID(ctx, input.WorkspaceID)
 	if err != nil {
@@ -1072,6 +1098,7 @@ func (m *AgentTryoutManager) ClaimTryout(ctx context.Context, caller Caller, inp
 	}
 	return m.repo.ClaimAgentTryout(ctx, repository.ClaimAgentTryoutParams{
 		ID:              input.ID,
+		OwnerProofHash:  tryoutProofFromContext(ctx),
 		OrganizationID:  orgID,
 		WorkspaceID:     input.WorkspaceID,
 		ClaimedByUserID: caller.UserID,
@@ -1170,6 +1197,7 @@ type agentTryoutResponse struct {
 }
 
 type publicAgentTryoutResponse struct {
+	SaveEligible           bool                                  `json:"save_eligible"`
 	Type                   string                                `json:"type,omitempty"`
 	ID                     uuid.UUID                             `json:"id"`
 	TemplateSlug           string                                `json:"template_slug"`
@@ -1212,6 +1240,7 @@ func registerProtectedAgentTryoutRoutes(router chi.Router, logger *slog.Logger, 
 	router.Get("/workspaces/{workspaceID}/agent-tryouts/{tryoutID}", getWorkspaceAgentTryoutHandler(logger, service))
 	router.Get("/workspaces/{workspaceID}/agent-tryouts/{tryoutID}/events", getWorkspaceAgentTryoutEventsHandler(logger, service))
 	router.Get("/workspaces/{workspaceID}/agent-tryouts/{tryoutID}/artifacts", listAgentTryoutArtifactsHandler(logger, service))
+	router.Get("/agent-tryouts/{tryoutID}/saved", getSavedAgentTryoutHandler(logger, service))
 	router.Post("/agent-tryouts/{tryoutID}/claim", claimAgentTryoutHandler(logger, service))
 	router.Post("/agent-tryouts/{tryoutID}/share", createAgentTryoutShareHandler(logger, service))
 	router.Post("/agent-tryouts/{tryoutID}/rerun", rerunAgentTryoutHandler(logger, service))
@@ -1238,7 +1267,13 @@ func createAnonymousAgentTryoutHandler(logger *slog.Logger, service AgentTryoutS
 			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
+		proof, err := newTryoutProof()
+		if err != nil {
+			writeAgentTryoutError(w, logger, err)
+			return
+		}
 		tryout, err := service.CreateAnonymousTryout(r.Context(), CreateAnonymousAgentTryoutInput{
+			OwnerProofHash:       hashTryoutProof(proof),
 			TemplateSlug:         req.TemplateSlug,
 			Input:                req.Input,
 			SelectedHarnessKind:  req.SelectedHarnessKind,
@@ -1253,6 +1288,8 @@ func createAnonymousAgentTryoutHandler(logger *slog.Logger, service AgentTryoutS
 			writeAgentTryoutError(w, logger, err)
 			return
 		}
+		setTryoutCookie(w, r, tryout, proof)
+		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusCreated, mapPublicAgentTryoutResponse(tryout))
 	}
 }
@@ -1276,7 +1313,7 @@ func submitAnonymousAgentTryoutTurnHandler(logger *slog.Logger, service AgentTry
 			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
-		if err := service.SubmitAnonymousTryoutTurn(r.Context(), id, SubmitAgentTryoutTurnInput{
+		if err := service.SubmitAnonymousTryoutTurn(tryoutRequestContext(r, id), id, SubmitAgentTryoutTurnInput{
 			Message: req.Message,
 			End:     req.End,
 		}); err != nil {
@@ -1294,7 +1331,7 @@ func getPublicAgentTryoutHandler(logger *slog.Logger, service AgentTryoutService
 			writeError(w, http.StatusBadRequest, "invalid_tryout_id", "tryout_id must be a UUID")
 			return
 		}
-		tryout, err := service.GetPublicTryout(r.Context(), id)
+		tryout, err := service.GetPublicTryout(tryoutRequestContext(r, id), id)
 		if err != nil {
 			writeAgentTryoutError(w, logger, err)
 			return
@@ -1422,7 +1459,7 @@ func claimAgentTryoutHandler(logger *slog.Logger, service AgentTryoutService) ht
 			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
-		tryout, err := service.ClaimTryout(r.Context(), caller, ClaimAgentTryoutInput{ID: id, WorkspaceID: req.WorkspaceID})
+		tryout, err := service.ClaimTryout(tryoutRequestContext(r, id), caller, ClaimAgentTryoutInput{ID: id, WorkspaceID: req.WorkspaceID})
 		if err != nil {
 			writeAgentTryoutError(w, logger, err)
 			return
@@ -1610,6 +1647,8 @@ func writeAgentTryoutError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusTooManyRequests, "hosted_spend_exhausted", "Hosted free tryouts are temporarily unavailable. Please try again later.")
 	case errors.Is(err, ErrAgentTryoutCostCapExceeded):
 		writeError(w, http.StatusBadRequest, "tryout_cost_cap_exceeded", "This template exceeds the hosted free tryout cost cap.")
+	case errors.Is(err, repository.ErrAgentTryoutExpired):
+		writeError(w, http.StatusGone, "agent_tryout_expired", "This tryout has expired. Start a new tryout to continue.")
 	case errors.Is(err, repository.ErrAgentTryoutNotFound):
 		writeError(w, http.StatusNotFound, "agent_tryout_not_found", "agent tryout not found")
 	case errors.Is(err, repository.ErrAgentTryoutAlreadyClaimed):
@@ -1717,6 +1756,7 @@ func mapAgentTryoutResponse(tryout repository.AgentTryout) agentTryoutResponse {
 
 func mapPublicAgentTryoutResponse(tryout repository.AgentTryout) publicAgentTryoutResponse {
 	return publicAgentTryoutResponse{
+		SaveEligible:           tryout.WorkspaceID == nil && tryout.AnonymousOwnerProofHash != nil && tryout.ExpiresAt != nil && tryout.ExpiresAt.After(time.Now()),
 		Type:                   string(repository.PublicShareResourceAgentTryout),
 		ID:                     tryout.ID,
 		TemplateSlug:           tryout.TemplateSlug,

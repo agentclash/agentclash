@@ -96,6 +96,7 @@ type AgentTryout struct {
 	UpdatedAt                pgtype.Timestamptz
 	ParentTryoutID           *uuid.UUID
 	SelectedHarnessKind      *string
+	AnonymousOwnerProofHash  *string
 }
 
 type AgentTryoutEvent struct {
