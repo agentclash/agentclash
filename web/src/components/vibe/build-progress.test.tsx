@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { defaultModels, type Operation } from "@/lib/vibe";
 import { ProgressStrip } from "./activity-status";
 import { PrototypeTrial } from "./prototype-trial";
+import { setTokenSentinels, tokenSentinels as token } from "./token-sentinels";
 let root: Root, node: HTMLDivElement;
 const action = vi.fn();
 const turn: Operation = { id: "turn", kind: "message", state: "RUNNING", created_at: "2026-10-30T10:00:00Z", models: defaultModels, billing: "RESERVED", max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [], conversation_decision: { intent: "prepare_tests", source_message_id: "task" } };
@@ -28,7 +29,7 @@ it("keeps the stage from moving backward within a cycle and resets for a new cyc
   await render(turn, "preparing", undefined, "new-cycle"); expect(node.querySelector('[role="status"]')?.textContent).toBe("Understand the task");
 });
 it("distinguishes done, current and upcoming stages without link styling", async () => {
-  const style = document.createElement("style"); style.textContent = readFileSync("src/components/vibe/build-output.css", "utf8"); document.head.append(style);
+  const style = document.createElement("style"); style.textContent = readFileSync("src/components/vibe/build-output.css", "utf8"); document.head.append(style); setTokenSentinels(node);
   try {
     await render({ ...turn, progress: { phase: "preparing", completed_cases: 0, total_cases: 0 } });
     const stages = node.querySelectorAll("li");
@@ -37,7 +38,7 @@ it("distinguishes done, current and upcoming stages without link styling", async
     expect(getComputedStyle(stages[1]).fontWeight).toBe("600");
     expect(getComputedStyle(stages[1]).textDecoration).toBe("none");
     expect(stages[2].getAttribute("data-state")).toBe("upcoming");
-    expect(getComputedStyle(stages[2]).color).toBe("var(--vibe-muted)");
+    expect(getComputedStyle(stages[2]).color).toBe(token["--vibe-muted"]);
     expect(Array.from(stages, stage => stage.textContent)).toEqual(["✓Done: Understand the task", "Write the instructions", "Write 3 tests", "Run tests"]);
   } finally { style.remove(); }
 });

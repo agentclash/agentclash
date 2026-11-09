@@ -3,8 +3,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PromptChange, CopyNewInstructions } from "./prompt-change";
 let node: HTMLDivElement, root: Root;
-beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); node = document.createElement("div"); root = createRoot(node); });
-afterEach(async () => { await act(async () => root.unmount()); vi.unstubAllGlobals(); });
+// getComputedStyle gives empty values for an element that is not in the document. For this reason, the tests put the node in the document.
+beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); node = document.createElement("div"); document.body.append(node); root = createRoot(node); });
+afterEach(async () => { await act(async () => root.unmount()); node.remove(); vi.unstubAllGlobals(); });
 it("copies the exact new instructions after comparison and explains how to use them", async () => {
   const copy = vi.fn().mockResolvedValue(undefined); Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: copy } });
   await act(async () => root.render(<CopyNewInstructions after="Exact new policy" />));
