@@ -125,6 +125,12 @@ feat: minor release
 feat!: major release
 ```
 
+### npm page content
+
+The npm page of the `agentclash` package shows `npm/cli/README.md`. At release time, `scripts/publish-npm/assemble.mjs` copies that file and `npm/cli/AGENTS.md` into the root package. The platform packages get `npm/platforms/template/README.md`.
+
+npm shows the README of the latest published version. A change to these files appears on npm only after the next CLI release. These files are outside `cli/`, so a change to them does not start a release.
+
 Main-branch CLI merges also run the snapshot workflow. Snapshot artifacts are uploaded to the workflow run and are intentionally not a stable release channel.
 
 ### Changelog hygiene (merge commits)
@@ -159,8 +165,8 @@ The `publish-npm` job in `.github/workflows/release-cli.yml` uses npm Trusted Pu
 2. Create a granular, publish-only npm token scoped to `agentclash` + `@agentclash/*` with a 7-day expiry.
 3. Locally, from a clean checkout of a `v*` tag:
    ```bash
-   cd cli && go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
-   node scripts/publish-npm/assemble.mjs v0.0.0-bootstrap dist
+   (cd cli && go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean)
+   node scripts/publish-npm/assemble.mjs v0.0.0-bootstrap cli/dist
    for p in npm-out/platforms/*/; do NODE_AUTH_TOKEN=$TOKEN npm publish "$p" --access=public; done
    NODE_AUTH_TOKEN=$TOKEN npm publish npm-out/cli --access=public
    ```

@@ -87,16 +87,21 @@ when CI should only report the gate result.
 11. Confirm failed cases show up as proposed regression work, or auto-promote on
     the default branch when that profile option is selected.
 
-## Local Dry Run
+## Local Check
 
-From a repository with a generated manifest:
+`ci run` has no dry-run mode. Use `ci validate` to check the manifest before a
+real run. From a repository that has a manifest from `agentclash ci init`:
 
 ```bash
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
 export AGENTCLASH_TOKEN="..."
 export AGENTCLASH_WORKSPACE="workspace-id"
-npx agentclash ci run --config .agentclash/ci.yaml --dry-run
+npx agentclash ci validate .agentclash/ci.yaml --remote
 ```
 
-Then run without `--dry-run` on a CI branch after confirming the selected
-workspace resources are correct.
+The `--remote` flag compares the resource IDs in the manifest with the selected
+workspace. When the check passes, run the full workflow on a CI branch:
+
+```bash
+npx agentclash ci run --manifest .agentclash/ci.yaml
+```

@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "f9723775deee",
+  "snapshot_version": "10e0f44244b5",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -149,7 +149,7 @@
       "name": "agentclash-workspace-admin",
       "role": "admin",
       "requires_cli": true,
-      "sha256": "e19ec3c0b6b1613ed21a79995d2b2822a246ac37ea7ab263e8431e2afbdd12cc"
+      "sha256": "b04757ba43f0938a9948121a7082e1d80c62bb5c5959ec7669659ff03c6325d0"
     }
   ]
 }

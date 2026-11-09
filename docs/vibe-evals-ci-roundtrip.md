@@ -49,7 +49,7 @@ regressions:
 settings. The CLI verifies the deployment belongs to the selected workspace and
 is active. The policy file is a JSON object (up to 1 MiB); it is sent to the real
 release-gate evaluator. Commit the policy with the manifest and review it with
-baseline changes. Run `agentclash ci validate --remote` before `agentclash ci run`.
+baseline changes. Run `agentclash ci validate .agentclash/ci.yaml --remote` before `agentclash ci run`.
 Use the workspace CI setup page to generate the supported GitHub workflow;
 creating a profile or downloading its YAML does not create a GitHub PR.
 
