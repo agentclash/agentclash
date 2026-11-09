@@ -53,9 +53,11 @@ try {
   if (stopping) throw new Error("Frontend startup interrupted");
   await recordOwned("frontend_process", `next:127.0.0.1:${process.env.VIBE_BROWSER_WEB_PORT || "53518"}:${staging}`);
   if (stopping) throw new Error("Frontend startup interrupted");
+  // Next 16 uses Turbopack for "next dev". Turbopack does not follow the
+  // node_modules link out of the temporary root, so this copy uses webpack.
   child = spawn(process.execPath, [
     path.join(web, "node_modules/next/dist/bin/next"),
-    "dev", "--hostname", "127.0.0.1", "--port", process.env.VIBE_BROWSER_WEB_PORT ?? "53518",
+    "dev", "--webpack", "--hostname", "127.0.0.1", "--port", process.env.VIBE_BROWSER_WEB_PORT ?? "53518",
   ], { cwd: staging, env: process.env, stdio: "inherit" });
   const exited = new Promise((resolve, reject) => {
     child.once("error", reject);

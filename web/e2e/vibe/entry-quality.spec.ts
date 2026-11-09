@@ -23,7 +23,9 @@ const known = (id: string) => `Known defect ${id} (see ~/.claude/plans/vibe-eval
 const baseline: Record<"B2" | "B3" | "E2" | "F1", Partial<Record<State, unknown>>> = {
   B2: {},
   B3: {},
-  E2: {},
+  // axe-core 4.14 compares the visible text to the name by word. The names of the
+  // entry paths contain only the title, not the visible text and action of the path.
+  E2: { S0: ["#vibe-door-test", "#vibe-door-build", "#vibe-path-work"] },
   // Measured at 390 touch, the only viewport that runs F1.
   F1: {},
 };
