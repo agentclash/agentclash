@@ -54,11 +54,11 @@ from a code audit on 2026-11-10.
 |---|---|---|---|
 | `agent_tryouts.status`, `redaction_status` | queued, running, completed, failed, cancelled | none in `UpdateAgentTryoutStatus` | A terminal tryout can change to another terminal status. A failed tryout gets `not_required` redaction, so it counts as ready to share. |
 | `organization_memberships`, `workspace_memberships` `.membership_status` | invited, active, suspended, archived | checked in the API layer only | The UPDATE has no guard, so two requests can race. The cascade writes invited to suspended, which the API table forbids. An invalid transition returns 400, not 409. |
-| `multi_turn_human_turns.status` | awaiting, submitted, expired | submit and expire guard on awaiting | The upsert in `MarkAwaitingHuman` resets a submitted turn. |
-| `workspace_arena_tasks.status` | pending, completed | SELECT check, no row lock | A vote on a completed task returns 500. |
-| `hosted_run_executions.status` | starting, accepted, running, completed, failed, timed_out, unknown | partial | `timed_out` is never written. `unknown` has two meanings. `ApplyHostedRunEvent` has no guard and no callers. |
-| `dataset_generation_jobs.status` | queued, running, completed, failed | none | If the workflow does not start, the job stays queued. |
-| `organization_github_installations.status` | active, suspended, deleted | none | A webhook that arrives late can change deleted back to active. |
+| `multi_turn_human_turns.status` | awaiting, submitted, expired | submit and expire guard on awaiting; the upsert does not change a submitted turn | No transition table. |
+| `workspace_arena_tasks.status` | pending, completed | the completing UPDATE guards on pending | No transition table. A late vote returns 409. |
+| `hosted_run_executions.status` | starting, accepted, running, completed, failed, timed_out, unknown | partial | `timed_out` is never written. `unknown` has two meanings: the dispatch result is unknown, or the run timed out. |
+| `dataset_generation_jobs.status` | queued, running, completed, failed | completed and failed are final; a write to the same status is allowed | No transition table. |
+| `organization_github_installations.status` | active, suspended, deleted | deleted is final | No transition table. Repository sync webhooks still run for a deleted installation. |
 | `challenge_pack_drafts.status` | draft, published, discarded | none | Publish does not check the status. `discarded` is never written. |
 | `dataset_examples.status` | active, archived, muted | none | A re-import can bring back an archived example. |
 | `billing_subscriptions.status` | values from the payment provider | event-time order only | No CHECK constraint. A missing event time falls back to `now()`. |
