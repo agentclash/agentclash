@@ -14,8 +14,9 @@ are **no built-in packs** — every workspace authors its own.
 ## Division of labor (important)
 
 - **Humans do one-time setup on the web** at https://agentclash.dev: sign in,
-  add provider API keys (BYOK), and create deployments. Don't try to do these
-  from the CLI.
+  add provider API keys (BYOK), and create deployments. Do these steps from
+  the CLI only when the human asks for it. For scripted setup, the CLI has
+  `secret set`, `infra provider-account create` and `deployment create`.
 - **The CLI is the iterate loop**: author packs, run evals, read scorecards,
   gate CI. That's your job as the agent.
 
@@ -67,17 +68,18 @@ carries the full workflow map, skill dependency order, hosted defaults, and
 product UI links. Other notable skills: `agentclash-cli-setup`,
 `agentclash-challenge-pack-yaml-author`, `agentclash-eval-runner`,
 `agentclash-scorecard-reader`, `agentclash-compare-and-triage`,
-`agentclash-regression-flywheel`, `agentclash-ci-release-gate`.
+`agentclash-regression-flywheel`, `agentclash-ci-release-gate`,
+`agentclash-dataset-workflows`, `agentclash-multi-turn-operator`.
 
 ## End-to-end workflow (after web setup exists)
 
 ```text
 1. agentclash-cli-setup              → auth, workspace, doctor
 2. agentclash-quickstart             → readiness checks + next command
-3. runtime-resources-setup           → provider, model alias, runtime profile, secrets
-4. agent-build-author                → build spec + ready build version
-5. agent-deployment-setup            → deployment ID for runs
-6. challenge-pack skills             → plan, write YAML, validate, publish a pack
+3. agentclash-runtime-resources-setup → provider account, runtime profile, secrets
+4. agentclash-agent-build-author     → build spec + ready build version
+5. agentclash-agent-deployment-setup → deployment ID for runs
+6. agentclash-challenge-pack-*       → plan, write YAML, validate, publish a pack
 7. agentclash-eval-runner            → eval start / run create / --follow / sessions
 8. agentclash-scorecard-reader       → rankings, scorecards, replay, artifacts
 9. agentclash-compare-and-triage     → baseline, compare latest/gate, replay triage

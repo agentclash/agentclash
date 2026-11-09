@@ -45,16 +45,20 @@ export AGENTCLASH_TOKEN="<token>"
 export AGENTCLASH_WORKSPACE="<workspace-id>"
 
 agentclash dataset generate <datasetId> \
-  --strategy agentic_self_instruct \
+  --strategy agentic-self-instruct \
+  --count 50 \
+  --provider-account <provider-account-id> \
+  --model <model-id> \
+  --judge-provider-account <provider-account-id> \
+  --judge-model <model-id> \
+  --create-version \
   --version-label "synthetic-v1" \
-  --max-examples 50
+  --follow
 ```
 
-Poll job status:
+The `--count`, `--provider-account` and `--model` flags are necessary. Agentic Self-Instruct also needs `--judge-provider-account` and `--judge-model`.
 
-```bash
-agentclash dataset generate status <datasetId> <jobId>
-```
+The `--follow` flag polls the job status until the job stops. The CLI has no `dataset generate status` command. Without `--follow`, the command prints the job ID and stops.
 
 See `agentclash dataset generate --help` for weak/strong deployment flags and acceptance tuning.
 
