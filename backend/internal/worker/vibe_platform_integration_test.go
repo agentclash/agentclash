@@ -52,7 +52,9 @@ func TestAWSVibeAdmissionACL(t *testing.T) {
 			if err != nil || ttl <= 0 || ttl > 120*time.Second {
 				t.Fatal("Vibe rate key lacks its bounded expiry")
 			}
-			if client.Set(ctx, "vibe:other:fixture", "denied", time.Minute).Err() == nil || client.Set(ctx, "trycli:fixture", "denied", time.Minute).Err() == nil {
+			// The ACL allows every vibe:* key (rate, sse, ready and readiness
+			// keys), so the probes use namespaces outside the application ACL.
+			if client.Set(ctx, "unlisted:fixture", "denied", time.Minute).Err() == nil || client.Set(ctx, "trycli:fixture", "denied", time.Minute).Err() == nil {
 				t.Fatal("application ACL escaped its key namespace")
 			}
 			if client.FlushDB(ctx).Err() == nil || client.FlushAll(ctx).Err() == nil {

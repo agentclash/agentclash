@@ -19,7 +19,12 @@ test("guest setup resumes the exact selected prototype and baseline before expli
   for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 360, height: 800 }]) {
     await page.setViewportSize(viewport);
     await page.goto("/");
-    if (viewport.width < 1024) await page.getByText("Menu", { exact: true }).click();
+    // A click before hydration can leave the menu closed, so open it until the link shows.
+    if (viewport.width < 1024) await expect(async () => {
+      const menu = page.locator("details", { has: page.getByText("Menu", { exact: true }) });
+      if (!(await menu.evaluate(el => (el as HTMLDetailsElement).open))) await page.getByText("Menu", { exact: true }).click();
+      await expect(page.getByRole("link", { name: "Try Vibe Evals", exact: true })).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
     await expect(page.getByRole("link", { name: "Try Vibe Evals", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`landing-navigation-${viewport.width}.png`) });
