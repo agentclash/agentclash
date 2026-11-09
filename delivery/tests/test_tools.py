@@ -1,6 +1,7 @@
 from contextlib import redirect_stdout
 import http.client
 import io
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -9,6 +10,7 @@ import urllib.error
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "delivery"), str(ROOT / "deploy/aws/scripts")]
+from common import Refused
 import tools
 
 URL = "https://github.com/example/tool/releases/download/v1/tool.tar.gz"
@@ -54,13 +56,64 @@ class DownloadTest(unittest.TestCase):
         sleep.assert_called_once()
 
     def test_persistent_fault_fails_after_the_last_attempt(self, sleep):
+        other = "https://github.com/example/tool/archive/v1.tar.gz"
         with patch(
             "tools.urllib.request.urlopen", side_effect=TimeoutError()
         ) as urlopen:
             with self.assertRaises(TimeoutError):
-                tools.download(URL)
+                tools.download(other)
         self.assertEqual(urlopen.call_count, tools.DOWNLOAD_ATTEMPTS)
         self.assertEqual(sleep.call_count, tools.DOWNLOAD_ATTEMPTS - 1)
+
+    def test_release_asset_uses_the_api_when_the_download_path_fails(self, sleep):
+        asset = "https://api.github.com/repos/example/tool/releases/assets/7"
+        release = json.dumps(
+            {
+                "assets": [
+                    {"name": "other.zip", "url": asset + "0"},
+                    {"name": "tool.tar.gz", "url": asset},
+                ]
+            }
+        ).encode()
+        faults = [http_error(504)] * tools.DOWNLOAD_ATTEMPTS
+        with (
+            patch(
+                "tools.urllib.request.urlopen",
+                side_effect=[*faults, response(release), response(b"tool")],
+            ) as urlopen,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            self.assertEqual(tools.download(URL), b"tool")
+        lookup, read = (call.args[0] for call in urlopen.call_args_list[-2:])
+        self.assertEqual(
+            lookup.full_url,
+            "https://api.github.com/repos/example/tool/releases/tags/v1",
+        )
+        self.assertEqual(read.full_url, asset)
+        self.assertEqual(read.get_header("Accept"), "application/octet-stream")
+        self.assertEqual(
+            output.getvalue(), "Tool download uses the GitHub release API\n"
+        )
+
+    def test_missing_release_asset_is_refused(self, sleep):
+        faults = [http_error(504)] * tools.DOWNLOAD_ATTEMPTS
+        with (
+            patch(
+                "tools.urllib.request.urlopen",
+                side_effect=[*faults, response(b'{"assets": []}')],
+            ),
+            redirect_stdout(io.StringIO()),
+        ):
+            with self.assertRaises(Refused):
+                tools.download(URL)
+
+    def test_client_error_on_a_release_asset_does_not_use_the_api(self, sleep):
+        with patch(
+            "tools.urllib.request.urlopen", side_effect=http_error(404)
+        ) as urlopen:
+            with self.assertRaises(urllib.error.HTTPError):
+                tools.download(URL)
+        self.assertEqual(urlopen.call_count, 1)
 
 
 class TimedTest(unittest.TestCase):
