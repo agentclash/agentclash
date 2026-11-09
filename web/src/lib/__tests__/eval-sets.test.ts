@@ -9,6 +9,7 @@ import {
   completionPercent,
   countCellsByState,
   displayRef,
+  evalSetLiveKey,
   evalSetStatusLabel,
   inFlightCount,
   matrixCellStateLabel,
@@ -209,5 +210,54 @@ describe("displayRef / buildRefLabelMap", () => {
     expect(evalSetStatusLabel("budget_exceeded")).toBe("Budget exceeded");
     // scored = runs finished, not case-verdict pass
     expect(matrixCellStateLabel("scored")).toBe("Complete");
+  });
+});
+
+describe("evalSetLiveKey", () => {
+  it("has no key before the set loads or without sessions", () => {
+    expect(evalSetLiveKey("es-1", undefined, ["s-1"])).toBeNull();
+    expect(evalSetLiveKey("es-1", "running", [])).toBeNull();
+  });
+
+  it("keeps a key after the set ends, with a different phase", () => {
+    const live = evalSetLiveKey("es-1", "running", ["s-1"]);
+    expect(live).toEqual(["eval-set-live", "es-1", "live", "s-1"]);
+    for (const status of ["completed", "failed", "cancelled", "budget_exceeded"] as const) {
+      expect(evalSetLiveKey("es-1", status, ["s-1"])).toEqual([
+        "eval-set-live",
+        "es-1",
+        "final",
+        "s-1",
+      ]);
+    }
+  });
+});
+
+describe("terminal sets", () => {
+  it("shows final cell states from the kept live map of a cancelled set", () => {
+    const detail = detailFixture();
+    detail.eval_set.status = "cancelled";
+    const live = Object.fromEntries(
+      [1, 2, 3, 4, 5].map((r) => [
+        `pack-a/agent-1/${r}`,
+        { status: r <= 2 ? "completed" : "cancelled", runId: `run-${r}` },
+      ]),
+    );
+    const grid = buildMatrixGrid(detail, live);
+    const cell = grid.cells[`agent-1\0pack-a`];
+    expect(cell?.state).toBe("failed");
+    expect(cell?.doneCount).toBe(5);
+    expect(cell?.passCount).toBe(2);
+  });
+
+  it("does not treat the unused canceled spelling as terminal", () => {
+    const detail = detailFixture();
+    detail.eval_set.combination_count = 2;
+    expect(
+      completionPercent(detail, {
+        a: { status: "cancelled" },
+        b: { status: "canceled" },
+      }),
+    ).toBe(50);
   });
 });
