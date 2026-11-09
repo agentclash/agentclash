@@ -20,7 +20,7 @@ End-to-end dataset operations in a workspace: versioned example banks, eval runs
 
 ## Do Not Use When
 - The user only needs a one-off challenge-pack run — use `agentclash-eval-runner`.
-- Prompt matrix experiments without a dataset artifact — use `agentclash-prompt-eval-playground`.
+- Prompt matrix experiments without a dataset artifact — use a `prompt_eval` challenge pack (`agentclash-challenge-pack-yaml-author`) and `agentclash-eval-runner`.
 - Harness coding tasks — use `agentclash-agent-harness-setup`.
 
 ## Inputs Needed
@@ -147,7 +147,6 @@ Next: agentclash run scorecard <run-id>
 - `agentclash-regression-flywheel`
 - `agentclash-ci-release-gate`
 - `agentclash-scorecard-reader`
-- `agentclash-prompt-eval-playground`
 
 ## Related Docs
 - `/docs-md/guides/datasets-overview`

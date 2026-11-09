@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/agentclash/agentclash/runtime/templateutil"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
@@ -172,6 +173,9 @@ func parseJSONDocument(raw string) (any, error) {
 func parseJSONSchema(raw string) (*jsonschema.Schema, string, error) {
 	var schemaValue jsonschema.Schema
 	if err := json.Unmarshal([]byte(raw), &schemaValue); err != nil {
+		return nil, "", err
+	}
+	if err := templateutil.RejectItemsArray(&schemaValue); err != nil {
 		return nil, "", err
 	}
 

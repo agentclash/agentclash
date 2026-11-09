@@ -4,12 +4,6 @@ updates:
     directory: /backend
     schedule:
       interval: weekly
-    ignore:
-      # jsonschema-go v0.4 changes the schemas in the frozen Vibe prompt
-      # versions (TestRetainedAuthoringWireIdentity). The Vibe owners must
-      # choose a compatibility layer or a new prompt version first.
-      - dependency-name: github.com/google/jsonschema-go
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
     groups:
       backend:
         patterns: ["*"]
@@ -26,12 +20,6 @@ updates:
     directory: /runtime
     schedule:
       interval: weekly
-    ignore:
-      # jsonschema-go v0.4 changes the schemas in the frozen Vibe prompt
-      # versions (TestRetainedAuthoringWireIdentity). The Vibe owners must
-      # choose a compatibility layer or a new prompt version first.
-      - dependency-name: github.com/google/jsonschema-go
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
     groups:
       runtime:
         patterns: ["*"]
