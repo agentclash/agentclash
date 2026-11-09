@@ -30,37 +30,45 @@ export type BuilderSelection =
   | { section: "scorecard" }
   | { section: "piece"; kind: PieceKind; index: number };
 
-interface State {
+export type SaveState =
+  | { status: "idle" }
+  | { status: "saving" }
+  | { status: "saved"; at: number }
+  | { status: "failed" };
+
+export interface State {
   composition: Composition;
   selection: BuilderSelection;
-  saving: boolean;
-  savedAt: number | null;
+  save: SaveState;
   compiling: boolean;
   compile: CompileDraftResponse | null;
   publishing: boolean;
 }
 
-type Action =
+export type Action =
   | { type: "update"; updater: (composition: Composition) => Composition }
   | { type: "select"; selection: BuilderSelection }
   | { type: "savingStart" }
   | { type: "savingDone" }
+  | { type: "savingFailed" }
   | { type: "compileStart" }
   | { type: "compileDone"; result: CompileDraftResponse }
   | { type: "compileFailed" }
   | { type: "publishingStart" }
   | { type: "publishingDone" };
 
-function reducer(state: State, action: Action): State {
+export function packDraftReducer(state: State, action: Action): State {
   switch (action.type) {
     case "update":
       return { ...state, composition: action.updater(state.composition) };
     case "select":
       return { ...state, selection: action.selection };
     case "savingStart":
-      return { ...state, saving: true };
+      return { ...state, save: { status: "saving" } };
     case "savingDone":
-      return { ...state, saving: false, savedAt: Date.now() };
+      return { ...state, save: { status: "saved", at: Date.now() } };
+    case "savingFailed":
+      return { ...state, save: { status: "failed" } };
     case "compileStart":
       return { ...state, compiling: true };
     case "compileDone":
@@ -74,6 +82,30 @@ function reducer(state: State, action: Action): State {
     default:
       return state;
   }
+}
+
+/** Header status line for the builder. */
+export function saveStatusLabel(state: State): string {
+  if (state.save.status === "saving") return "Saving…";
+  if (state.compiling) return "Updating preview…";
+  if (state.save.status === "failed") return "Not saved";
+  if (state.save.status === "saved") return "Saved";
+  return "";
+}
+
+/**
+ * Publish waits for in-flight saves and compiles: a save landing between the
+ * publish patch and the publish call would publish an older composition, and
+ * a running compile means the validity shown is stale.
+ */
+export function publishDisabled(state: State): boolean {
+  const invalid = state.compile != null && !state.compile.valid;
+  return (
+    state.publishing ||
+    state.save.status === "saving" ||
+    state.compiling ||
+    invalid
+  );
 }
 
 interface PackDraftContextValue {
@@ -108,11 +140,10 @@ export function PackDraftProvider({
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
 
-  const [state, dispatch] = useReducer(reducer, {
+  const [state, dispatch] = useReducer(packDraftReducer, {
     composition: initialComposition,
     selection: { section: "overview" },
-    saving: false,
-    savedAt: null,
+    save: { status: "idle" },
     compiling: false,
     compile: null,
     publishing: false,
@@ -157,7 +188,7 @@ export function PackDraftProvider({
         dispatch({ type: "savingDone" });
         await runCompile();
       } catch (err) {
-        dispatch({ type: "savingDone" });
+        dispatch({ type: "savingFailed" });
         toast.error(err instanceof ApiError ? err.message : "Failed to save draft");
       }
     }, AUTOSAVE_DELAY_MS);
