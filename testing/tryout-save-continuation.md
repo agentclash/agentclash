@@ -8,6 +8,8 @@
 - Legacy proofless anonymous results retain redacted public reads (subject to existing expiry); they cannot be claimed or changed. Previously public data is not retroactively private. Missing cookies and legacy results offer a new tryout, never ownership recovery from an ID.
 - Claim requires authentication, authorized target workspace and independent creator proof. SQL checks ownership and expiry atomically. Competing targets cannot both claim. Identical successful retries preserve the original transition and receipt.
 - After return, offer explicit workspace selection and save. Only a successful backend response displays saved result/workspace identity. Forbidden, expired, unavailable and cancellation states are recoverable. Saved reloads use authenticated authorization, never anonymous access to private data.
+- Save is deferred until completed, failed or cancelled. Queued/running results advertise ineligibility; manager and atomic claim SQL reject active claims. Anonymous creator reply/end controls remain usable until completion. Saved/private results never offer anonymous reply/end actions.
+- A saved receipt names its workspace, with exact result/workspace identity retained in the response, destination link and observable metadata. Saved calls to action lead to the workspace rather than invite another save.
 - Save is disabled when the server omits the new eligibility capability. Never send the new UI to an older ID-only claim handler.
 - Deploy backend-only narrow credentialed-CORS preparation before credentialed frontend requests. Same-site web/API deployment is required; unsupported cross-site cookies fail closed. Preserve other endpoint CORS and existing auth paths.
 
@@ -37,6 +39,7 @@ Real browser + actual Next/AuthKit pages + local fake identity provider:
 4. Expired result gives concrete recovery without saved state.
 5. Wrong/tampered workspace rejects; UUID substitution/wrong creator cookie rejects; anonymous private access rejects.
 6. Old server without eligibility does not enable save.
+7. Running result cannot save, accepts creator reply/end, becomes terminal, then explicitly saves; saved/private controls do not offer anonymous turns.
 
 Browser traces/HAR are disabled because they contain raw cookie headers. Inspect cookies only in memory; screenshots and synthetic identity assertions may be retained.
 
