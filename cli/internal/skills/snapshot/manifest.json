@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "10e0f44244b5",
+  "snapshot_version": "4330341ca70b",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -17,7 +17,7 @@
       "name": "agentclash-agent-harness-setup",
       "role": "harness",
       "requires_cli": true,
-      "sha256": "f5524ad01df7397c0df95607733bb2d7935076ed198e6d157f513ec175f23816"
+      "sha256": "957490cf31fc4c1f1edae2c98a12db822f671ff1d3e4538788339a7fa5f6b466"
     },
     {
       "name": "agentclash-challenge-pack-artifacts",
@@ -89,7 +89,7 @@
       "name": "agentclash-dataset-workflows",
       "role": "dataset",
       "requires_cli": true,
-      "sha256": "3a26c97b748657f6ff2983dcd0bf4de0b127acf4fc60279b479f2944754a3491"
+      "sha256": "1db19cf8279a53823ceb183f5459c27ba0df71ebf8263361e8002ca3ab65ad02"
     },
     {
       "name": "agentclash-eval-runner",
@@ -101,19 +101,13 @@
       "name": "agentclash-hub",
       "role": "hub",
       "requires_cli": false,
-      "sha256": "7a29ca9daae0974139373b33e0d7a83e963870b47487bce85a05c5386adc72b3"
+      "sha256": "f4defd0888c4e0e9a6ebccdbc4e53216c0009e5fd2df03726bb1a91ec853605e"
     },
     {
       "name": "agentclash-multi-turn-operator",
       "role": "multi-turn",
       "requires_cli": true,
       "sha256": "f693d8bc81940b23b0ed2a730fa6ef2d20675cf7150501260ffb602c117f7e5c"
-    },
-    {
-      "name": "agentclash-prompt-eval-playground",
-      "role": "prompt-eval",
-      "requires_cli": true,
-      "sha256": "8e56f23102f1bf343859abbdbae2de0a9153fd36c3204eb287b95eb474c6857f"
     },
     {
       "name": "agentclash-quickstart",
