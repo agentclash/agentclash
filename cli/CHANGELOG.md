@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.2](https://github.com/agentclash/agentclash/compare/v2.3.1...v2.3.2) (2026-11-09)
+
+
+### Bug Fixes
+
+* **cli:** remove the prompt-eval playground skill ([102ad0f](https://github.com/agentclash/agentclash/commit/102ad0fece9d3d3f30f91c0da9b32b3a9e5369ce))
+* **cli:** remove the prompt-eval playground skill ([1baa121](https://github.com/agentclash/agentclash/commit/1baa1214ac9114b2138e843ea2f489d299253a05))
+
 ## [2.3.1](https://github.com/agentclash/agentclash/compare/v2.3.0...v2.3.1) (2026-11-09)
 
 
