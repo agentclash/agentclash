@@ -20,7 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { UploadArtifactDialog } from "@/components/artifacts/upload-artifact-dialog";
 import { LiveEventTicker } from "@/components/arena/live-event-ticker";
 import { cn } from "@/lib/utils";
-import type { RunAgent, RunAgentStatus } from "@/lib/api/types";
+import type { RunAgent, RunAgentStatus, RunStatus } from "@/lib/api/types";
+import { isAgentLive } from "@/lib/run-status";
 import type { ArenaLaneState } from "@/hooks/use-agent-arena";
 import type { ArenaEventKind } from "@/lib/arena/event-formatter";
 
@@ -35,13 +36,6 @@ const AGENT_STATUS_VARIANT: Record<
   completed: "default",
   failed: "destructive",
 };
-
-const ACTIVE_STATUSES: RunAgentStatus[] = [
-  "queued",
-  "ready",
-  "executing",
-  "evaluating",
-];
 
 const NOW_DOING_ICON: Record<
   ArenaEventKind,
@@ -80,6 +74,8 @@ interface LiveAgentLaneProps {
   isWinner: boolean;
   workspaceId: string;
   runId: string;
+  /** Status of the parent run. A terminal run stops every lane from animating. */
+  runStatus: RunStatus;
   /** Rendered below the live sections when the agent is terminal (e.g. scorecard). */
   footer?: React.ReactNode;
 }
@@ -90,9 +86,10 @@ export function LiveAgentLane({
   isWinner,
   workspaceId,
   runId,
+  runStatus,
   footer,
 }: LiveAgentLaneProps) {
-  const isActive = ACTIVE_STATUSES.includes(agent.status);
+  const isActive = isAgentLive(agent.status, runStatus);
   const isFailed = agent.status === "failed";
   const isTerminal = !isActive;
 

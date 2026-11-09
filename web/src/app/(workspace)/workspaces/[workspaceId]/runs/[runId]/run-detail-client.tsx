@@ -19,9 +19,10 @@ import { useRunEvents, type RunEvent } from "@/hooks/use-run-events";
 import { createApiClient } from "@/lib/api/client";
 import { scorePercent } from "@/lib/scores";
 import {
-  ACTIVE_AGENT_STATUSES,
   isAgentAwaitingHumanInput,
-  isRunActive,
+  isAgentTerminal,
+  isRunLive,
+  isRunTerminal,
 } from "@/lib/run-status";
 import { isVoiceRun, voiceRunMode, voiceRunTransport } from "@/lib/voice-evals";
 import type {
@@ -182,9 +183,10 @@ export function RunDetailClient({
   const [showCommentary, setShowCommentary] = useState(false);
   const [arenaMode, setArenaMode] = useArenaMode();
 
-  const isActive =
-    isRunActive(run.status) ||
-    agents.some((a) => ACTIVE_AGENT_STATUSES.includes(a.status));
+  const isActive = isRunLive(
+    run.status,
+    agents.map((a) => a.status),
+  );
 
   const fetchAll = useCallback(async () => {
     try {
@@ -261,10 +263,7 @@ export function RunDetailClient({
   }, [isActive, fetchAll, sseConnected]);
 
   // Fetch ranking when run reaches a terminal state or on mount if already terminal
-  const isTerminal =
-    run.status === "completed" ||
-    run.status === "failed" ||
-    run.status === "cancelled";
+  const isTerminal = isRunTerminal(run.status);
 
   useEffect(() => {
     if (!isTerminal) return;
@@ -290,7 +289,7 @@ export function RunDetailClient({
   // Fetch scorecards for completed/failed agents.
   // Derive a stable key from agent IDs + statuses to avoid re-firing on every poll.
   const completedAgentKey = agents
-    .filter((a) => a.status === "completed" || a.status === "failed")
+    .filter((a) => isAgentTerminal(a.status))
     .map((a) => a.id)
     .sort()
     .join(",");
@@ -551,11 +550,10 @@ export function RunDetailClient({
             showCommentary={showCommentary}
             commentaryEntries={commentaryEntries}
             isActive={isActive}
+            runStatus={run.status}
             laneFooters={Object.fromEntries(
               sortedAgents
-                .filter(
-                  (a) => a.status === "completed" || a.status === "failed",
-                )
+                .filter((a) => isAgentTerminal(a.status))
                 .map((a) => [
                   a.id,
                   <ScorecardSummaryCard
@@ -585,9 +583,7 @@ export function RunDetailClient({
                 const isWinner =
                   ranking?.ranking?.winner?.run_agent_id === agent.id;
                 const laneState = arenaLanes[agent.id] ?? EMPTY_LANE;
-                const isTerminal =
-                  agent.status === "completed" || agent.status === "failed";
-                const footer = isTerminal ? (
+                const footer = isAgentTerminal(agent.status) ? (
                   <ScorecardSummaryCard
                     scorecard={scorecards[agent.id] ?? null}
                     loading={!(agent.id in scorecards)}
@@ -602,6 +598,7 @@ export function RunDetailClient({
                     isWinner={isWinner}
                     workspaceId={workspaceId}
                     runId={run.id}
+                    runStatus={run.status}
                     footer={footer}
                   />
                 );
@@ -689,9 +686,7 @@ export function RunDetailClient({
         )}
 
       {/* === Ranking === */}
-      {(run.status === "completed" ||
-        run.status === "failed" ||
-        run.status === "cancelled") && (
+      {isTerminal && (
         <div>
           <h2 className="text-2xs leading-none text-white/75 uppercase tracking-[0.22em] font-medium mb-4">Ranking</h2>
 
