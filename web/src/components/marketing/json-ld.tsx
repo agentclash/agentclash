@@ -346,6 +346,7 @@ type BenchmarkReportSchemaInput = {
   title: string;
   description: string;
   date: string;
+  dateModified?: string;
   author: string;
   verdict: string;
   results: Array<{ model: string; provider: string }>;
@@ -370,6 +371,7 @@ export function benchmarkReportSchema(
       description: report.description,
       url: `/benchmarks/${report.slug}`,
       datePublished: report.date,
+      dateModified: report.dateModified ?? report.date,
       authorName: report.author,
     }),
     {
@@ -379,6 +381,7 @@ export function benchmarkReportSchema(
       description: report.verdict || report.description,
       url,
       datePublished: report.date,
+      dateModified: report.dateModified ?? report.date,
       keywords: [
         "AI agent benchmark",
         "LLM agent evaluation",

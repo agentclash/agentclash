@@ -13,7 +13,7 @@ import "./project-enquiry.css";
 
 type Draft = { summary: string; email: string; name: string; company: string };
 
-export function ProjectEnquiry({ session, artifact, operation, primary = false }: { session: Session; artifact: Artifact; operation?: Operation; primary?: boolean }) {
+export function ProjectEnquiry({ session, artifact, operation, primary = false, secondary = false, brass = false }: { session: Session; artifact: Artifact; operation?: Operation; primary?: boolean; secondary?: boolean; brass?: boolean }) {
   const { token, contact } = useVibeConnection();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => ({ summary: projectSummary(session, artifact, operation), email: "", name: "", company: "" }));
@@ -43,13 +43,14 @@ export function ProjectEnquiry({ session, artifact, operation, primary = false }
     source.current = { artifact_id: artifact.id, operation_id: operation?.id, revision: session.revision };
     edit({ ...draft, summary: projectSummary(session, artifact, operation) });
   }
-  function submitError(message: string) {
-    setError(message);
-    requestAnimationFrame(() => {
-      errorRef.current?.focus();
-      errorRef.current?.scrollIntoView?.({ block: "nearest" });
-    });
-  }
+  // Each submit error moves focus to the alert once it renders, even when the message repeats.
+  const [errorShown, setErrorShown] = useState(0);
+  function submitError(message: string) { setError(message); setErrorShown(count => count + 1); }
+  useEffect(() => {
+    if (!errorShown) return;
+    errorRef.current?.focus();
+    errorRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [errorShown]);
   useEffect(() => {
     // Preserve the exact submitted body across a lost acknowledgement and reload.
     try {
@@ -97,17 +98,18 @@ export function ProjectEnquiry({ session, artifact, operation, primary = false }
     catch { submitError("Status is temporarily unavailable. Your original enquiry is preserved."); }
   }
 
+  if (!available && !directEmail) return null;
   return <section className="vibe-project-enquiry">
-    <VibeButton ref={triggerRef} variant={primary ? "primary" : "quiet"} onClick={() => {
+    <VibeButton ref={triggerRef} variant={primary ? "primary" : secondary || brass ? "secondary" : "quiet"} className={brass ? "vibe-button-brass" : undefined} onClick={() => {
       if (!opened.current) { refresh(); opened.current = true; }
       if (session.document.evaluation?.door === "build") captureBuildEvent(WEB_EVENTS.VIBE_BUILD_ENQUIRY_OPENED, eventBase);
       setOpen(true);
-    }}>Discuss this with AgentClash</VibeButton>
+    }}>Talk to us about this agent</VibeButton>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="vibe-workspace vibe-dialog vibe-enquiry-dialog" initialFocus={titleRef} finalFocus={triggerRef}>
         <div className="vibe-enquiry-heading">
           <DialogTitle ref={titleRef} tabIndex={-1}>Let’s discuss building this for your business</DialogTitle>
-          <DialogDescription>Review what you’ll share. Files, raw replies and chat history are not attached.</DialogDescription>
+          <DialogDescription>Review what you’ll share. Files, raw replies and conversation history are not attached.</DialogDescription>
         </div>
         <div className="vibe-dialog-body vibe-enquiry-body">
           <form className="vibe-enquiry-form" noValidate onSubmit={e => { e.preventDefault(); void send(); }}>

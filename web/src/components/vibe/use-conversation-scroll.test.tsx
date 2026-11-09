@@ -59,7 +59,9 @@ it("preserves history reading and per-context positions, and only jumps on expli
   await act(async () => root.render(<Harness sessionID="saved-reading" />));
   const region = scroll.region.current!;
   Object.defineProperties(region, { scrollHeight: { value: 2000 }, clientHeight: { value: 500 } });
-  const move = vi.fn(), jump = vi.fn(); region.scrollTo = move; scroll.end.current!.scrollIntoView = jump;
+  const move = vi.fn((options: ScrollToOptions) => { region.scrollTop = options.top || 0; }); region.scrollTo = move;
+  vi.spyOn(region, "getBoundingClientRect").mockReturnValue({ top: 100 } as DOMRect);
+  vi.spyOn(region.querySelector('[data-build-entry="answer"]')!, "getBoundingClientRect").mockReturnValue({ top: 900 } as DOMRect);
   await act(async () => { region.scrollTop = 180; region.dispatchEvent(new Event("scroll")); });
   await act(async () => root.render(<Harness sessionID="saved-reading" stamp="2" anchor="answer" />));
   expect(move).not.toHaveBeenCalled(); expect(region.scrollTop).toBe(180); expect(scroll.hasNewResponse).toBe(true);
@@ -68,6 +70,6 @@ it("preserves history reading and per-context positions, and only jumps on expli
   await act(async () => root.render(<Harness sessionID="saved-reading" stamp="2" anchor="answer" />));
   expect(region.scrollTop).toBe(180);
   await act(async () => scroll.jumpToLatest());
-  expect(jump).toHaveBeenCalledWith({ behavior: "auto", block: "nearest" });
+  expect(region.scrollTop).toBe(980);
   expect(scroll.hasNewResponse).toBe(false);
 });

@@ -1,5 +1,6 @@
 """Local maintained-image graph. Downloads are public, pinned and verified."""
 
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -15,6 +16,23 @@ from common import require
 from release_contract import canonical, recipe_hash, DERIVED, UPSTREAM, PLATFORM
 
 LABEL = "io.agentclash.platform-build-sha256"
+PINNED_INPUTS = Path(__file__).resolve().parent / "pinned-inputs"
+ROOT = Path(__file__).resolve().parents[1]
+# Only aws-checks.yml sets this, for its own PR and main runs. A run from
+# aws-release.yml (workflow_call) and the release build never set it, so a
+# publication always builds every platform image from source.
+PLATFORM_CACHE = "AGENTCLASH_PLATFORM_CACHE"
+
+
+@contextmanager
+def timed(phase):
+    """Print the duration of a public, fixed phase name. No paths or values."""
+    start = time.monotonic()
+    try:
+        yield
+    finally:
+        seconds = round(time.monotonic() - start)
+        print("Image check phase: " + phase + " " + str(seconds) + "s", flush=True)
 
 
 def normalize_context(context):
@@ -25,6 +43,26 @@ def normalize_context(context):
         require(not path.is_symlink(), "Unexpected build-context link")
         path.chmod(0o755 if path.is_dir() else 0o644)
         os.utime(path, (0, 0))
+
+
+def platform_cache(build_hash):
+    """Platform builds of an earlier check run with the same recipe, or None.
+
+    The workflow keys the cache on the recipe files. The marker and the recipe
+    label on each image also hold the recipe hash, and every image still goes
+    through the full scan gate.
+    """
+    value = os.environ.get(PLATFORM_CACHE)
+    if not value:
+        return None
+    path = Path(value).resolve()
+    require(not path.is_relative_to(ROOT), "Platform cache must be outside Git")
+    marker = path / "recipe.sha256"
+    if path.exists() and not (marker.is_file() and marker.read_text() == build_hash):
+        shutil.rmtree(path)
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    marker.write_text(build_hash)
+    return path
 
 
 def local_base(run, identity):
@@ -81,6 +119,16 @@ def fetch(entry, destination):
             time.sleep(2**attempt)
         if content is not None:
             break
+    if content is None:
+        retained = PINNED_INPUTS / entry["sha256"]
+        if retained.is_file():
+            require(
+                not retained.is_symlink()
+                and retained.resolve().parent == PINNED_INPUTS.resolve(),
+                "Retained public input must be a regular local file",
+            )
+            content = retained.read_bytes()
+            print("Using retained pinned public input", flush=True)
     require(content is not None, "Pinned public build input unavailable")
     require(
         hashlib.sha256(content).hexdigest() == entry["sha256"], "Input hash mismatch"
@@ -157,6 +205,7 @@ def build(root, directory, run, gate):
         "Platform source/runtime classification mismatch",
     )
     build_hash = recipe_hash(root)
+    reuse = platform_cache(build_hash)
     output, identity = {}, {}
     cache = directory / "platform-inputs"
     cache.mkdir(mode=0o700)
@@ -168,9 +217,14 @@ def build(root, directory, run, gate):
     print("Resolving pinned gosu source", flush=True)
     fetch(lock["gosu"], gosu)
 
-    def docker_build(context, filename, name, arguments):
-        normalize_context(context)
+    def docker_build(context, filename, name, arguments, target=None):
         tag = "agentclash-platform-build:" + name
+        cached = reuse / (name + ".image.tar") if reuse else None
+        if cached and cached.is_file():
+            print("Using the cached platform build " + name, flush=True)
+            run(["docker", "load", "--input", str(cached)], timeout=600)
+            return inspect(run, tag, build_hash)
+        normalize_context(context)
         archive = directory / (name + ".image.tar")
         command = [
             "docker",
@@ -189,13 +243,18 @@ def build(root, directory, run, gate):
             "-t",
             tag,
         ]
+        if target is not None:
+            command += ["--target", target]
         for key, value in arguments.items():
             if key in ("BUILDER", "UPSTREAM") and value.startswith("sha256:"):
                 value = local_base(run, value)
             command += ["--build-arg", key + "=" + value]
         run(command + [str(context)], timeout=2400)
         run(["docker", "load", "--input", str(archive)], timeout=600)
-        archive.unlink()
+        if cached:
+            shutil.move(archive, cached)
+        else:
+            archive.unlink()
         return inspect(run, tag, build_hash)
 
     packages = {
@@ -207,14 +266,45 @@ def build(root, directory, run, gate):
                 "ca-certificates-bundle",
                 "ca-certificates",
                 "tzdata",
+                "zlib",
+                "musl",
+                "musl-utils",
             ),
         ),
-        "go": ("v3.24", ("libcrypto3", "libssl3")),
-        "bun": ("v3.22", ("libcrypto3", "libssl3")),
-        "caddy": ("v3.23", ("libcrypto3", "libssl3", "curl", "libcurl", "c-ares")),
-        "postgres": ("v3.24", ("libcrypto3", "libssl3", "libuuid")),
+        "go": ("v3.24", ("libcrypto3", "libssl3", "zlib")),
+        "bun": (
+            "v3.22",
+            ("libcrypto3", "libssl3", "zlib", "musl", "musl-utils"),
+        ),
+        "caddy": (
+            "v3.23",
+            (
+                "libcrypto3",
+                "libssl3",
+                "curl",
+                "libcurl",
+                "c-ares",
+                "brotli-libs",
+                "zlib",
+                "musl",
+                "musl-utils",
+            ),
+        ),
+        "postgres": (
+            "v3.24",
+            (
+                "libcrypto3",
+                "libssl3",
+                "libuuid",
+                "brotli-libs",
+                "libcurl",
+                "zlib",
+                "musl",
+                "musl-utils",
+            ),
+        ),
     }
-    for name in DERIVED:
+    for name in packages:
         context = directory / ("platform-context-" + name)
         (context / "packages").mkdir(mode=0o700, parents=True)
         branch, names = packages[name]
@@ -225,16 +315,24 @@ def build(root, directory, run, gate):
             )
             shutil.copyfile(cache / (branch + "-" + package), destination)
             os.utime(destination, (0, 0))
-        detail = docker_build(
-            context,
-            "Dockerfile.packages",
-            name + "-packages",
-            {"UPSTREAM": public[name]["image"]},
-        )
+        with timed("platform " + name + " packages build"):
+            detail = docker_build(
+                context,
+                "Dockerfile.packages",
+                name + "-packages",
+                {"UPSTREAM": public[name]["image"]},
+            )
         if name in ("caddy", "postgres"):
             if name == "caddy":
                 (context / "source").mkdir(mode=0o700)
-                for filename in ("main.go", "go.mod", "go.sum"):
+                for filename in (
+                    "main.go",
+                    "go.mod",
+                    "go.sum",
+                    "apply-jose-patch.sh",
+                    "JOSE-MIGRATION.md",
+                    "jose_migration_test.go",
+                ):
                     shutil.copyfile(
                         recipe / "caddy" / filename, context / "source" / filename
                     )
@@ -275,25 +373,58 @@ def build(root, directory, run, gate):
                 if path.is_file():
                     os.utime(path, (0, 0))
             binary = "caddy" if name == "caddy" else "gosu"
+            with timed("platform " + name + " binary build"):
+                detail = docker_build(
+                    context,
+                    "Dockerfile.caddy" if name == "caddy" else "Dockerfile.binary",
+                    name,
+                    {
+                        "BUILDER": output["go"],
+                        "UPSTREAM": detail["Id"],
+                        "BINARY": binary,
+                        "BINARY_PATH": "/usr/bin/caddy"
+                        if name == "caddy"
+                        else "/usr/local/bin/gosu",
+                    },
+                )
+        with timed("platform " + name + " scan"):
+            gate(name, public[name]["image"], detail["Id"])
+        output[name], identity[name] = detail["Id"], detail
+    # Rebuild the exact Temporal release binaries, retaining the upstream image's
+    # runtime identity, configuration and schema files. Go module checksums pin
+    # original source versions; only the locked security dependencies change.
+    context = directory / "platform-context-temporal"
+    (context / "packages").mkdir(mode=0o700, parents=True)
+    for package in ("zlib", "musl", "musl-utils"):
+        entry = lock["packages"]["v3.24/" + package]
+        destination = context / "packages" / (package + "-" + entry["version"] + ".apk")
+        shutil.copyfile(cache / ("v3.24-" + package), destination)
+        os.utime(destination, (0, 0))
+    for component, source in (
+        ("server", recipe / "temporal"),
+        ("cli", recipe / "temporal/cli"),
+    ):
+        (context / component).mkdir(mode=0o700, parents=True)
+        for filename in ("go.mod", "go.sum"):
+            shutil.copyfile(source / filename, context / component / filename)
+    shutil.copyfile(recipe / "licenses.sh", context / "licenses.sh")
+    for name, target in (("temporal", "server"), ("temporal-admin", "admin")):
+        with timed("platform " + name + " build"):
             detail = docker_build(
                 context,
-                "Dockerfile.binary",
+                "Dockerfile.temporal",
                 name,
-                {
-                    "BUILDER": output["go"],
-                    "UPSTREAM": detail["Id"],
-                    "BINARY": binary,
-                    "BINARY_PATH": "/usr/bin/caddy"
-                    if name == "caddy"
-                    else "/usr/local/bin/gosu",
-                },
+                {"BUILDER": output["go"], "UPSTREAM": public[name]["image"]},
+                target=target,
             )
-        gate(name, public[name]["image"], detail["Id"])
+        with timed("platform " + name + " scan"):
+            gate(name, public[name]["image"], detail["Id"])
         output[name], identity[name] = detail["Id"], detail
     for name in UPSTREAM:
         # These unchanged, immutable upstream runtimes already satisfy the same gate.
         output[name] = public[name]["image"]
-        gate(name, output[name], output[name])
+        with timed("platform " + name + " scan"):
+            gate(name, output[name], output[name])
     (directory / "platform-identities.json").write_bytes(canonical(identity))
     (directory / "platform-inputs.json").write_bytes(
         canonical(
@@ -325,3 +456,44 @@ def selection(path):
             "Rehearsals require exact image identities",
         )
     return images
+
+
+def build_compose(root, directory, run, builder):
+    """Export the same Compose release with locked security fixes and notices."""
+    root, directory = Path(root), Path(directory)
+    recipe = root / "deploy/aws/platform"
+    output = directory / "compose-build"
+    reuse = platform_cache(recipe_hash(root))
+    cached = reuse / "compose-build" if reuse else None
+    if cached and (cached / "docker-compose").is_file():
+        print("Using the cached platform build compose", flush=True)
+        shutil.copytree(cached, output)
+        return output / "docker-compose", output / "notices"
+    context = directory / "compose-build-context"
+    (context / "source").mkdir(mode=0o700, parents=True)
+    for name in ("go.mod", "go.sum"):
+        shutil.copyfile(recipe / "compose" / name, context / "source" / name)
+    shutil.copyfile(recipe / "licenses.sh", context / "licenses.sh")
+    normalize_context(context)
+    run(
+        [
+            "docker",
+            "build",
+            "--platform",
+            "linux/amd64",
+            "--provenance=false",
+            "--target",
+            "export",
+            "--build-arg",
+            "BUILDER=" + local_base(run, builder),
+            "--output",
+            "type=local,dest=" + str(output),
+            "-f",
+            str(recipe / "Dockerfile.compose"),
+            str(context),
+        ],
+        timeout=2400,
+    )
+    if cached:
+        shutil.copytree(output, cached)
+    return output / "docker-compose", output / "notices"

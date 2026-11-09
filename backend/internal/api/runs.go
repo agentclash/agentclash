@@ -30,15 +30,16 @@ type RunCreationService interface {
 }
 
 type createRunRequest struct {
-	WorkspaceID            string   `json:"workspace_id"`
-	ChallengePackVersionID string   `json:"challenge_pack_version_id"`
-	ChallengeInputSetID    *string  `json:"challenge_input_set_id,omitempty"`
-	Name                   string   `json:"name,omitempty"`
-	Mode                   string   `json:"mode,omitempty"`
-	AgentDeploymentIDs     []string `json:"agent_deployment_ids"`
-	RegressionSuiteIDs     []string `json:"regression_suite_ids,omitempty"`
-	RegressionCaseIDs      []string `json:"regression_case_ids,omitempty"`
-	OfficialPackMode       string   `json:"official_pack_mode,omitempty"`
+	DeploymentSnapshotIDs  map[string]string `json:"deployment_snapshot_ids,omitempty"`
+	WorkspaceID            string            `json:"workspace_id"`
+	ChallengePackVersionID string            `json:"challenge_pack_version_id"`
+	ChallengeInputSetID    *string           `json:"challenge_input_set_id,omitempty"`
+	Name                   string            `json:"name,omitempty"`
+	Mode                   string            `json:"mode,omitempty"`
+	AgentDeploymentIDs     []string          `json:"agent_deployment_ids"`
+	RegressionSuiteIDs     []string          `json:"regression_suite_ids,omitempty"`
+	RegressionCaseIDs      []string          `json:"regression_case_ids,omitempty"`
+	OfficialPackMode       string            `json:"official_pack_mode,omitempty"`
 	// IncludeProposedRegressions lets explicit validation runs execute proposed
 	// cases before they are activated into CI gate scope.
 	IncludeProposedRegressions bool `json:"include_proposed_regressions,omitempty"`
@@ -53,6 +54,7 @@ type createRunRequest struct {
 }
 
 type CreateRunInput struct {
+	DeploymentSnapshotIDs      map[uuid.UUID]uuid.UUID
 	WorkspaceID                uuid.UUID
 	ChallengePackVersionID     uuid.UUID
 	ChallengeInputSetID        *uuid.UUID
@@ -161,6 +163,8 @@ func createRunHandler(logger *slog.Logger, service RunCreationService) http.Hand
 		result, err := service.CreateRun(r.Context(), caller, input)
 		if err != nil {
 			switch {
+			case errors.Is(err, repository.ErrConnectorUnapproved):
+				writeError(w, http.StatusConflict, "connector_approval_required", err.Error())
 			case errors.Is(err, ErrForbidden):
 				writeAuthzError(w, err)
 			default:
@@ -356,6 +360,19 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		deploymentIDs = append(deploymentIDs, deploymentID)
 	}
 
+	snapshots := map[uuid.UUID]uuid.UUID{}
+	for dep, raw := range body.DeploymentSnapshotIDs {
+		d, e := uuid.Parse(dep)
+		if e != nil {
+			return CreateRunInput{}, RunCreationValidationError{Code: "invalid_snapshot", Message: "deployment snapshot keys must be UUIDs"}
+		}
+		id, e := uuid.Parse(raw)
+		if e != nil {
+			return CreateRunInput{}, RunCreationValidationError{Code: "invalid_snapshot", Message: "deployment snapshots must be UUIDs"}
+		}
+		snapshots[d] = id
+	}
+
 	regressionSuiteIDs := make([]uuid.UUID, 0, len(body.RegressionSuiteIDs))
 	for _, rawID := range body.RegressionSuiteIDs {
 		suiteID, parseErr := parseRequiredUUID(rawID, "regression_suite_ids", "invalid_regression_suite_ids")
@@ -413,6 +430,7 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		Name:                       strings.TrimSpace(body.Name),
 		Mode:                       mode,
 		AgentDeploymentIDs:         deploymentIDs,
+		DeploymentSnapshotIDs:      snapshots,
 		RegressionSuiteIDs:         regressionSuiteIDs,
 		RegressionCaseIDs:          regressionCaseIDs,
 		IncludeProposedRegressions: body.IncludeProposedRegressions,

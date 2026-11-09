@@ -10,8 +10,9 @@ import tarfile
 from common import require, image_ref
 from release_contract import canonical, sha256, tree_hash, APPLICATIONS
 from tools import install
+from checks import command_label
 from package import bundle
-from image_scan import Scanner
+from image_scan import Scanner, reconcile
 import maintained
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,7 +54,8 @@ def build_images(run, bases, revision=None):
             command += ["--build-arg", "BUN_IMAGE=" + bases["bun"]]
         if revision:
             command += ["--label", "org.opencontainers.image.revision=" + revision]
-        run(command + ["."], timeout=2400)
+        with maintained.timed("application " + name + " build"):
+            run(command + ["."], timeout=2400)
 
 
 def build_graph(source, directory, run, revision=None):
@@ -81,7 +83,8 @@ def build_graph(source, directory, run, revision=None):
                 "Built application source mismatch",
             )
         image_ids[name] = detail["Id"]
-        scanner.image(name, detail["Id"], name)
+        with maintained.timed("application " + name + " scan"):
+            scanner.image(name, detail["Id"], name)
     selection = directory / "image-selection.json"
     selection.write_bytes(
         canonical(
@@ -143,7 +146,7 @@ def scan_bootstrap(directory, archive, run):
             str(report),
         ]
         if scanner == "vuln":
-            command += ["--severity", "HIGH,CRITICAL"]
+            command += ["--severity", "HIGH,CRITICAL", "--list-all-pkgs"]
         run(command + [str(unpacked)], timeout=1200)
         if scanner == "vuln":
             require(
@@ -156,6 +159,56 @@ def scan_bootstrap(directory, archive, run):
             )
         reports.append(report)
     return reports
+
+
+def prepare_bootstrap(source, directory, run, builder):
+    """Rebuild, reconcile and strictly scan the installed bootstrap tool."""
+    source, directory = Path(source), Path(directory)
+    compose_input = directory / "compose-input" / "tools"
+    compose_input.mkdir(mode=0o700, parents=True)
+    install("compose", compose_input / "docker-compose", "linux_amd64")
+    with maintained.timed("bootstrap compose build"):
+        compose, notices = maintained.build_compose(source, directory, run, builder)
+    archive = directory / "bootstrap.tar.gz"
+    metadata = bundle(source, compose, archive, notices)
+    reports = []
+    with maintained.timed("bootstrap compose scan"):
+        for scanner in ("secret", "vuln"):
+            report = directory / ("input-compose-" + scanner + ".json")
+            command = [
+                str(directory / "trivy"),
+                "rootfs",
+                "--quiet",
+                "--ignorefile",
+                os.devnull,
+                "--scanners",
+                scanner,
+                "--exit-code",
+                "0" if scanner == "vuln" else "1",
+                "--format",
+                "json",
+                "--output",
+                str(report),
+            ]
+            if scanner == "vuln":
+                command += ["--severity", "HIGH,CRITICAL", "--list-all-pkgs"]
+            run(command + [str(compose_input.parent)], timeout=1200)
+            reports.append(report)
+        reports.extend(scan_bootstrap(directory, archive, run))
+    remediation = directory / "remediation-compose.json"
+    remediation.write_bytes(
+        canonical(
+            {
+                "resolutions": reconcile(
+                    json.loads((directory / "input-compose-vuln.json").read_bytes()),
+                    json.loads((directory / "bootstrap-vuln.json").read_bytes()),
+                ),
+                "strict_output_gate_passed": True,
+            }
+        )
+    )
+    reports.append(remediation)
+    return metadata, reports
 
 
 def prepare(directory, revision, private_values=()):
@@ -228,17 +281,22 @@ def prepare(directory, revision, private_values=()):
     )
 
     def run(command, timeout=900):
+        label = command_label(command)
+        print("Build subprocess: " + label, flush=True)
         result = subprocess.run(
             command, cwd=source, env=env, capture_output=True, timeout=timeout
         )
+        if result.returncode:
+            print("Build subprocess failed: " + label, flush=True)
         require(
             result.returncode == 0,
             "Build or scanner gate failed; nothing has been published",
         )
+        print("Build subprocess passed: " + label, flush=True)
         return result.stdout
 
-    for name in ("compose", "gitleaks", "trivy"):
-        install(name, directory / name, "linux_amd64" if name == "compose" else None)
+    for name in ("gitleaks", "trivy"):
+        install(name, directory / name)
     run(
         [
             str(directory / "gitleaks"),
@@ -258,10 +316,10 @@ def prepare(directory, revision, private_values=()):
         ]
     )
     graph = build_graph(source, directory, run, revision)
-    archive = directory / "bootstrap.tar.gz"
-    metadata = bundle(source, directory / "compose", archive)
-    reports = [directory / "source-secrets.json", *graph["reports"]]
-    reports.extend(scan_bootstrap(directory, archive, run))
+    metadata, bootstrap_reports = prepare_bootstrap(
+        source, directory, run, graph["platform_images"]["go"]
+    )
+    reports = [directory / "source-secrets.json", *graph["reports"], *bootstrap_reports]
     migrations = sorted(
         str(path.relative_to(source))
         for path in (source / "backend/db/migrations").glob("*.sql")

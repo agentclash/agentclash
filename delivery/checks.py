@@ -3,12 +3,14 @@
 
 import argparse
 import ast
+import concurrent.futures
 import errno
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "deploy/aws/scripts"))
@@ -65,7 +67,21 @@ def failure_location(error):
     return location
 
 
-def check(group, evidence):
+# A group can run as parallel parts: aws-checks.yml gives each part its own
+# runner. Without a part, the group runs every part in sequence.
+PARTS = {
+    "backend": ("compile", "test", "migrator"),
+    "runtime": ("compile", "test"),
+    "frontend": ("test", "static", "build"),
+}
+
+
+def check(group, evidence, part=None):
+    require(part is None or part in PARTS.get(group, ()), "Unknown check part")
+
+    def selected(name):
+        return part in (None, name)
+
     evidence = Path(evidence).resolve()
     require(not evidence.is_relative_to(ROOT), "Check evidence must be outside Git")
     evidence.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -88,12 +104,14 @@ def check(group, evidence):
     }
     env["TMPDIR"] = str(evidence)
 
-    def run(argv, cwd=ROOT, timeout=2400):
-        label = command_label(argv)
+    def run(argv, cwd=ROOT, timeout=2400, label=None, log_name="checks.log"):
+        # A caller label must be a fixed public name from this file.
+        label = label or command_label(argv)
         if label == "go" and len(argv) > 1 and argv[1] in ("build", "vet", "test"):
             label += "-" + argv[1]
         print("Required check subprocess: " + label, flush=True)
-        with (evidence / "checks.log").open("ab") as log:
+        start = time.monotonic()
+        with (evidence / log_name).open("ab") as log:
             result = subprocess.run(
                 argv,
                 cwd=cwd,
@@ -102,18 +120,22 @@ def check(group, evidence):
                 stderr=subprocess.STDOUT,
                 timeout=timeout,
             )
+        seconds = round(time.monotonic() - start)
+        print(
+            "Required check subprocess took: " + label + " " + str(seconds) + "s",
+            flush=True,
+        )
         if result.returncode:
             print("Required check subprocess failed: " + label, flush=True)
         require(result.returncode == 0, "A required check failed")
 
     if group in ("backend", "runtime", "cli"):
-        for command in (
-            ["go", "build", "./..."],
-            ["go", "vet", "./..."],
-            ["go", "test", "-short", "-race", "-count=1", "./..."],
-        ):
-            run(command, ROOT / group)
-        if group == "backend":
+        if selected("compile"):
+            run(["go", "build", "./..."], ROOT / group)
+            run(["go", "vet", "./..."], ROOT / group)
+        if selected("test"):
+            run(["go", "test", "-short", "-race", "-count=1", "./..."], ROOT / group)
+        if group == "backend" and selected("migrator"):
             run([sys.executable, "scripts/db/test-migrator.py"])
             run([sys.executable, "deploy/aws/tests/rehearse-vibe-worker.py"], timeout=240)
     elif group == "terminal":
@@ -128,14 +150,14 @@ def check(group, evidence):
         ):
             run(command, ROOT / "services/try-cli")
     elif group == "frontend":
-        for command in (
-            ["npm", "ci"],
-            ["npm", "test"],
-            ["npx", "tsc", "--noEmit"],
-            ["npm", "run", "lint"],
-            ["npm", "run", "build"],
-        ):
-            run(command, ROOT / "web")
+        run(["npm", "ci"], ROOT / "web")
+        if selected("test"):
+            run(["npm", "test"], ROOT / "web")
+        if selected("static"):
+            run(["npx", "tsc", "--noEmit"], ROOT / "web")
+            run(["npm", "run", "lint"], ROOT / "web")
+        if selected("build"):
+            run(["npm", "run", "build"], ROOT / "web")
     elif group == "platform":
         actionlint = evidence / "actionlint"
         install("actionlint", actionlint)
@@ -155,7 +177,7 @@ def check(group, evidence):
             [
                 str(actionlint),
                 "-shellcheck=",
-                *map(str, sorted((ROOT / ".github/workflows").glob("aws-*.yml"))),
+                *map(str, sorted((ROOT / ".github/workflows").glob("*.yml"))),
             ]
         )
         run(
@@ -180,7 +202,7 @@ def check(group, evidence):
         for path in (ROOT / "deploy/aws").rglob("*.sh"):
             run(["bash", "-n", str(path)])
     elif group == "images":
-        from build import build_graph
+        from build import build_graph, prepare_bootstrap
 
         install("trivy", evidence / "trivy")
         print("Image scanner checksum verified", flush=True)
@@ -204,50 +226,69 @@ def check(group, evidence):
             require(result.returncode == 0, "Required image build or scan failed")
             return result.stdout
 
-        build_graph(ROOT, evidence, image_run)
+        # rehearse.py runs two host `go test -race` checks. Compile them while
+        # the images build, so the rehearsals find a warm Go build cache.
+        warm = evidence / "go-test-binaries"
+        warm.mkdir(mode=0o700)
+        with concurrent.futures.ThreadPoolExecutor(1) as compiler:
+            # A low CPU priority gives the CPU to the image loads, scans and
+            # builds first. The compile has time until the rehearsals start.
+            compiled = compiler.submit(
+                run,
+                [
+                    "nice",
+                    "-n",
+                    "10",
+                    "go",
+                    "test",
+                    "-race",
+                    "-tags=awsplatform",
+                    "-c",
+                    "-o",
+                    str(warm),
+                    "./internal/temporalutil",
+                    "./internal/pubsub",
+                ],
+                ROOT / "backend",
+                label="go-test-compile",
+                log_name="go-test-compile.log",
+            )
+            graph = build_graph(ROOT, evidence, image_run)
+            prepare_bootstrap(ROOT, evidence, image_run, graph["platform_images"]["go"])
+        compiled.result()
         selection = str(evidence / "image-selection.json")
-        run(
-            [
-                sys.executable,
-                "deploy/aws/tests/rehearse-compose.py",
-                "--evidence-dir",
-                str(evidence),
-                "--images",
-                selection,
+        # Each rehearsal uses random container and network names, free host
+        # ports and its own work directory, so they run at the same time. Each
+        # writes its own private log. rehearse.py runs as two processes: the
+        # database and Temporal part, and the cache part.
+        rehearsals = {
+            "rehearse-compose": (["rehearse-compose.py"], 2400),
+            "rehearse-platform": (["rehearse.py", "--platform-only"], 1800),
+            "rehearse-cache": (["rehearse.py", "--cache-only"], 1800),
+            "rehearse-edge": (["rehearse-edge.py"], 2400),
+            "rehearse-terminal": (["rehearse-terminal.py"], 600),
+        }
+        with concurrent.futures.ThreadPoolExecutor(len(rehearsals)) as pool:
+            jobs = [
+                pool.submit(
+                    run,
+                    [
+                        sys.executable,
+                        "deploy/aws/tests/" + script,
+                        *options,
+                        "--evidence-dir",
+                        str(evidence),
+                        "--images",
+                        selection,
+                    ],
+                    timeout=timeout,
+                    label=name,
+                    log_name=name + ".log",
+                )
+                for name, ((script, *options), timeout) in rehearsals.items()
             ]
-        )
-        run(
-            [
-                sys.executable,
-                "deploy/aws/tests/rehearse.py",
-                "--evidence-dir",
-                str(evidence),
-                "--images",
-                selection,
-            ],
-            timeout=1800,
-        )
-        run(
-            [
-                sys.executable,
-                "deploy/aws/tests/rehearse-edge.py",
-                "--evidence-dir",
-                str(evidence),
-                "--images",
-                selection,
-            ]
-        )
-        run(
-            [
-                sys.executable,
-                "deploy/aws/tests/rehearse-terminal.py",
-                "--evidence-dir",
-                str(evidence),
-                "--images",
-                selection,
-            ],
-            timeout=600,
-        )
+        for job in jobs:
+            job.result()
     else:
         raise ValueError("Unknown check group")
 
@@ -267,13 +308,16 @@ def main():
             "images",
         ],
     )
+    parser.add_argument(
+        "--part", choices=sorted({name for parts in PARTS.values() for name in parts})
+    )
     parser.add_argument("--evidence-dir")
     args = parser.parse_args()
     if args.evidence_dir:
-        check(args.group, args.evidence_dir)
+        check(args.group, args.evidence_dir, args.part)
     else:
         with tempfile.TemporaryDirectory(prefix="agentclash-ci-") as directory:
-            check(args.group, directory)
+            check(args.group, directory, args.part)
     print("Required check group passed")
 
 
@@ -286,6 +330,12 @@ if __name__ == "__main__":
         categories = {
             "HTTPError",
             "URLError",
+            "RemoteDisconnected",
+            "IncompleteRead",
+            "TimeoutError",
+            "ConnectionResetError",
+            "ConnectionAbortedError",
+            "ConnectionRefusedError",
             "TimeoutExpired",
             "FileNotFoundError",
             "Refused",

@@ -62,8 +62,6 @@ homebrew_casks:
       owner: agentclash
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    url:
-      verified: github.com/agentclash/agentclash
     homepage: "https://github.com/agentclash/agentclash"
     description: "CLI for the AgentClash AI agent evaluation platform"
     license: "MIT"
@@ -73,7 +71,7 @@ homebrew_casks:
     skip_upload: "{{ if index .Env \"HOMEBREW_TAP_TOKEN\" }}auto{{ else }}true{{ end }}"
     hooks:
       post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/agentclash"]
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/agentclash"]
           end

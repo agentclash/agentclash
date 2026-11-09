@@ -21,7 +21,7 @@ async function serve(page: Page, state: Session, models: Model[] = []) {
     const request = route.request(), path = new URL(request.url()).pathname;
     const headers = { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" };
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...headers, "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS" } });
-    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, defaults: state.document.models, models } });
+    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: state.document.models, models } });
     if (request.method() === "POST") {
       control.posts.push(request.postDataJSON());
       state.operations[0].retryable = false;
@@ -60,7 +60,7 @@ test("automatic recovery shows real progress without sending or clearing typed-a
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   await composer.fill("Also check opened items.");
   await expect(page.getByRole("status").filter({ hasText: "Trying another model…" })).toBeVisible();
-  await expect(page.locator(".vibe-status-shine")).toHaveCount(0);
+  await expect(page.locator(".vibe-status-dots")).toHaveCount(0);
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

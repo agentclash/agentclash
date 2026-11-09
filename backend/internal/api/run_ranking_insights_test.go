@@ -121,7 +121,7 @@ func TestRunReadManagerGenerateRankingInsightsInvokesSelectedProvider(t *testing
 			ID:                  providerAccountID,
 			WorkspaceID:         uuidPtr(workspaceID),
 			ProviderKey:         "openai",
-			CredentialReference: "env://OPENAI_API_KEY",
+			CredentialReference: "workspace-secret://OPENAI_API_KEY",
 			BaseURL:             "https://insights.example.com/v1",
 			Status:              "active",
 		},
@@ -149,8 +149,8 @@ func TestRunReadManagerGenerateRankingInsightsInvokesSelectedProvider(t *testing
 	if request.Model != "gpt-5.4-mini" {
 		t.Fatalf("model = %q, want gpt-5.4-mini", request.Model)
 	}
-	if request.CredentialReference != "env://OPENAI_API_KEY" {
-		t.Fatalf("credential reference = %q, want env://OPENAI_API_KEY", request.CredentialReference)
+	if request.CredentialReference != "workspace-secret://OPENAI_API_KEY" {
+		t.Fatalf("credential reference = %q, want workspace-secret://OPENAI_API_KEY", request.CredentialReference)
 	}
 	if request.BaseURL != "https://insights.example.com/v1" {
 		t.Fatalf("base URL = %q, want account endpoint", request.BaseURL)
@@ -823,7 +823,7 @@ func newRankingInsightsFixture(t *testing.T) rankingInsightsFixture {
 				ID:                  providerAccountID,
 				WorkspaceID:         uuidPtr(workspaceID),
 				ProviderKey:         "openai",
-				CredentialReference: "env://OPENAI_API_KEY",
+				CredentialReference: "workspace-secret://OPENAI_API_KEY",
 				Status:              "active",
 			},
 		},

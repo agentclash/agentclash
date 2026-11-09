@@ -152,6 +152,9 @@ func NormalizeHostedTraceEvents(runID uuid.UUID, event hostedruns.Event) ([]Enve
 }
 
 func HostedEventID(event hostedruns.Event) string {
+	if event.EventID != "" {
+		return "hosted:" + event.RunAgentID.String() + ":" + event.EventID
+	}
 	finalStatus := ""
 	if event.FinalStatus != nil {
 		finalStatus = *event.FinalStatus

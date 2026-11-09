@@ -113,6 +113,7 @@ type Requirement struct {
 }
 type Artifact struct {
 	MissingReferences      []ReferenceRequirement  `json:"missing_references,omitempty"`
+	Original               *ImportOriginal         `json:"original,omitempty"`
 	InputContract          *InputContract          `json:"input_contract,omitempty"`
 	RequiredCapabilities   []string                `json:"required_capabilities,omitempty"`
 	ReferenceInputs        []inputs.Binding        `json:"reference_inputs,omitempty"`
@@ -167,24 +168,29 @@ type Document struct {
 	ActiveArtifactID     *uuid.UUID            `json:"active_artifact_id,omitempty"`
 }
 type Session struct {
-	RuleCoverage    map[string][]RuleCoverage `json:"rule_coverage,omitempty"`
-	ServerTime      time.Time                 `json:"server_time"`
-	Diagnostics     *SessionDiagnostics       `json:"diagnostics,omitempty"`
-	EventCursor     int64                     `json:"event_cursor"`
-	ID              uuid.UUID                 `json:"id"`
-	Actor           string                    `json:"-"`
-	WorkspaceID     *uuid.UUID                `json:"workspace_id,omitempty"`
-	Anonymous       bool                      `json:"anonymous"`
-	Revision        int64                     `json:"revision"`
-	Title           string                    `json:"title"`
-	Document        Document                  `json:"document"`
-	Operations      []Operation               `json:"operations"`
-	UpdatedAt       time.Time                 `json:"updated_at"`
-	SavedDraftID    *uuid.UUID                `json:"saved_draft_id,omitempty"`
-	SavedArtifactID *uuid.UUID                `json:"saved_artifact_id,omitempty"`
-	SavedModels     *Models                   `json:"saved_models,omitempty"`
+	ArchivedAt        *time.Time                `json:"archived_at,omitempty"`
+	EvidenceReceipt   *EvidenceIntakeReceipt    `json:"evidence_receipt,omitempty"`
+	ValidationReviews []ValidationReview        `json:"validation_reviews,omitempty"`
+	RuleCoverage      map[string][]RuleCoverage `json:"rule_coverage,omitempty"`
+	ServerTime        time.Time                 `json:"server_time"`
+	Diagnostics       *SessionDiagnostics       `json:"diagnostics,omitempty"`
+	EventCursor       int64                     `json:"event_cursor"`
+	ID                uuid.UUID                 `json:"id"`
+	Actor             string                    `json:"-"`
+	WorkspaceID       *uuid.UUID                `json:"workspace_id,omitempty"`
+	Anonymous         bool                      `json:"anonymous"`
+	Revision          int64                     `json:"revision"`
+	Title             string                    `json:"title"`
+	Document          Document                  `json:"document"`
+	Operations        []Operation               `json:"operations"`
+	UpdatedAt         time.Time                 `json:"updated_at"`
+	SavedDraftID      *uuid.UUID                `json:"saved_draft_id,omitempty"`
+	SavedArtifactID   *uuid.UUID                `json:"saved_artifact_id,omitempty"`
+	SavedModels       *Models                   `json:"saved_models,omitempty"`
 }
 type Operation struct {
+	EvidenceMetadata   *EvidenceMetadata     `json:"evidence_metadata,omitempty"`
+	ResultScope        *ResultScope          `json:"result_scope,omitempty"`
 	Progress           *Progress             `json:"progress,omitempty"`
 	Diagnostics        *OperationDiagnostics `json:"diagnostics,omitempty"`
 	Grading            *GradingContract      `json:"grading,omitempty"`
@@ -230,6 +236,7 @@ type CheckResult struct {
 	Error           *Fault   `json:"error,omitempty"`
 }
 type CaseResult struct {
+	EvidenceHash   string            `json:"evidence_hash,omitempty"`
 	Expectations   []Expectation     `json:"expectations,omitempty"`
 	Title          string            `json:"title,omitempty"`
 	Messages       []EvidenceMessage `json:"messages,omitempty"`

@@ -3,6 +3,7 @@ import {
   createSeoCollectionMetadata,
 } from "@/components/marketing/seo-collection-page";
 import { getSeoPagesByPrefix } from "@/lib/seo-pages";
+import { SEO_COLLECTION_INTROS } from "@/lib/seo-pages/collections";
 
 const PAGE_PATH = "/features";
 const PAGE_TITLE = "Agent Evaluation Features - AgentClash";
@@ -23,7 +24,7 @@ export default function FeaturesIndexPage() {
       description={PAGE_DESCRIPTION}
       eyebrow="Features"
       h1="Agent evaluation features"
-      intro="See how AgentClash turns agent runs into reviewable scorecards, replay evidence, and reusable challenge packs for CI-ready evaluation."
+      intro={SEO_COLLECTION_INTROS[PAGE_PATH]}
       pages={getSeoPagesByPrefix(PAGE_PATH)}
       schemaId="agentclash-features-index-schema"
     />

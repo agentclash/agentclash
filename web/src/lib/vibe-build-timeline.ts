@@ -1,12 +1,26 @@
 import { terminal, type Artifact, type Operation, type Session } from "./vibe";
+import { testCount } from "./vibe-presentation";
+import { projectTitle } from "./vibe-project";
 
 export function workingBuildArtifact(session: Session): Artifact | undefined {
   const id = session.document.active_artifact_id || session.document.build?.artifact_id;
   return session.document.artifacts.find(a => a.id === id && !!a.agent_prompt);
 }
 
+// Reuse the terminal parent result only for an instruction-only proposal.
+// Request admission still validates the selected artifact and frozen grading.
+export function instructionChangeBaseline(session?: Session | null, artifact?: Artifact): Operation | undefined {
+  const parent = session?.document.artifacts.find(item => item.id === artifact?.parent_id);
+  if (!session || !artifact || !parent?.agent_prompt.trim() || !artifact.agent_prompt ||
+      parent.agent_prompt === artifact.agent_prompt ||
+      JSON.stringify(parent.blueprint) !== JSON.stringify(artifact.blueprint)) return undefined;
+  return session.operations.findLast(operation =>
+    (operation.kind === "check" || operation.kind === "retest") &&
+    operation.results.some(result => result.version === parent.id) && terminal(operation.state));
+}
+
 export function buildVersion(session: Session, artifact: Artifact) {
-  return session.document.artifacts.filter(a => a.agent_prompt).findIndex(a => a.id === artifact.id) + 1;
+  return session.document.artifacts.filter(a => a.agent_prompt || a.conversation_evaluation).findIndex(a => a.id === artifact.id) + 1;
 }
 
 export function currentBuildAction(session: Session): { artifact: Artifact; operation?: Operation; hasOutput: boolean } | undefined {
@@ -74,16 +88,16 @@ export function buildProgress(operation: Operation) {
   if (operation.state === "QUEUED") return message ? "Thinking…" : "Waiting to start…";
   if (operation.state === "FINALIZING") return message ? "Saving your reply…" : "Saving your results…";
   if (terminal(operation.state)) return undefined;
-  if (operation.kind === "playground") return "Your prototype is replying…";
+  if (operation.kind === "playground") return "Your agent is replying…";
   if (operation.kind === "check" || operation.kind === "retest") {
     const { completed_cases = 0, total_cases = 0 } = operation.progress || {};
     return completed_cases > 0 && total_cases > 0
-      ? `${completed_cases} of ${total_cases} examples checked…`
-      : total_cases > 0 ? `Trying ${total_cases} examples…` : "Trying your examples…";
+      ? `${completed_cases} of ${testCount(total_cases)} finished…`
+      : total_cases > 0 ? `Running ${testCount(total_cases)}…` : "Running your tests…";
   }
   if (operation.progress?.phase === "switching_assistant") return "Trying another model…";
   if (intent === "suggest_fix") return "Preparing a suggested improvement…";
-  if (intent === "prepare_tests") return "Creating your prototype…";
+  if (intent === "prepare_tests") return buildStageLabel(operation);
   if (intent === "chat") return "Replying…";
   if (intent === "explain_results") return "Reading your results…";
   return "Thinking…";
@@ -91,23 +105,46 @@ export function buildProgress(operation: Operation) {
 
 export function buildRunSummary(operation: Operation) {
   const score = operation.scorecard;
-  if (operation.state === "CANCELLED") return "Stopped. Your completed examples are saved.";
-  if (!terminal(operation.state)) return buildProgress(operation) || "Trying your examples…";
-  if (operation.error || operation.state !== "COMPLETED") return "This check couldn’t finish. Your work is saved.";
-  if (!score || score.total === 0) return "No replies were checked.";
-  if (operation.source?.comparison === "regraded") return "Saved replies regraded. The prototype hasn’t changed.";
-  if (score.failed) return `${score.failed === 1 ? "One example needs" : `${score.failed} examples need`} attention.`;
+  if (operation.state === "CANCELLED") return "Stopped. Your completed results are saved.";
+  if (!terminal(operation.state)) return buildProgress(operation) || "Running your tests…";
+  if (operation.error || operation.state !== "COMPLETED") return "This run couldn’t finish. Your work is saved.";
+  if (!score || score.total === 0) return "No tests were run.";
+  if (operation.source?.comparison === "regraded") return "Saved replies regraded. The agent hasn’t changed.";
+  if (score.failed) return `${score.failed === 1 ? "One test needs" : `${testCount(score.failed)} need`} attention.`;
   if (score.unknown || score.evaluated !== score.total || score.incomplete_cases || score.passed !== score.total || operation.results.length !== score.total || operation.results.some(c => c.verdict !== "PASS"))
-    return "Some examples could not be fully checked.";
-  return score.total === 1 ? "It handled this situation as expected." : `It handled these ${score.total} situations as expected.`;
+    return "Some tests could not be fully graded.";
+  return score.total === 1 ? "It passed this test." : `It passed all ${testCount(score.total)}.`;
+}
+
+export const buildStages = ["Understand the task", "Write the instructions", "Write 3 tests", "Run tests"] as const;
+
+export function buildStageIndex(operation?: Operation, phase?: string) {
+  if (phase === "checking" || phase === "results" || operation?.kind === "check" || operation?.kind === "retest") return 3;
+  if (phase === "ready") return 2;
+  if (operation?.progress?.phase === "reviewing" || operation?.progress?.phase === "repairing") return 2;
+  if (operation?.progress?.phase === "preparing") return 1;
+  return 0;
+}
+
+export function buildStageLabel(operation?: Operation, phase?: string) {
+  if (phase === "clarifying" || operation?.state === "AWAITING_INPUT") return "Needs your answer";
+  const stage = buildStageIndex(operation, phase);
+  return stage === 3 ? `Run tests (${operation?.progress?.completed_cases || 0} of ${operation?.progress?.total_cases || 3})` : buildStages[stage];
 }
 
 export function evaluationIdentity(session: Session) {
   const artifacts = session.document.artifacts;
-  const artifact = session.document.evaluation?.door === "build" ? workingBuildArtifact(session) : artifacts.at(-1);
-  const title = artifact?.title || (session.document.evaluation?.door === "build" ? "New prototype" : "Your agent");
+  const artifact =
+    session.document.evaluation?.door === "build"
+      ? workingBuildArtifact(session)
+      : artifacts.at(-1);
+  const title = projectTitle(session);
   const version = artifact ? buildVersion(session, artifact) : 0;
-  const scope = artifact?.kind === "conversation_evaluation" ? "Saved conversations"
-    : artifact?.agent_prompt ? `${artifact.sample ? "Sample" : "Prototype"} v${version}` : "Setup";
+  const scope =
+    artifact?.kind === "conversation_evaluation"
+      ? "Recorded replies"
+      : artifact?.agent_prompt
+        ? `${artifact.sample ? "Sample agent" : "Agent"} v${version}`
+        : artifact ? `Tests v${version}` : session.document.evaluation?.door === "test" ? "No tests yet" : "No agent yet";
   return { title, scope };
 }

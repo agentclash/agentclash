@@ -26,6 +26,7 @@ interface TopBarProps {
 }
 
 const segmentLabels: Record<string, string> = {
+  reports: "Workspace reports",
   builds: "Builds",
   deployments: "Deployments",
   "challenge-packs": "Challenge Packs",
@@ -62,12 +63,12 @@ export function TopBar({
 
       {segments.length > 0 && (
         <>
-          <span className="h-4 w-px bg-white/[0.08]" />
-          <Breadcrumb>
+          <span className={segments[0] === "reports" ? "hidden h-4 w-px bg-white/[0.08] md:block" : "h-4 w-px bg-white/[0.08]"} />
+          <Breadcrumb className={segments[0] === "reports" ? "hidden min-w-0 md:block" : undefined}>
             <BreadcrumbList>
               {segments.map((seg, i) => {
                 const isLast = i === segments.length - 1;
-                const label = segmentLabels[seg] || seg;
+                const label = segments[0] === "reports" && i === 1 ? "Selected report" : segmentLabels[seg] || seg;
                 const href = `${workspacePrefix}/${segments.slice(0, i + 1).join("/")}`;
 
                 return (

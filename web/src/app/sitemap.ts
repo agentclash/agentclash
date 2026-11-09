@@ -29,13 +29,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return getAllPublicContent()
     .filter((item) => item.indexable && item.includeIn.sitemap)
     .map((item) => {
-      const parsedDate = new Date(item.lastModified);
+      const parsedDate = item.lastModified ? new Date(item.lastModified) : undefined;
       return {
         url:
           item.canonicalPath === "/"
             ? PUBLIC_ORIGIN
             : `${PUBLIC_ORIGIN}${item.canonicalPath}`,
-        ...(Number.isNaN(parsedDate.getTime())
+        ...(!parsedDate || Number.isNaN(parsedDate.getTime())
           ? {}
           : { lastModified: parsedDate }),
         changeFrequency: item.changeFrequency ?? "monthly",

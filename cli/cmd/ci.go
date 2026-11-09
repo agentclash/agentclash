@@ -288,6 +288,7 @@ type ciManifestCandidateBuild struct {
 }
 
 type ciManifestCandidateDeployment struct {
+	ID                string `yaml:"id,omitempty" json:"id,omitempty"`
 	Name              string `yaml:"name,omitempty" json:"name,omitempty"`
 	RuntimeProfileID  string `yaml:"runtime_profile_id" json:"runtime_profile_id"`
 	ProviderAccountID string `yaml:"provider_account_id,omitempty" json:"provider_account_id,omitempty"`
@@ -469,21 +470,33 @@ func validateCIManifestRemote(cmd *cobra.Command, rc *RunContext, workspaceID, m
 		Valid:       true,
 	}
 
-	if _, err := validateCIManifestRemoteAgentBuild(cmd, rc, &result, workspaceID, manifest.Candidate.Build.AgentBuildID); err != nil {
-		result.addAPIError(err)
-		return result, err
-	}
-
-	if _, err := validateCIManifestRemoteListResource(cmd, rc, &result, workspaceID, "candidate.deployment.runtime_profile_id", "runtime_profile", manifest.Candidate.Deployment.RuntimeProfileID, "/v1/workspaces/%s/runtime-profiles"); err != nil {
-		result.addAPIError(err)
-		return result, err
-	}
 	var err error
-	if manifest.Candidate.Deployment.ProviderAccountID != "" {
-		if _, err = validateCIManifestRemoteListResource(cmd, rc, &result, workspaceID, "candidate.deployment.provider_account_id", "provider_account", manifest.Candidate.Deployment.ProviderAccountID, "/v1/workspaces/%s/provider-accounts"); err != nil {
+	if manifest.Candidate.Deployment.ID != "" {
+		deployment, e := validateCIManifestRemoteListResource(cmd, rc, &result, workspaceID, "candidate.deployment.id", "agent_deployment", manifest.Candidate.Deployment.ID, "/v1/workspaces/%s/agent-deployments")
+		if e != nil {
+			result.addAPIError(e)
+			return result, e
+		}
+		if deployment != nil && mapString(deployment, "status") != "active" {
+			result.addFailure("candidate.deployment.id", "agent_deployment", manifest.Candidate.Deployment.ID, "inactive", "The selected candidate deployment must be active.")
+		}
+	} else {
+		if _, err := validateCIManifestRemoteAgentBuild(cmd, rc, &result, workspaceID, manifest.Candidate.Build.AgentBuildID); err != nil {
 			result.addAPIError(err)
 			return result, err
 		}
+
+		if _, err := validateCIManifestRemoteListResource(cmd, rc, &result, workspaceID, "candidate.deployment.runtime_profile_id", "runtime_profile", manifest.Candidate.Deployment.RuntimeProfileID, "/v1/workspaces/%s/runtime-profiles"); err != nil {
+			result.addAPIError(err)
+			return result, err
+		}
+		if manifest.Candidate.Deployment.ProviderAccountID != "" {
+			if _, err = validateCIManifestRemoteListResource(cmd, rc, &result, workspaceID, "candidate.deployment.provider_account_id", "provider_account", manifest.Candidate.Deployment.ProviderAccountID, "/v1/workspaces/%s/provider-accounts"); err != nil {
+				result.addAPIError(err)
+				return result, err
+			}
+		}
+
 	}
 
 	packID, versionID, err := validateCIManifestRemoteChallengeVersion(cmd, rc, &result, workspaceID, manifest.Evaluation.ChallengePackVersionID)
@@ -874,14 +887,20 @@ func validateCIManifest(manifest ciManifest) []string {
 	if hasBlankString(manifest.Trigger.Paths) {
 		errors = append(errors, "trigger.paths cannot include blank entries")
 	}
-	if strings.TrimSpace(manifest.Candidate.Build.AgentBuildID) == "" {
-		errors = append(errors, "candidate.build.agent_build_id is required")
-	}
-	if strings.TrimSpace(manifest.Candidate.Build.SpecFile) == "" {
-		errors = append(errors, "candidate.build.spec_file is required")
-	}
-	if strings.TrimSpace(manifest.Candidate.Deployment.RuntimeProfileID) == "" {
-		errors = append(errors, "candidate.deployment.runtime_profile_id is required")
+	if strings.TrimSpace(manifest.Candidate.Deployment.ID) != "" {
+		if manifest.Candidate.Build.AgentBuildID != "" || manifest.Candidate.Build.SpecFile != "" || manifest.Candidate.Deployment.RuntimeProfileID != "" || manifest.Candidate.Deployment.ProviderAccountID != "" || manifest.Candidate.Deployment.Model != "" || manifest.Candidate.Deployment.Name != "" {
+			errors = append(errors, "candidate.deployment.id cannot be combined with candidate build or deployment overrides")
+		}
+	} else {
+		if strings.TrimSpace(manifest.Candidate.Build.AgentBuildID) == "" {
+			errors = append(errors, "candidate.build.agent_build_id is required")
+		}
+		if strings.TrimSpace(manifest.Candidate.Build.SpecFile) == "" {
+			errors = append(errors, "candidate.build.spec_file is required")
+		}
+		if strings.TrimSpace(manifest.Candidate.Deployment.RuntimeProfileID) == "" {
+			errors = append(errors, "candidate.deployment.runtime_profile_id is required")
+		}
 	}
 	if strings.TrimSpace(manifest.Evaluation.ChallengePackVersionID) == "" {
 		errors = append(errors, "evaluation.challenge_pack_version_id is required")

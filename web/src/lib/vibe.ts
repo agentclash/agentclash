@@ -1,3 +1,4 @@
+import { testCount } from "./vibe-presentation";
 import type { ConversationState, ConversationChange } from "./vibe-conversation";
 
 export type Models = { assistant: string; target: string; evaluator: string };
@@ -52,6 +53,7 @@ export type EvaluationProposal = {
 export type ReferenceRequirement = { key: string; content_hash: string; usage: "reference"; name?: string; format?: "text" | "pdf"; page_count?: number };
 export type Artifact = {
   missing_references?: ReferenceRequirement[];
+ original?:{id:string;artifact_id:string;filename:string;media_type:string;content_sha256:string;size_bytes:number};
   input_contract?: { version: number; formats: string[]; label: string };
   required_capabilities?: string[];
   reference_inputs?: import("./vibe-inputs").InputBinding[];
@@ -60,12 +62,7 @@ export type Artifact = {
   scope_note?: string;
   unavailable_reason?: string;
   policy_id?: string;
-  validation?: {
-    status: "supported" | "contradicted" | "unclear" | "unavailable";
-    blueprint_hash: string;
-    policy_hash: string;
-    validator_version: string;
-  };
+  validation?: import("./vibe-result-evidence").SuiteValidation;
   dismissed?: boolean;
   proposal_message_id?: string;
   quick_check?: boolean;
@@ -89,6 +86,7 @@ export type Artifact = {
 };
 export type Verdict = "PASS" | "FAIL" | "UNKNOWN";
 export type CaseResult = {
+  evidence_hash?: string;
   expected_checks?: number;
   expectations?: Expectation[];
   title?: string;
@@ -117,7 +115,10 @@ export type CaseResult = {
   error?: { code?: string; message: string };
 };
 export type Operation = {
-  progress?: { phase: string; completed_cases: number; total_cases: number };
+ created_at?:string;
+  evidence_metadata?: import("./vibe-result-evidence").EvidenceMetadata;
+  result_scope?: import("./vibe-result-evidence").ResultScope;
+  progress?: { phase_started_at?: string; last_confirmed_at?: string; phase_elapsed_ms?: number; phase: string; completed_cases: number; total_cases: number };
   diagnostics?: { alternative_assistant?: string; stage_millis: Record<string, number>; retry_outcome?: string; unresolved_billing_since?: string; unresolved_billing_age_ms?: number };
   grading?: {
     version: number; hash: string; criteria_hash: string; tests_hash: string;
@@ -179,6 +180,9 @@ export type Operation = {
 export type RuleCoverage = { rule_id: string; statement: string; case_keys: string[] };
 
 export type Session = {
+ title?:string;updated_at?:string;archived_at?:string;
+  evidence_receipt?: {client_id:string;evidence_id:string;artifact_id:string};
+  validation_reviews?: import("./vibe-result-evidence").ValidationReview[];
   rule_coverage?: Record<string, RuleCoverage[]>;
   server_time?: string;
   diagnostics?: { first_useful_result_ms?: number; first_save_ms?: number };
@@ -247,6 +251,7 @@ export type EvidenceSet = {
   conversations: { key: string; title: string; messages: EvidenceMessage[] }[];
 };
 export type SavedCheck = {
+ project_title?:string;
   kind?: "brief";
   models?: Models;
   draft_id?: string;
@@ -259,13 +264,15 @@ export type SavedCheck = {
   source: Operation["source"];
   created_at: string;
 };
-export type BuildQuote = { max_calls: number; id: string; request: { adopt_rules?: import("./vibe-inputs").DocumentSource[]; inputs?: import("./vibe-inputs").InputBinding[]; content: string; models: Models }; max_cost_nano_usd: number; cases: number; expires_at: string };
-export type RunQuote = { id: string; max_cost_nano_usd: number; cases: number; calls: number; expires_at: string };
+export type BuildQuote = { server_time?: string; max_calls: number; id: string; request: { adopt_rules?: import("./vibe-inputs").DocumentSource[]; inputs?: import("./vibe-inputs").InputBinding[]; content: string; models: Models }; max_cost_nano_usd: number; cases: number; expires_at: string };
+export type RunQuote = { server_time?: string; id: string; max_cost_nano_usd: number; cases: number; calls: number; expires_at: string };
 
 export type VibeConfig = {
+ server_time?: string;
  material_build?: boolean;
+ availability?: { guest: { available: boolean; reason_code?: string }; workspace: { available: boolean; reason_code?: string } };
  pdf_uploads?: boolean;
- contact?: { email: string; available: boolean };
+ contact?: { email: string; available: boolean; direct?: boolean };
   two_door?: boolean;
   interaction_actions?: boolean;
   grading_recheck?: boolean;
@@ -278,6 +285,15 @@ export type VibeConfig = {
   anonymous_limits?: Record<string, number>;
   signed_in_limits?: Record<string, number>;
   trial_budget_nano_usd?: number;
+  first_build_ceiling_nano_usd?: number;
+  guest_trial?: { initial_build_used: boolean; build_in_progress: boolean };
+};
+
+export type CreateSessionInput = {
+  id: string;
+  door?: "build" | "test";
+  workspace_id?: string;
+  title?: string;
 };
 
 // Only the generated single-judge preview is edited here. Imported contracts
@@ -418,10 +434,10 @@ export function completionAcknowledgement(operation: Operation): string | undefi
   const receipt = operation.completion_receipt;
   if (!receipt) return undefined;
   if (receipt.action === "prepare_tests")
-    return `${receipt.case_count} ${receipt.case_count === 1 ? "test is" : "tests are"} ready.`;
+    return `${testCount(receipt.case_count)} ${receipt.case_count === 1 ? "is" : "are"} ready.`;
   if (receipt.action === "edit_tests")
     return receipt.changed_case_count > 0
-      ? `Updated ${receipt.changed_case_count} ${receipt.changed_case_count === 1 ? "test" : "tests"}.`
+      ? `Updated ${testCount(receipt.changed_case_count)}.`
       : "Updated the test rules.";
   if (receipt.action === "suggest_fix") return "Prepared a suggested fix.";
   return undefined;
@@ -568,4 +584,11 @@ export async function watchVibe(
   } finally {
     reader.releaseLock();
   }
+}
+
+// Binary downloads must retain the server's exact bytes (including a UTF-8 BOM).
+export async function vibeBytes(path: string, token?: string | null): Promise<Uint8Array> {
+ const response=await fetch(`${baseURL()}/v1/vibe${path}`,{headers:token?{Authorization:`Bearer ${token}`}:{},credentials:"include",cache:"no-store"});
+ if(!response.ok){const value=await response.json().catch(()=>null);throw new VibeError(value?.error?.code||"request_failed",value?.error?.message||"Original file is unavailable.",response.status)}
+ const bytes=new Uint8Array(await response.arrayBuffer());if(bytes.length>4*1024*1024)throw new Error("Original file exceeds its download bound.");return bytes;
 }

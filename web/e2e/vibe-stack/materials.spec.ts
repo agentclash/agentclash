@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
+import { doorButton, showView, startCopy, startComposer } from "../vibe/entry-model";
 
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const task = "Summarize meeting notes, including decisions and action owners.";
@@ -27,7 +28,9 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   test.skip(kind === "pdf" && !process.env.VIBE_TEST_PDF_RUNTIME, "Real isolated PDF reader required");
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.goto("/vibe-evals");
-  await page.getByRole("button", {name:/Build an agent/}).click();
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "build" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
   await page.getByRole("button", {name:"Add a file or text", exact:true}).click();
   if (kind === "paste") {
     await page.getByRole("tab", {name:"Paste text"}).click();
@@ -36,14 +39,18 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   } else {
     await page.getByLabel("Choose one PDF").setInputFiles({name:"notes.pdf", mimeType:"application/pdf", buffer:pdf()});
   }
-  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready");
+  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready · Task input");
   await page.getByRole("button", {name:"Close material dialog",exact:true}).click();
   await page.reload();
-  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready");
-  await page.getByRole("textbox", {name:"Message Vibe Evals",exact:true}).fill(task);
-  await expect(page.getByRole("button", {name:"Send message",exact:true})).toBeEnabled();
-  await page.getByRole("button", {name:"Send message",exact:true}).click();
+  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready · Task input");
+  await startComposer(page, "build").fill(task);
+  // Existing empty projects use the same start screen and keep their material bindings.
+  const send = page.getByRole("button", { name: startCopy.build.primary, exact: true });
+  await expect(send).toBeEnabled();
+  await send.click();
   await expect.poll(async () => (await saved(page)).session.document.build?.phase, {timeout:90000}).toBe("results");
+  // PR 1: the first result opens Results by itself; the agent's output is on Agent.
+  await showView(page, "Agent", "Run 1", {opensResults: true});
   await expect(page.getByRole("region",{name:"Your agent’s output"})).toContainText("Mira will ship the prototype on Friday");
   await page.getByText("Material used",{exact:true}).click();
   await page.getByText("Page 1",{exact:true}).click();
@@ -56,8 +63,10 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   expect(state.session.document.artifacts[0].agent_prompt).not.toContain("Ana");
   expect(state.session.document.artifacts[0].agent_prompt).not.toContain("Mira");
   await expect(page.locator(".vibe-result-row")).toHaveCount(0);
-  await page.getByRole("button",{name:"Discuss this with AgentClash",exact:true}).click();
-  await expect(page.getByRole("dialog")).toContainText("Contact isn’t set up yet. You can copy your summary.");
+  await page.getByRole("tab",{name:"Results",exact:true}).click();
+  await page.getByRole("button",{name:"Talk to us about this agent",exact:true}).click();
+  await expect(page.getByRole("dialog")).toContainText("Review what you’ll share. Files, raw replies and conversation history are not attached.");
+  await expect(page.getByRole("textbox",{name:"Your email",exact:true})).toBeVisible();
   const summary=page.getByRole("textbox",{name:"Project summary",exact:true});
   await expect(summary).not.toHaveValue(/Mira|Ana/);
   for(const viewport of [{width:1440,height:900},{width:390,height:844},{width:360,height:800}]) {
@@ -68,27 +77,35 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
         box.y >= 15 && box.y + box.height <= viewport.height - 15;
     }, { message: "Contact review fits after viewport resize" }).toBe(true);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await expect(page.getByLabel("Active evaluation")).toBeInViewport();
+    await expect(page.locator(".vibe-project-header")).toBeInViewport();
     await page.screenshot({path:info.outputPath(`${kind}-${viewport.width}.png`)});
   }
   await page.setViewportSize({width:1440,height:900});
   await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).click();
+  await page.getByRole("tab",{name:"Agent",exact:true}).click();
   await page.locator(".vibe-output-download summary").click();
   const download=page.waitForEvent("download"); await page.getByRole("button",{name:"Markdown (.md)"}).click(); await download;
   await page.reload();
   expect((await saved(page)).session.operations).toHaveLength(3);
+  await page.getByText("Project actions",{exact:true}).click();
   await page.getByRole("button",{name:"Delete this project",exact:true}).click();
   await expect(page.getByRole("dialog")).toContainText("Separate workspace saves");
   await page.getByRole("button",{name:"Delete project permanently",exact:true}).click();
   await expect(page.getByRole("heading",{name:"Project removed",exact:true})).toBeVisible();
-  await page.getByRole("button",{name:"Done",exact:true}).click();
-  await expect(page.getByRole("button",{name:/Build an agent/})).toBeVisible();
+  const receipt = page.getByRole("dialog",{name:"Project removed",exact:true});
+  await expect(receipt).toBeVisible();
+  await receipt.getByRole("button",{name:"Done",exact:true}).click();
+  await expect(receipt).toHaveCount(0);
+  await expect(page.getByRole("button",{name:/I have an idea/})).toBeVisible();
+  await expect(doorButton(page,"build")).toBeFocused();
   expect(errors).toEqual([]);
 });
 
 test("bad PDF offers paste without creating an agent or silently shortening input",async({page})=>{
   test.skip(!process.env.VIBE_TEST_PDF_RUNTIME,"Real reader required");
-  await page.goto("/vibe-evals");await page.getByRole("button",{name:/Build an agent/}).click();
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "build" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
   await page.getByRole("button",{name:"Add a file or text",exact:true}).click();
   await page.getByLabel("Choose one PDF").setInputFiles({name:"broken.pdf",mimeType:"application/pdf",buffer:Buffer.from("%PDF-broken")});
   await expect(page.getByRole("alert").filter({hasText:"Paste its text instead"})).toBeVisible();

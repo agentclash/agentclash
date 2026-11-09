@@ -626,6 +626,9 @@ func resolveJudgeTarget(model string, executionContext repository.RunAgentExecut
 	}
 
 	if account := executionContext.Deployment.ProviderAccount; account != nil && account.ProviderKey == providerKey {
+		if err := provider.ValidateWorkspaceCredentialReference(account.CredentialReference); err != nil {
+			return providerKey, "", "", "", err
+		}
 		return providerKey, account.ID.String(), account.CredentialReference, account.BaseURL, nil
 	}
 

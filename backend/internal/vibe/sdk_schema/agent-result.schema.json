@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentclash.dev/schemas/evaltest/agent-result.schema.json",
+  "title": "AgentClash Local Eval Agent Result",
+  "description": "Language-neutral agent trace/result shape for pre-deploy evals. Adapters map framework outputs into this contract.",
+  "type": "object",
+  "required": ["input"],
+  "additionalProperties": false,
+  "properties": {
+    "input": {
+      "description": "Primary user/task input for this eval case.",
+      "type": "string"
+    },
+    "output": {
+      "description": "Final assistant/output text when available.",
+      "type": "string"
+    },
+    "messages": {
+      "description": "Ordered conversation turns (single- or multi-turn).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/message"
+      }
+    },
+    "tool_calls": {
+      "description": "Tool invocations observed during the run.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/tool_call"
+      }
+    },
+    "retrieval_context": {
+      "description": "Retrieved documents/chunks used by the agent.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/retrieval_context"
+      }
+    },
+    "metadata": {
+      "$ref": "#/$defs/run_metadata"
+    }
+  },
+  "$defs": {
+    "message": {
+      "type": "object",
+      "required": ["role", "content"],
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["system", "user", "assistant", "tool"]
+        },
+        "content": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "tool_call_id": {
+          "type": "string"
+        }
+      }
+    },
+    "tool_call": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arguments": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "arguments_json": {
+          "description": "Raw JSON arguments string when object parsing is unavailable.",
+          "type": "string"
+        },
+        "turn_index": {
+          "description": "Zero-based turn index when tool calls are multi-turn.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "result": {
+          "description": "Tool result payload when captured.",
+          "type": "string"
+        }
+      }
+    },
+    "retrieval_context": {
+      "type": "object",
+      "required": ["content"],
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "run_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "latency_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cost_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "step_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "token_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extra": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

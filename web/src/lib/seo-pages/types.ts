@@ -32,6 +32,7 @@ export type SeoPageConfig = {
   eyebrow: string;
   h1: string;
   heroDescription: string;
+  editorial: { title: string; example: string; limitation: string };
   proofSectionTitle: string;
   proofSectionDescription: string;
   proofPoints: string[];

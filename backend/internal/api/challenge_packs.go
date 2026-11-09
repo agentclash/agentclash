@@ -195,6 +195,12 @@ func (m *ChallengePackAuthoringManager) ValidateBundle(ctx context.Context, work
 }
 
 func (m *ChallengePackAuthoringManager) PublishBundle(ctx context.Context, workspaceID uuid.UUID, bundleYAML []byte) (PublishChallengePackResponse, error) {
+	return m.publishBundle(ctx, workspaceID, bundleYAML, nil)
+}
+func (m *ChallengePackAuthoringManager) PublishBundleFromDraft(ctx context.Context, workspaceID uuid.UUID, bundleYAML []byte, source repository.PackPublicationSource) (PublishChallengePackResponse, error) {
+	return m.publishBundle(ctx, workspaceID, bundleYAML, &source)
+}
+func (m *ChallengePackAuthoringManager) publishBundle(ctx context.Context, workspaceID uuid.UUID, bundleYAML []byte, source *repository.PackPublicationSource) (PublishChallengePackResponse, error) {
 	bundle, err := challengepack.ParseYAML(bundleYAML)
 	if err != nil {
 		if validationErrs, ok := err.(challengepack.ValidationErrors); ok {
@@ -233,6 +239,7 @@ func (m *ChallengePackAuthoringManager) PublishBundle(ctx context.Context, works
 	}
 
 	published, err := m.repo.PublishChallengePackBundle(ctx, repository.PublishChallengePackBundleParams{
+		Source:         source,
 		OrganizationID: organizationID,
 		WorkspaceID:    workspaceID,
 		Bundle:         bundle,

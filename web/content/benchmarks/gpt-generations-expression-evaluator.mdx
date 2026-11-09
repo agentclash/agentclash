@@ -1,5 +1,6 @@
 ---
 title: "We raced four GPT generations on a real coding task — GPT-5.4 won on efficiency"
+dateModified: "2026-10-28"
 date: "2026-06-07"
 description: "A head-to-head AgentClash comparison of GPT-4.1, GPT-5, GPT-5.4, and GPT-5.5 on a real agentic coding task — building an integer expression evaluator with truncating division — scored on correctness, reliability, and token efficiency."
 author: "AgentClash"
@@ -50,11 +51,15 @@ shell and a filesystem, a ten-iteration budget, no network. The task is a real
 slice of coding work with a verifiable outcome, not a trivia question: write a
 working program, and a hidden test suite decides whether it actually runs.
 
-AgentClash scored the whole trajectory across four vantages — deterministic
-checks (the hidden tests), the output contract, behavioral signals (did the run
-complete cleanly), and LLM judges on code quality and explanation — and folded
-them into one composite. (More on that in
-[how AgentClash scores agent trajectories](/blog/how-agentclash-scores-agent-trajectories).)
+The current Expression Evaluator Arena fixture configures four composite dimensions:
+correctness from deterministic tests, output-contract compliance, code quality,
+and explanation clarity. The latter two use LLM judges. Completion is a separate
+metric used for the board's reliability context, not a configured composite
+dimension. See [how AgentClash scores agent trajectories](/blog/how-agentclash-scores-agent-trajectories).
+
+These historical reported numbers are unchanged. The current fixture is mutable;
+without the original frozen spec and execution evidence, it cannot reconstruct
+the exact historical composite calculation.
 
 ## The task
 
@@ -104,9 +109,7 @@ the leanest run (fewer tokens → higher); we don't assert dollar prices here.
 This is a deliberately small first comparison: **one task, a single run per model**
 (n=1), and an OpenAI-only field. The LLM-judge dimensions carry per-run variance,
 and one task can't rank models in general. Read it as a worked example of the
-format and a real, reproducible result — not a verdict on the models. Wider
-fields (including cross-provider and cheaper open-weight models) follow as the
-backend grows to support them.
+format and the reported results, not a verdict on the models. The fixture link below points to mutable main; exact reproduction is not established.
 
 ## Takeaway
 
@@ -115,7 +118,7 @@ you ship. On this task every passing model was "correct" — but one solved it i
 two turns and another couldn't solve it at all. Compare them on *your* tasks, with
 your tools, and read the whole scoreboard before you pick.
 
-For the shareable monthly summary and full methodology appendix, see [Coding agent benchmark — June 2026](/blog/coding-agent-benchmark-june-2026).
+For the summary and methodology appendix, see [Coding agent benchmark — June 2026](/blog/coding-agent-benchmark-june-2026).
 
 ## Methodology appendix
 
@@ -131,7 +134,9 @@ For the shareable monthly summary and full methodology appendix, see [Coding age
 
 **Scorecard dimensions:** correctness (gated hidden tests), output contract, code quality (LLM judge), explanation clarity (LLM judge), plus reliability and token-efficiency cost on the public board.
 
-**Reproduce:**
+**Run your own comparison:**
+
+The fixture link points to mutable main and the original commit and raw replay artifacts are not attached. These commands start a new run, not an exact reproduction. See [benchmark methodology](/benchmarks/methodology).
 
 ```bash
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
@@ -139,6 +144,6 @@ cd cli && go run . run create --follow
 go run . run ranking <run-id> --json
 ```
 
-Monthly checklist and ownership: [`docs/marketing/model-benchmark-workflow.md`](https://github.com/agentclash/agentclash/blob/main/docs/marketing/model-benchmark-workflow.md).
+Suggested checklist and ownership: [`docs/marketing/model-benchmark-workflow.md`](https://github.com/agentclash/agentclash/blob/main/docs/marketing/model-benchmark-workflow.md).
 
 [Run your own eval →](/try)

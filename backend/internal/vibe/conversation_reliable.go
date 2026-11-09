@@ -25,6 +25,9 @@ func reliableHandlerPrompt(p Plan) string {
 	}
 	if p.sourceBoundary() {
 		prompt = strings.Replace(prompt, "Never reproduce quotations or invent source IDs.", "Never invent source IDs.", 1) + sourceAuthorPrompt
+		if p.Conversation.BoundSourceReferences {
+			prompt += "\nA rule's id identifies the rule, not its source. Copy source_block_ids and evidence.source_block_id exactly from the supplied source_blocks[].id values. Several rules quoting the same source block must reuse that source block's id. Use only the supplied source identifiers, including during repair."
+		}
 		if p.Conversation.SourceVersion == DocumentSourceVersion {
 			prompt += documentSourcePrompt
 		}

@@ -1,20 +1,20 @@
-# Model Benchmark Workflow (Monthly Public Report Runbook)
+# Model Benchmark Workflow (Public Report Runbook)
 
-Repeatable process for turning an AgentClash comparison eval into a **monthly public benchmark**:
+Repeatable process for turning an AgentClash comparison eval into a **public benchmark**:
 a measured report on `/benchmarks/<slug>`, a shareable blog summary, and a changelog
-entry. Run it when major models ship and on a **monthly reliability cadence**.
+entry. This is a suggested process, not a publishing schedule or evidence that its steps occurred in an existing report.
 
 Reference implementation: [Coding agent benchmark — June 2026](https://www.agentclash.dev/blog/coding-agent-benchmark-june-2026) and the [full scoreboard](https://www.agentclash.dev/benchmarks/gpt-generations-expression-evaluator).
 
-## Roles and cadence
+## Roles
 
 | Role | Responsibility |
 | ---- | ---------------- |
-| **Monthly owner** | Picks the pack, runs the eval, exports ranking JSON, drafts MDX + blog |
+| **Report owner** | Picks the pack, runs the eval, exports ranking JSON, drafts MDX + blog |
 | **Review approver** | Verifies numbers against replay, checks caveats and sample size honesty |
 | **Distribution** | Posts share URL to X / HN / LinkedIn on publish day; pings benchmarks RSS |
 
-**Target window:** publish by the **second week** of each month (or within 48h of a major model launch if that falls mid-month).
+Publish a report when its comparison is ready: pin the pack and commit, verify the evidence, then set the publication date for that report. There is no fixed publishing window.
 
 **Checklist (copy each cycle):**
 
@@ -22,7 +22,7 @@ Reference implementation: [Coding agent benchmark — June 2026](https://www.age
 - [ ] Evaluate every candidate on the same pack (tools, sandbox, budgets)
 - [ ] Export ranking JSON and attach replay / validator evidence per lane
 - [ ] Set `sample: false` only when numbers are measured
-- [ ] Write narrative + methodology appendix; add monthly blog summary
+- [ ] Write narrative + methodology appendix; add blog summary
 - [ ] Link from `/benchmarks` hub and add changelog entry for the period
 - [ ] Promote meaningful failures into pack coverage or regression suites
 - [ ] Run web verification (`tsc`, `lint`, `test`, spot-check OG cards)
@@ -35,7 +35,7 @@ Start from versioned packs in `examples/challenge-packs/`. The first published r
 | ---- | ---- | --- |
 | Expression Evaluator Arena v1 | `examples/challenge-packs/expr-eval-arena.yaml` | Real coding task with hidden tiers; separates efficiency and contract adherence |
 
-Other packs suitable for future months (rotate or expand field size):
+Other packs suitable for future reports (rotate or expand field size):
 
 - `multi-turn-refund-recovery.yaml` (multi-turn reliability)
 - `incident-response-*.yaml` (ops / tool use)
@@ -115,7 +115,7 @@ In the MDX body, include:
 
 Keep `verdict` to one line (OG subtitle and hub blurb).
 
-### 6. Publish the monthly blog summary
+### 6. Publish the blog summary
 
 Add `web/content/blog/coding-agent-benchmark-<month>-<year>.mdx` (or launch-week variant) with:
 
@@ -151,7 +151,7 @@ When a model fails or regresses on a dimension that should not recur:
 
 1. Capture replay + validator evidence from the run
 2. Add or tighten validators / cases in the pack (or promote to a regression suite)
-3. Reference the promoted case in the next month's appendix
+3. Reference the promoted case in the next report's appendix
 
 This keeps public benchmarks aligned with the same gates enterprise teams use in CI.
 

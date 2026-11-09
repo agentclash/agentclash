@@ -6,11 +6,33 @@ on:
     paths:
       - "web/**"
       - ".github/workflows/frontend.yml"
+      # External inputs that generated docs and public content read at build time.
+      - "SECURITY.md"
+      - "backend/.env.example"
+      - "backend/internal/api/config.go"
+      - "backend/internal/worker/config.go"
+      - "try-cli/demos/**"
+      - "docs/api-server/openapi.yaml"
+      - "docs/schemas/**"
+      - "cli/**"
+      - "docs/marketing/**"
+      - "examples/challenge-packs/**"
   pull_request:
     branches: [main]
     paths:
       - "web/**"
       - ".github/workflows/frontend.yml"
+      # External inputs that generated docs and public content read at build time.
+      - "SECURITY.md"
+      - "backend/.env.example"
+      - "backend/internal/api/config.go"
+      - "backend/internal/worker/config.go"
+      - "try-cli/demos/**"
+      - "docs/api-server/openapi.yaml"
+      - "docs/schemas/**"
+      - "cli/**"
+      - "docs/marketing/**"
+      - "examples/challenge-packs/**"
 
 defaults:
   run:
@@ -63,5 +85,47 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('web/package-lock.json') }}-
 
-      - name: Build
-        run: npm run build
+      - name: Production build and anonymous SEO crawl
+        run: npm run check:seo-smoke
+
+  seo-tests:
+    name: SEO tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Authoring checks
+        run: |
+          npm run check:docs-links
+          npm run check:content-dates
+
+      - name: Focused SEO tests
+        run: >-
+          npx vitest run --maxWorkers=2
+          src/app/sitemap.test.ts
+          src/app/sitemap-registry.test.ts
+          src/app/publications/sitemap.xml/route.test.ts
+          src/lib/publication-data.test.ts
+          src/lib/public-content.test.ts
+          src/lib/public-http.test.ts
+          src/app/seo-landing-pages.test.tsx
+          src/lib/seo-pages/registry.test.ts
+          src/lib/seo-crawl.test.ts
+          src/lib/docs-links.test.ts
+          src/lib/docs-authoring.test.ts
+          src/app/public-navigation.test.tsx
+          src/lib/content-dates-validation.test.ts
+          src/lib/blog-listing-dates.test.ts
+          src/app/blog/blog-metadata.test.ts
+          src/app/blog/blog-post-schema.test.tsx
+          src/lib/benchmarks.test.ts
+          src/app/benchmarks/benchmarks-metadata.test.ts

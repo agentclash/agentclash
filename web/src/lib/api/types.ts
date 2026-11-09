@@ -273,6 +273,7 @@ export type AgentKind = (typeof AGENT_KINDS)[number];
 
 /** GET /v1/workspaces/{id}/agent-deployments list item */
 export interface AgentDeployment {
+  adapter?: "native" | "http_json" | "hosted";
   id: string;
   organization_id: string;
   workspace_id: string;
@@ -286,6 +287,7 @@ export interface AgentDeployment {
 
 /** POST /v1/workspaces/{id}/agent-deployments request */
 export interface CreateAgentDeploymentRequest {
+  adapter?: "native";
   name: string;
   agent_build_id: string;
   build_version_id: string;
@@ -297,6 +299,7 @@ export interface CreateAgentDeploymentRequest {
 
 /** POST /v1/workspaces/{id}/agent-deployments response */
 export interface AgentDeploymentCreateResponse {
+  adapter?: "native" | "http_json" | "hosted";
   id: string;
   workspace_id: string;
   agent_build_id: string;
@@ -612,6 +615,7 @@ export interface ChallengeInputSetSummary {
 // --- Public Shares ---
 
 export type PublicShareResourceType =
+  | "report_snapshot"
   | "challenge_pack_version"
   | "run_scorecard"
   | "run_agent_scorecard"

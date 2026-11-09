@@ -212,3 +212,74 @@ func TestVibeIntegrationRetestApprovesOnlyExecutedChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestVibeIntegrationPrerunGuideCaseReference(t *testing.T) {
+	s := integrationStore(t)
+	v, foreign := anonSession(t, s), anonSession(t, s)
+	ctx := context.Background()
+	a := Artifact{ID: uuid.New(), Kind: "test_suite", Title: "Returns", AgentPrompt: "Use only the stated policy.", Blueprint: raw(map[string]any{"cases": []any{map[string]any{"key": "case-own", "payload": map[string]string{"question": "Return?"}, "expectations": []any{map[string]string{"key": "expected_behavior", "kind": "text", "value": "OBSERVATION_ONLY_SECRET"}}}}})}
+	other := a
+	other.ID = uuid.New()
+	for _, row := range []struct {
+		session  Session
+		artifact Artifact
+	}{{v, a}, {foreign, other}} {
+		if err := s.Edit(ctx, row.session.Actor, row.session.ID, row.session.Revision, func(current *Session) error { current.Document.Artifacts = []Artifact{row.artifact}; return nil }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	v, _ = s.GetSession(ctx, v.Actor, v.ID)
+	svc := Service{Store: s, Config: testConfig(), Gate: testGate(t), Compiler: repairCompiler{}}
+	sub := Submission{ClientID: uuid.New(), Revision: v.Revision, Kind: "message", Content: "Explain this case without changing any rules.", ArtifactID: &a.ID, ViewedCaseKey: "case-own", Models: DefaultModels(), TestJourney: true}
+	for _, invalid := range []struct {
+		name     string
+		actor    string
+		artifact *uuid.UUID
+		key      string
+	}{{"foreign actor", foreign.Actor, &a.ID, "case-own"}, {"foreign artifact", v.Actor, &other.ID, "case-own"}, {"missing explicit artifact", v.Actor, nil, "case-own"}, {"foreign case", v.Actor, &a.ID, "case-foreign"}} {
+		t.Run(invalid.name, func(t *testing.T) {
+			bad := sub
+			bad.ClientID = uuid.New()
+			bad.ArtifactID = invalid.artifact
+			bad.ViewedCaseKey = invalid.key
+			if _, err := svc.Prepare(ctx, invalid.actor, v.ID, bad); err == nil {
+				t.Fatal("foreign or implicit reference admitted")
+			}
+		})
+	}
+	op, err := svc.Prepare(ctx, v.Actor, v.ID, sub)
+	if err != nil {
+		t.Fatal("valid pre-run reference rejected", err)
+	}
+	var plan Plan
+	if err = json.Unmarshal(op.Input, &plan); err != nil {
+		t.Fatal(err)
+	}
+	input, err := buildTaskInput(plan, taskRoute, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var projection map[string]json.RawMessage
+	_ = json.Unmarshal(raw(input), &projection)
+	if !strings.Contains(string(projection["referenced_test"]), "OBSERVATION_ONLY_SECRET") {
+		t.Fatal("reference missing from read-only context", string(raw(input)))
+	}
+	for _, key := range []string{"desired_rules", "source_blocks", "candidate_user_facts", "confirmed_sources", "working_brief"} {
+		if strings.Contains(string(projection[key]), "OBSERVATION_ONLY_SECRET") {
+			t.Fatal("expectation promoted to policy", key)
+		}
+	}
+	if len(plan.Observations) != 0 {
+		t.Fatal("unrun case invented execution evidence")
+	}
+	if plan.Submission.Content != sub.Content {
+		t.Fatal("reference rewrote user message")
+	}
+	if err = s.Stop(ctx, v.Actor, op.ID); err != nil {
+		t.Fatal(err)
+	}
+	current, _ := s.GetSession(ctx, v.Actor, v.ID)
+	if !reflect.DeepEqual(current.Document.Artifacts, v.Document.Artifacts) || !reflect.DeepEqual(current.Document.Requirements, v.Document.Requirements) {
+		t.Fatal("reference selection mutated source")
+	}
+}

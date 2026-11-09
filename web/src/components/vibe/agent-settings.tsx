@@ -1,20 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { TaskMaterial } from "@/lib/vibe-inputs";
+import {advancedURL} from "@/lib/vibe-keep";
+import {projectTitle} from "@/lib/vibe-project";
 import { Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { type Artifact, type Models, type Session, type VibeConfig } from "@/lib/vibe";
 import { exportAgent } from "@/lib/vibe-export";
-import { CreditsDialog } from "./credits-dialog";
 import { ModelSelect } from "./model-select";
 import { VibeButton } from "./vibe-button";
 
 type Props = {
+  reimport?: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenChangeComplete?: (open: boolean) => void;
   config: VibeConfig | null;
   session: Session | null;
   artifact?: Artifact;
@@ -23,18 +26,24 @@ type Props = {
   busy: boolean;
   workspace: string;
   testJourney: boolean;
+  projectReturnPath?:string;
   savedDraft?: { workspace_id: string; draft_id: string } | null;
   onModels: (models: Models) => void;
   onVersion: (id: string) => void;
   onSave: () => void;
+  onCredits: () => void;
   onImport: () => void;
   onExportConversation: () => void;
   loadMaterials?: () => Promise<TaskMaterial[]>;
 };
 
-export function AgentSettings({open, onOpenChange, config, session, artifact, artifacts, models, busy, workspace, testJourney, savedDraft, onModels, onVersion, onSave, onImport, onExportConversation, loadMaterials}: Props) {
+// Actions that open another dialog (Credits, Save, Export) close Settings first;
+// the parent opens the next dialog from onOpenChangeComplete.
+export function AgentSettings({reimport,open, onOpenChange, onOpenChangeComplete, config, session, artifact, artifacts, models, busy, workspace, testJourney, projectReturnPath,savedDraft, onModels, onVersion, onSave, onCredits, onImport, onExportConversation, loadMaterials}: Props) {
+  const savable = !!artifact && artifact.kind !== "test_plan" && artifact.kind !== "conversation_evaluation";
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  // The portable definition names reference files by hash. It never contains private input IDs or file text.
   async function downloadDefinition() {
     if (!artifact || exporting) return;
     setExporting(true); setExportError("");
@@ -43,32 +52,20 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
     finally { setExporting(false); }
   }
   return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="vibe-workspace max-h-[85vh] overflow-y-auto">
+      <Dialog open={open} onOpenChange={onOpenChange} onOpenChangeComplete={onOpenChangeComplete}>
+        <DialogContent className="vibe-workspace vibe-dialog">
           <DialogTitle>Settings and details</DialogTitle>
           <DialogDescription>
             Choose models, review versions, or export your work.
           </DialogDescription>
-          {workspace && <CreditsDialog workspace={workspace} />}
-          {artifact &&
-            artifact.kind !== "test_plan" &&
-            artifact.kind !== "conversation_evaluation" && (
-              <VibeButton
-                disabled={busy}
-                onClick={() => {
-                  onOpenChange(false);
-                  onSave();
-                }}
-              >
-                {testJourney ? "Keep these tests" : "Save agent"}
-              </VibeButton>
-            )}
+          <div className="vibe-dialog-body space-y-4">
+          {workspace && <div className="flex flex-wrap gap-2"><Button variant="ghost" size="sm" onClick={onCredits}>Credits</Button></div>}
           {savedDraft && (
             <Link
               className="text-sm underline"
-              href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}
+              href={advancedURL(savedDraft.workspace_id,savedDraft.draft_id,projectReturnPath,session?projectTitle(session):undefined)}
             >
-              Open saved tests
+              Open in the advanced editor
             </Link>
           )}
           {(
@@ -98,13 +95,13 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
                     onModels({ ...models, [role]: value })
                   }
                 />
-                <p className="mt-1 text-xs text-builder-fg-muted">
+                <p className="mt-1 text-sm text-builder-fg-muted">
                   {role === "assistant"
-                    ? "Plans the check and helps explain results."
+                    ? "Plans the tests and helps explain results."
                     : role === "target"
-                      ? "Generates replies when testing instructions here. Changing it starts a fresh preview conversation."
+                      ? "Generates replies when testing instructions here. Changing it starts a fresh trial conversation."
                       : config?.local_testing && !config?.free_only
-                        ? "Grades replies against your expectations. Changing it requires a new baseline or rechecking saved grades."
+                        ? "Grades replies against your expectations. Changing it requires a new baseline or regrading saved replies."
                         : "Grades replies against your expectations. The free trial keeps this fixed."}
                 </p>
               </div>
@@ -116,7 +113,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
               Use assistant model for all roles
             </Button>
           )}
-          <p className="text-xs text-builder-fg-muted">
+          <p className="text-sm text-builder-fg-muted">
             Model changes apply to new messages and runs. Use “Retry with another model” to switch a failed request.
           </p>
           {artifacts.length > 1 && (
@@ -126,7 +123,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
                 aria-label="Agent version"
                 value={artifact?.id}
                 disabled={busy}
-                className="mt-2 w-full rounded-lg border bg-background p-2"
+                className="mt-2 w-full rounded-[var(--vibe-radius-sm)] border bg-background p-2"
                 onChange={(e) => {
                   onVersion(e.target.value);
                 }}
@@ -146,30 +143,48 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
           >
             <Paperclip size={16} /> Import a test pack
           </Button>
-          {artifact &&
-            artifact.kind !== "test_plan" &&
-            artifact.kind !== "conversation_evaluation" && (
+          {reimport}
+          {(savable || session) && <div className="flex flex-wrap gap-2">
+          {savable && (
+              <VibeButton
+                disabled={busy}
+                onClick={onSave}
+              >
+                {testJourney ? "Keep these tests" : "Save agent"}
+              </VibeButton>
+            )}
+          {savable ? (
+              <Button
+                variant="outline"
+                onClick={onExportConversation}
+              >
+                {testJourney
+                  ? "Export tests and agent instructions"
+                  : "Export agent and tests"}
+              </Button>
+            ) : (
+            <Button variant="outline" onClick={onExportConversation}>
+              Export selected version / result
+            </Button>
+          )}
+          {savable && (
               <Button
                 variant="outline"
                 disabled={exporting}
                 onClick={() => void downloadDefinition()}
               >
                 {exporting ? "Preparing download…" : "Download agent instructions and tests"}
-              </Button>
-            )}
-          {exportError && <p role="alert" className="text-sm text-builder-warn">{exportError}</p>}
-          {session && (
-            <Button variant="ghost" onClick={onExportConversation}>
-              Download conversation and results
             </Button>
           )}
+          </div>}
+          {exportError && <p role="alert" className="text-sm text-builder-warn">{exportError}</p>}
           <details className="text-sm">
             <summary className="cursor-pointer">
               Available capabilities and documentation
             </summary>
             {config?.capabilities?.map((c) => (
-              <p key={c.id} className="mt-3 text-xs leading-5">
-                <strong>{c.label}:</strong> {c.description}{" "}
+              <p key={c.id} className="mt-3">
+                <strong>{c.label}{c.available === false ? " (unavailable)" : ""}:</strong> {c.description}{" "}
                 {c.url && (
                   <a
                     href={c.url}
@@ -177,12 +192,13 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
                     rel="noopener noreferrer"
                     className="underline"
                   >
-                    Documentation ↗
+                    {c.label} documentation ↗
                   </a>
                 )}
               </p>
             ))}
           </details>
+          </div>
         </DialogContent>
       </Dialog>
   );

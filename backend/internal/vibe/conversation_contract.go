@@ -3,6 +3,7 @@ package vibe
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -146,9 +147,18 @@ func reliableRouteFormat(profile ModelProfile, p Plan) json.RawMessage {
 }
 func reliableCommandFormat(profile ModelProfile, p Plan, intent string) json.RawMessage {
 	text := boundedText(p.limits().MessageBytes)
-	ruleProperties := map[string]any{"id": boundedText(128), "statement": boundedText(4000), "source_block_ids": map[string]any{"type": "array", "minItems": 1, "maxItems": 20, "items": boundedText(128)}}
+	sourceRef := boundedText(128)
+	if p.sourceBoundary() && p.Conversation.BoundSourceReferences {
+		ids := []string{}
+		for _, source := range p.Conversation.Sources {
+			ids = append(ids, source.ID)
+		}
+		slices.Sort(ids)
+		sourceRef["enum"] = slices.Compact(ids)
+	}
+	ruleProperties := map[string]any{"id": boundedText(128), "statement": boundedText(4000), "source_block_ids": map[string]any{"type": "array", "minItems": 1, "maxItems": 20, "items": sourceRef}}
 	if p.sourceBoundary() {
-		ruleProperties["evidence"] = map[string]any{"type": "array", "minItems": 1, "maxItems": 20, "items": objectSchema(map[string]any{"source_block_id": boundedText(128), "quote": boundedText(p.limits().MessageBytes), "kind": map[string]any{"type": "string", "enum": []string{"requirement", "example"}}})}
+		ruleProperties["evidence"] = map[string]any{"type": "array", "minItems": 1, "maxItems": 20, "items": objectSchema(map[string]any{"source_block_id": sourceRef, "quote": boundedText(p.limits().MessageBytes), "kind": map[string]any{"type": "string", "enum": []string{"requirement", "example"}}})}
 	}
 	rule := objectSchema(ruleProperties)
 	rules := map[string]any{"type": "array", "minItems": 1, "maxItems": MaxRequirements, "items": rule}

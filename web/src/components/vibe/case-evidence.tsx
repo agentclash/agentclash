@@ -6,7 +6,7 @@ import { caseInput, type CaseResult, type EvidenceMessage } from "@/lib/vibe";
 import { validCaseEvidence } from "@/lib/vibe-evidence";
 import { AgentReply, SafeMarkdown } from "./safe-markdown";
 import { VibeButton } from "./vibe-button";
-import { GroundedFinding, verifiedFinding } from "./grounded-finding";
+import { GroundedFinding } from "./grounded-finding";
 import {
   evidenceRole,
   expectedBehavior,
@@ -21,16 +21,15 @@ export function CaseEvidence({
   load,
   evidenceVersion,
   onImprove,
+  onAsk,
   busy,
   onDispute,
   onRegrade,
   defaultOpen = false,
-  focused = false,
   allowFixPrompt = false,
   onFixCopied,
   origin,
   concise = false,
-  exampleFirst = false,
   compactPreview = false,
   onEvidence,
   onReload,
@@ -40,16 +39,15 @@ export function CaseEvidence({
   load: (key: string) => Promise<CaseResult>;
   evidenceVersion?: string;
   onImprove?: (result: CaseResult) => void;
+  onAsk?: () => void;
   busy?: boolean;
   onDispute?: (rule: string, result: CaseResult) => void;
   onRegrade?: () => void;
   defaultOpen?: boolean;
-  focused?: boolean;
   allowFixPrompt?: boolean;
   onFixCopied?: () => void;
   origin?: EvidenceOrigin;
   concise?: boolean;
-  exampleFirst?: boolean;
   compactPreview?: boolean;
   onEvidence?: (evidence: CaseResult) => void;
   onReload?: () => void;
@@ -103,12 +101,19 @@ export function CaseEvidence({
   const error = current?.error;
   const loading = open && !current;
   const finding = evidence ? findingCheck(evidence) : undefined;
+  const recorded = origin === "provided_conversations";
+  const customerMessages = evidence?.messages?.filter(message => message.role === "user") || [];
+  const customerInput = customerMessages.map(message => message.content).join("\n\n");
+  const input = recorded ? customerInput || "No customer message was recorded." : evidence?.input != null ? caseInput(evidence.input) : customerInput || "No input was recorded.";
+  const cited = new Set(finding?.message_ids || []);
+  const replies = evidence?.messages?.filter(message => message.role === "assistant") || [];
+  const reply = replies.findLast(message => cited.has(message.id))?.content || replies.at(-1)?.content || evidence?.output;
   const prompt =
     evidence && allowFixPrompt ? fixPrompt(evidence, origin) : null;
   const explanation =
     finding?.error?.message ||
     finding?.evidence ||
-    "A detailed explanation was not recorded for this check.";
+    "A detailed explanation was not recorded for this expectation.";
   const excerpt = concise && explanation.length > 240;
   const boundary = explanation.lastIndexOf(" ", 240);
   const visibleExplanation = excerpt
@@ -118,14 +123,15 @@ export function CaseEvidence({
   return (
     <details
       className="group vibe-result-row"
+      data-verdict={summary.verdict || "UNKNOWN"}
       open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
       <summary className="flex cursor-pointer list-none items-center gap-3 text-sm">
         {summary.verdict === "PASS" ? (
-          <Check size={16} aria-hidden="true" />
+          <Check size={16} className="vibe-verdict-pass" aria-hidden="true" />
         ) : summary.verdict === "FAIL" ? (
-          <X size={16} className="text-builder-warn" aria-hidden="true" />
+          <X size={16} className="vibe-verdict-issue" aria-hidden="true" />
         ) : (
           <HelpCircle
             size={16}
@@ -133,19 +139,19 @@ export function CaseEvidence({
             aria-hidden="true"
           />
         )}
-        <span className="min-w-0 flex-1">
+        <span className="vibe-row-title min-w-0 flex-1">
           {summary.title ||
             (concise && evidence?.input != null
-              ? caseInput(evidence.input)
+              ? input
               : summary.case_key
-                  .replace(/^case-/, exampleFirst ? "Example " : concise ? "Test " : "Situation ")
+                  .replace(/^case-/, "Test ")
                   .replaceAll("-", " "))}
         </span>
-        <span className="text-xs text-builder-fg-muted">
+        <span className={`vibe-verdict-word text-xs ${summary.verdict === "PASS" ? "vibe-verdict-pass" : summary.verdict === "FAIL" ? "vibe-verdict-issue" : "text-builder-fg-muted"}`}>
           {summary.verdict === "PASS"
-            ? "Passed"
+            ? "Pass"
             : summary.verdict === "FAIL"
-              ? "Issue found"
+              ? "Issue"
               : summary.error?.code === "not_evaluated"
                 ? "Not run"
                 : "Could not determine"}
@@ -156,9 +162,9 @@ export function CaseEvidence({
           aria-hidden="true"
         />
       </summary>
-      <div className="space-y-4 border-t border-[var(--vibe-border)] p-5">
+      <div className="vibe-result-details space-y-4">
         {loading && (
-          <p role="status" className="text-xs vibe-muted">
+          <p role="status" className="text-sm vibe-muted">
             Loading saved evidence…
           </p>
         )}
@@ -174,46 +180,35 @@ export function CaseEvidence({
                 {evidence.error.message}
               </p>
             )}
-            {exampleFirst && <div className="vibe-example-evidence">
-              <div><p className="vibe-evidence-label">{compactPreview ? "We gave it" : "Situation we tried"}</p>{compactPreview ? <EvidenceExcerpt text={caseInput(evidence.input)} label="input" /> : <SafeMarkdown>{caseInput(evidence.input)}</SafeMarkdown>}</div>
-              {!compactPreview && <div><p className="vibe-evidence-label">What it should do</p><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div>}
-              <div><p className="vibe-evidence-label">{compactPreview ? "It replied" : "What it actually replied"}</p>{evidence.output ? <div className="vibe-example-reply">{compactPreview ? <EvidenceExcerpt text={evidence.output} label="reply" /> : <AgentReply>{evidence.output}</AgentReply>}</div> : <p>No reply was recorded.</p>}</div>
-            </div>}
-            {finding && (!compactPreview || finding.verdict === "FAIL") && (
-              <div>
-                <p className="mb-1 text-xs vibe-muted">
+            <div className="vibe-example-evidence">
+              <div className="vibe-evidence-field"><p className="vibe-evidence-label">We gave it</p><div className="vibe-evidence-content">{recorded && customerMessages.length ? <div className="vibe-recorded-chat">{customerMessages.map(message => <div className="vibe-recorded-bubble" data-role="user" key={message.id}><strong>Customer</strong><p>{message.content}</p></div>)}</div> : compactPreview || concise ? <EvidenceExcerpt text={input} label="input" /> : <SafeMarkdown>{input}</SafeMarkdown>}</div></div>
+              <div className="vibe-evidence-field"><p className="vibe-evidence-label">It replied</p><div className="vibe-evidence-content">{reply ? <div className="vibe-example-reply"><EvidenceExcerpt text={reply} label="reply" /></div> : <p>No reply was recorded.</p>}</div></div>
+              <div className="vibe-evidence-field"><p className="vibe-evidence-label">It should</p><div className="vibe-evidence-content"><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div></div>
+            </div>
+            {finding && (
+              <div className="vibe-evidence-field">
+                <p className="vibe-evidence-label">
                   {finding.verdict === "FAIL"
                     ? "What needs attention"
                     : finding.verdict === "PASS"
-                      ? "Why this passed"
+                      ? "Why it passed"
                       : "What is still unknown"}
                   {excerpt && " · excerpt"}
                 </p>
+                <div className="vibe-evidence-content">
                 <SafeMarkdown>{visibleExplanation}</SafeMarkdown>
+                {excerpt && <details className="mt-2"><summary className="cursor-pointer text-sm">Read complete explanation</summary><SafeMarkdown>{explanation}</SafeMarkdown></details>}
+                <GroundedFinding result={evidence} check={finding} showExpectation={false} />
+                </div>
               </div>
             )}
-            {!exampleFirst && (verifiedFinding(evidence, finding) ? <GroundedFinding result={evidence} check={finding} /> : <PrimaryReply
-              evidence={evidence}
-              finding={finding}
-              origin={origin}
-            />)}
             {!compactPreview && prompt && (
               <FixPromptCopy
                 prompt={prompt}
                 busy={busy}
-                primary={focused}
                 onCopied={onFixCopied}
               />
             )}
-            {!compactPreview && <EvidenceDetails
-              evidence={evidence}
-              finding={finding}
-              origin={origin}
-              onDispute={onDispute}
-              onRegrade={onRegrade}
-              onImprove={onImprove}
-              busy={busy}
-            />}
           </>
         )}
         {(error || summary.verdict === "UNKNOWN") && (
@@ -225,6 +220,17 @@ export function CaseEvidence({
             Reload saved evidence
           </VibeButton>
         )}
+        <EvidenceDetails
+          evidence={evidence}
+          finding={finding}
+          expectationShown={!!evidence}
+          origin={origin}
+          onAsk={onAsk}
+          onDispute={onDispute}
+          onRegrade={onRegrade}
+          onImprove={onImprove}
+          busy={busy}
+        />
       </div>
     </details>
   );
@@ -240,57 +246,27 @@ function EvidenceExcerpt({ text, label }: { text: string; label: "input" | "repl
   </>;
 }
 
-function PrimaryReply({
-  evidence,
-  finding,
-  origin,
-}: {
-  evidence: CaseResult;
-  finding?: EvidenceCheck;
-  origin?: EvidenceOrigin;
-}) {
-  const cited = new Set(finding?.message_ids || []);
-  const replies =
-    evidence.messages?.filter((message) => message.role === "assistant") || [];
-  const message =
-    replies.findLast((reply) => cited.has(reply.id)) || replies.at(-1);
-  const text = message?.content || evidence.output;
-  if (!text) return null;
-  // This is a verbatim excerpt for scanning. The saved reply remains complete in
-  // See evidence and in the copied fix prompt; no evaluated material is changed.
-  const excerpt = text.length > 280;
-  const boundary = text.lastIndexOf(" ", 280);
-  const quote = excerpt ? text.slice(0, boundary > 200 ? boundary : 280) : text;
-  return (
-    <blockquote className="border-l-2 border-[var(--vibe-border)] pl-4 text-sm">
-      <p className="mb-1 text-xs vibe-muted">
-        {origin === "prompt"
-          ? "Generated reply"
-          : origin === "provided_conversations"
-            ? "App reply"
-            : "Recorded reply"}
-        {excerpt ? " · preview; full reply below" : ""}
-      </p>
-      <p className="vibe-transcript">
-        {quote}
-        {excerpt && "…"}
-      </p>
-    </blockquote>
-  );
+// Only the expected behavior and the user's own rules can be changed; "Reply received" is a grading step.
+function changeable(evidence: CaseResult, check: { key: string }) {
+  return check.key === "behavior" || !!evidence.expectations?.some((rule) => rule.id === check.key);
 }
 
 function EvidenceDetails({
   evidence,
   finding,
+  expectationShown,
   origin,
+  onAsk,
   onDispute,
   onRegrade,
   onImprove,
   busy,
 }: {
-  evidence: CaseResult;
+  evidence?: CaseResult;
   finding?: EvidenceCheck;
+  expectationShown: boolean;
   origin?: EvidenceOrigin;
+  onAsk?: () => void;
   onDispute?: (rule: string, result: CaseResult) => void;
   onRegrade?: () => void;
   onImprove?: (result: CaseResult) => void;
@@ -298,22 +274,32 @@ function EvidenceDetails({
 }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
+  const guide = onAsk && <VibeButton variant="quiet" disabled={busy} onClick={onAsk}>Ask Guide about this test</VibeButton>;
+  // Keep the Guide button mounted while evidence loads so keyboard focus stays put.
+  if (!evidence) return guide ? <div className="space-y-3"><div className="vibe-evidence-actions -ml-3 flex flex-wrap items-center gap-1">{guide}</div></div> : null;
+  // The finding and its expectation already show above; list checks only when there is more.
+  const otherChecks = evidence.checks.some((check) => check.key !== finding?.key);
+  const cited = new Set(finding?.message_ids || []);
+  const supporting = evidence.messages?.length
+    ? evidence.messages.some((message) => cited.has(message.id))
+    : !!evidence.output;
   return (
     <div className="space-y-3">
-      <div className="-ml-3 flex flex-wrap items-center gap-1">
+      <div className="vibe-evidence-actions -ml-3 flex flex-wrap items-center gap-1">
+        {guide}
         <VibeButton
           variant="quiet"
           aria-expanded={expanded}
           aria-controls={id}
           onClick={() => setExpanded((value) => !value)}
         >
-          {expanded ? "Hide evidence" : "See evidence"}
+          {expanded ? "Hide full conversation" : "Show full conversation"}
           <ChevronRight
             aria-hidden="true"
             className={expanded ? "rotate-90" : ""}
           />
         </VibeButton>
-        {onDispute && finding && (
+        {onDispute && finding && changeable(evidence, finding) && (
           <VibeButton
             variant="quiet"
             disabled={busy}
@@ -321,31 +307,31 @@ function EvidenceDetails({
               onDispute(expectedBehavior(evidence, finding), evidence)
             }
           >
-            Change the expected behavior
+            Change expected result
           </VibeButton>
         )}
-        {onRegrade && <VibeButton variant="quiet" disabled={busy} onClick={onRegrade}>Recheck saved grades</VibeButton>}
+        {onRegrade && <VibeButton variant="quiet" disabled={busy} onClick={onRegrade}>Grade the same replies again</VibeButton>}
       </div>
-      {onRegrade && <p className="text-xs vibe-muted">Rechecking uses the same replies and rules. Your earlier results stay saved.</p>}
+      {onRegrade && <p className="text-sm vibe-muted">Regrading uses the same replies and rules. Your earlier results stay saved.</p>}
       <div
         id={id}
         hidden={!expanded}
-        className="space-y-6 border-t border-[var(--vibe-border)] pt-5"
+        className="space-y-6 border-t border-[var(--vibe-border)] pt-4"
       >
-        {(evidence.expected || evidence.expectations?.length) && (
+        {!expectationShown && (evidence.expected || evidence.expectations?.length) && (
           <div className="text-sm">
             <p className="mb-2 text-xs vibe-muted">Expected behavior</p>
             <SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown>
           </div>
         )}
-        <div aria-label="Supporting messages" className="space-y-3">
+        {supporting && <div aria-label="Supporting messages" className="space-y-3">
           <p className="text-xs vibe-muted">Supporting messages</p>
           <SupportingEvidence
             evidence={evidence}
             finding={finding}
             origin={origin}
           />
-        </div>
+        </div>}
         {evidence.messages?.length ? (
           <div>
             <p className="mb-3 text-xs vibe-muted">
@@ -357,7 +343,7 @@ function EvidenceDetails({
                   <p className="mb-1 text-xs vibe-muted">
                     {evidenceRole(message.role)} · message {index + 1}
                   </p>
-                  <p className="vibe-transcript text-sm">{message.content}</p>
+                  <p className="vibe-transcript">{message.content}</p>
                 </li>
               ))}
             </ol>
@@ -369,7 +355,7 @@ function EvidenceDetails({
                 Original message or task
               </p>
               <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-sm">
-                {caseInput(evidence.input)}
+                {origin === "provided_conversations" ? "No customer message was recorded." : caseInput(evidence.input)}
               </pre>
             </div>
             {evidence.output && (
@@ -384,20 +370,17 @@ function EvidenceDetails({
             )}
           </div>
         )}
-        <div className="space-y-5">
+        {otherChecks && <div className="space-y-4">
           <p className="text-xs vibe-muted">
-            All checks · {evidence.checks.length}
+            Grading details · {evidence.checks.length}
           </p>
-          {evidence.checks.map((check) => (
+          {evidence.checks.map((check) => {
+            const rule = evidence.expectations?.find((item) => item.id === check.key);
+            const name = check.key === "behavior" ? "Expected behavior" : check.key === "has_answer" ? "Reply received" : rule?.statement || check.key;
+            return (
             <div key={check.key}>
-              <p className="text-xs font-medium">
-                {check.key === "behavior"
-                  ? "Expected behavior"
-                  : check.key === "has_answer"
-                    ? "Reply received"
-                    : evidence.expectations?.find(
-                        (rule) => rule.id === check.key,
-                      )?.statement || check.key}
+              <p className="text-sm font-semibold">
+                {name}
                 {" · "}
                 {check.verdict === "PASS"
                   ? "Passed"
@@ -408,28 +391,30 @@ function EvidenceDetails({
               <SafeMarkdown>
                 {check.error?.message || check.evidence}
               </SafeMarkdown>
-              <GroundedFinding result={evidence} check={check} />
+              {check.key !== finding?.key && <GroundedFinding result={evidence} check={check} />}
               <CitedMessages evidence={evidence} check={check} />
-              {onDispute && (
+              {onDispute && changeable(evidence, check) && check.key !== finding?.key && (
                 <VibeButton
                   variant="quiet"
                   className="mt-2"
                   disabled={busy}
+                  aria-label={`Change expected result: ${name}`}
                   onClick={() =>
                     onDispute(expectedBehavior(evidence, check), evidence)
                   }
                 >
-                  That’s not our rule
+                  Change expected result
                 </VibeButton>
               )}
             </div>
-          ))}
-          {onImprove && evidence.verdict === "FAIL" && (
-            <VibeButton disabled={busy} onClick={() => onImprove(evidence)}>
-              Improve this behavior
-            </VibeButton>
-          )}
-        </div>
+            );
+          })}
+        </div>}
+        {onImprove && evidence.verdict === "FAIL" && (
+          <VibeButton disabled={busy} onClick={() => onImprove(evidence)}>
+            Improve this behavior
+          </VibeButton>
+        )}
       </div>
     </div>
   );
@@ -482,7 +467,7 @@ function MessageQuote({
   index: number;
 }) {
   return (
-    <blockquote className="border-l-2 border-[var(--vibe-border)] pl-4 text-sm">
+    <blockquote className="border-l-2 border-[var(--vibe-border)] pl-4">
       <p className="mb-1 text-xs vibe-muted">
         {evidenceRole(message.role)} · message {index + 1}
       </p>
@@ -520,12 +505,10 @@ function CitedMessages({
 function FixPromptCopy({
   prompt,
   busy,
-  primary,
   onCopied,
 }: {
   prompt: string;
   busy?: boolean;
-  primary: boolean;
   onCopied?: () => void;
 }) {
   const [copying, setCopying] = useState(false);
@@ -547,7 +530,6 @@ function FixPromptCopy({
   return (
     <div className="space-y-2">
       <VibeButton
-        variant={primary && !copied ? "primary" : "secondary"}
         disabled={busy || copying}
         loading={copying}
         onClick={() => void copy()}
@@ -555,7 +537,7 @@ function FixPromptCopy({
         <Copy aria-hidden="true" />
         {copied ? "Copy fix prompt again" : "Copy fix prompt"}
       </VibeButton>
-      <p className="text-xs vibe-muted" role={copied ? "status" : undefined}>
+      <p className="text-sm vibe-muted" role={copied ? "status" : undefined}>
         {copied
           ? "Copied. Paste it into your coding tool, then bring back the new answer."
           : "Paste this into your coding tool."}

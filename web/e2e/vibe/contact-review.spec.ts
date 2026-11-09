@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { fakeVibe, telemetryScripts } from "./entry-fake";
 
 const models = { assistant: "fixture/a", target: "fixture/a", evaluator: "fixture/a" };
 const artifact = { id: "prototype", kind: "test_suite", title: "Customer email sorter", agent_prompt: "Suggest a label for each email.", accepted: true, source_message_id: "request", proposal_message_id: "prepared", scope_note: "Suggests labels using supplied text. Your inbox is not connected.", blueprint: { cases: [{ key: "spam", payload: { question: "You won a prize. Send bank details." }, expectations: [{ key: "expected_behavior", kind: "text", value: "Label as Spam." }] }] } };
@@ -7,13 +8,13 @@ const session = { id: "contact-fixture", revision: 1, event_cursor: 1, anonymous
 type ContactMode = "configured" | "email-only" | "unconfigured";
 
 async function installFixture(page: Page, mode: ContactMode, posts: string[]) {
-  const origin = new URL(process.env.VIBE_TEST_BASE_URL ?? "http://127.0.0.1:53517").origin;
+  const origin = new URL(test.info().project.use.baseURL ?? "http://127.0.0.1:53517").origin;
   let receiptStatus = "received";
   await page.route("**/v1/vibe/**", async route => {
     const req = route.request(), url = new URL(req.url()), pathname = url.pathname;
     const headers = { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true" };
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...headers, "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS" } });
-    if (pathname.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, two_door: true, defaults: models, models: [{ id: "fixture/a", name: "Fixture model" }], contact: { available: mode === "configured", email: mode === "unconfigured" ? "" : "fixture@example.test" } } });
+    if (pathname.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: models, models: [{ id: "fixture/a", name: "Fixture model" }], contact: { available: mode === "configured", email: mode === "unconfigured" ? "" : "fixture@example.test" } } });
     if (pathname.endsWith("/saved-checks") || pathname.endsWith("/inputs")) return route.fulfill({ headers, json: [] });
     if (pathname.endsWith("/sessions") || pathname.endsWith("/evaluations")) return route.fulfill({ headers, json: [session] });
     if (pathname.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(session)}\n\n` });
@@ -34,8 +35,10 @@ async function installFixture(page: Page, mode: ContactMode, posts: string[]) {
 
 async function openContact(page: Page) {
   await page.goto("/vibe-evals?session=contact-fixture");
-  await page.locator('[data-message-id="request"]').waitFor();
-  const opener = page.getByRole("button", { name: "Discuss this with AgentClash" }).first();
+  await page.getByRole("tab", {name:"Results", exact:true}).click();
+  await expect(page.getByRole("article", { name: "Agent test results" })).toHaveAttribute("data-run-id", "check");
+  await expect(page.getByRole("combobox", {name:"Result history"})).toHaveCount(0);
+  const opener = page.getByRole("button", { name: "Talk to us about this agent" }).first();
   await opener.scrollIntoViewIfNeeded();
   await opener.click();
   const dialog = page.getByRole("dialog");
@@ -53,11 +56,13 @@ test("unconfigured and direct-email modes do not collect contact details or send
     await expect(dialog.getByLabel("Name (optional)")).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Send enquiry" })).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Copy summary" })).toBeVisible();
-    if (mode === "email-only") await expect(dialog.getByRole("link", { name: "Prefer email? Email us directly" })).toHaveAttribute("href", /^mailto:/);
-    else await expect(dialog.getByRole("status")).toContainText("Contact isn’t set up yet");
+    await expect(dialog.getByRole("link", { name: "Prefer email? Email us directly" })).toHaveAttribute("href", /^mailto:/);
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
     await expect(opener).toBeFocused();
+    // Without an API address, the team address (lib/vibe-contact) keeps the contact available.
+    const address = mode === "unconfigured" ? "hello@tryagentclash.com" : "fixture@example.test";
+    await expect(page.locator(".vibe-work-with-us-email").getByRole("link", { name: address, exact: true })).toHaveAttribute("href", `mailto:${address}`);
     expect(posts).toHaveLength(0);
     await page.unrouteAll();
   }
@@ -108,7 +113,12 @@ test("an open review dialog refits after desktop-to-phone resize", async ({ page
   await page.setViewportSize({ width: 1440, height: 900 });
   const { dialog } = await openContact(page);
   await expect(dialog).toBeVisible();
+  const email = dialog.getByLabel("Your email");
+  await email.fill("retained@example.test");
   await page.setViewportSize({ width: 320, height: 740 });
+  await expect(email).toHaveValue("retained@example.test");
+  await expect(email).toBeFocused();
+  await expect(page.getByRole("dialog")).toHaveCount(1);
   await expect.poll(async () => {
     const rect = await dialog.boundingBox();
     if (!rect) return null;
@@ -122,4 +132,53 @@ test("an open review dialog refits after desktop-to-phone resize", async ({ page
   expect(overflow.body).toBeLessThanOrEqual(1);
   await page.screenshot({ path: info.outputPath("contact-resized-320.png") });
   expect(posts).toHaveLength(0);
+});
+
+
+for (const width of [390, 560, 1440]) {
+  test(`entry contact sends without a project at ${width}px`, async ({ page }) => {
+    const fake = await fakeVibe(page, { config: { contact: { available: true, direct: true, email: "team@example.test" } } });
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/vibe-evals");
+    // Wait for API configuration before opening the feature-detected form.
+    await expect(page.locator("#vibe-path-work-email")).toContainText("team@example.test");
+    await page.getByRole("button", { name: "I have work to automate", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByLabel("Work email")).toBeVisible();
+    await dialog.getByLabel("What work should agents take on?").fill("Automate returns for our support team");
+    await dialog.getByLabel("Work email").fill("person@example.test");
+    await dialog.getByLabel("Company (optional)").fill("Northwind");
+    // Read both fields in one frame: the dialog can still be in its open animation.
+    const [email, company] = await dialog.evaluate(element => ["Work email", "Company (optional)"].map(name => {
+      const label = [...element.querySelectorAll("label")].find(item => item.textContent === name)!;
+      return document.getElementById(label.htmlFor)!.getBoundingClientRect().y;
+    }));
+    if (width < 480) expect(company).toBeGreaterThan(email);
+    else expect(Math.abs(company - email)).toBeLessThanOrEqual(0.5);
+    await dialog.getByRole("button", { name: "Send to our team" }).click();
+    const receipt = dialog.getByRole("status");
+    await expect(receipt).toHaveText("Sent. We will reply to person@example.test.");
+    await expect(receipt).toBeFocused();
+    await expect(dialog.getByRole("link", { name: "team@example.test" })).toHaveAttribute("href", "mailto:team@example.test");
+    expect(fake.posts).toHaveLength(1);
+    expect(fake.posts[0]).toEqual({ method: "POST", path: "/enquiries", body: { client_id: expect.stringMatching(/^[0-9a-f-]{36}$/), email: "person@example.test", work: "Automate returns for our support team", company: "Northwind", website: "" } });
+    expect(fake.sessions.size).toBe(0);
+    expect(fake.unknown).toEqual([]);
+    expect(fake.errors).toEqual([]);
+    expect(fake.external.filter(request => !telemetryScripts.includes(request))).toEqual([]);
+    await dialog.locator(".vibe-direct-contact").getByRole("button", { name: "Close", exact: true }).click();
+    await expect(dialog).toBeHidden();
+  });
+}
+
+test("entry contact keeps the mail app flow with an older API", async ({ page }) => {
+  const fake = await fakeVibe(page, { config: { contact: { available: true, email: "team@example.test" } } });
+  await page.goto("/vibe-evals");
+  await expect(page.locator("#vibe-path-work-email")).toContainText("team@example.test");
+  await page.getByRole("button", { name: "I have work to automate", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Work email")).toHaveCount(0);
+  await dialog.getByLabel("What work should agents take on?").fill("Automate returns");
+  await expect(dialog.getByRole("link", { name: "Email our team" })).toHaveAttribute("href", /mailto:team%40example.test.*Automate%20returns/);
+  expect(fake.posts).toEqual([]);
 });

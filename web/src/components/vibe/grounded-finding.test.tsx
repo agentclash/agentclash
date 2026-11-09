@@ -52,13 +52,13 @@ it("keeps grade rechecks separate from rule edits and makes no improvement claim
   const next = operation(); next.source!.comparison = "regraded";
   const regrade = vi.fn(), dispute = vi.fn(), improve = vi.fn(), retest = vi.fn(), newCheck = vi.fn();
   await act(async () => root.render(<VibeScorecard operation={next} baseline={{ ...operation(), id: "old" }} loadEvidence={async () => result()} onImprove={improve} onRetest={retest} onDispute={dispute} onRegrade={regrade} onNewCheck={newCheck} busy={false} testJourney />));
-  expect(container.querySelector("h1")?.textContent).toBe("Saved replies regraded");
+  expect(container.querySelector("h2")?.textContent).toBe("Saved replies regraded");
   expect(container.textContent).toContain("Your agent was not called again.");
   expect(container.textContent).not.toContain("fixed ·");
-  const button = [...container.querySelectorAll("button")].find(b => b.textContent === "Recheck saved grades")!;
+  const button = [...container.querySelectorAll("button")].find(b => b.textContent === "Grade the same replies again")!;
   await act(async () => button.click());
   expect(regrade).toHaveBeenCalledOnce();
-  const separate = [...container.querySelectorAll("button")].find(b => b.textContent === "Run as a separate check")!;
+  const separate = [...container.querySelectorAll("button")].find(b => b.textContent === "Start a separate run")!;
   await act(async () => separate.click());
   expect(newCheck).toHaveBeenCalledOnce(); expect(dispute).not.toHaveBeenCalled(); expect(retest).not.toHaveBeenCalled();
 });

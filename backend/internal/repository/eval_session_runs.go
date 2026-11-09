@@ -16,6 +16,8 @@ type BuildVersionRunnableDeployment struct {
 }
 
 type CreateEvalSessionWithQueuedRunsParams struct {
+	RequestID       uuid.UUID
+	RequestHash     string
 	Session         CreateEvalSessionParams
 	Runs            []CreateQueuedRunParams
 	EntitlementGate *RunEntitlementGate
@@ -95,6 +97,28 @@ func (r *Repository) CreateEvalSessionWithQueuedRuns(
 	}
 	defer rollback(ctx, tx)
 
+	// Derive authority from canonical child admission, never a project claim.
+	owner := params.Session.WorkspaceID
+	for _, run := range params.Runs {
+		if owner == uuid.Nil {
+			owner = run.WorkspaceID
+		}
+		if owner == uuid.Nil || owner != run.WorkspaceID {
+			return CreateEvalSessionWithQueuedRunsResult{}, fmt.Errorf("eval session children must share an authoritative workspace")
+		}
+	}
+	if owner == uuid.Nil {
+		return CreateEvalSessionWithQueuedRunsResult{}, fmt.Errorf("eval session workspace required")
+	}
+	if params.RequestID != uuid.Nil {
+		value, found, err := recoverEvalSessionTx(ctx, tx, owner, params.RequestID, params.RequestHash)
+		if err != nil {
+			return CreateEvalSessionWithQueuedRunsResult{}, err
+		}
+		if found {
+			return value, tx.Commit(ctx)
+		}
+	}
 	queries := r.queries.WithTx(tx)
 	if params.EntitlementGate != nil && len(params.Runs) > 0 {
 		workspaceID := params.Runs[0].WorkspaceID
@@ -103,6 +127,7 @@ func (r *Repository) CreateEvalSessionWithQueuedRuns(
 		}
 	}
 	sessionRow, err := queries.CreateEvalSession(ctx, repositorysqlc.CreateEvalSessionParams{
+		WorkspaceID:            &owner,
 		Status:                 string(domain.EvalSessionStatusQueued),
 		Repetitions:            params.Session.Repetitions,
 		AggregationConfig:      normalizeJSON(params.Session.AggregationConfig),
@@ -126,6 +151,11 @@ func (r *Repository) CreateEvalSessionWithQueuedRuns(
 			return CreateEvalSessionWithQueuedRunsResult{}, err
 		}
 
+		for _, agent := range runParams.RunAgents {
+			if err := validateConnectorAdmission(ctx, tx, runParams.WorkspaceID, agent.AgentDeploymentSnapshotID); err != nil {
+				return CreateEvalSessionWithQueuedRunsResult{}, err
+			}
+		}
 		result, err := createQueuedRunWithQueries(ctx, queries, runParams, queuedAt)
 		if err != nil {
 			return CreateEvalSessionWithQueuedRunsResult{}, fmt.Errorf("create queued child run %d: %w", idx+1, err)
@@ -146,6 +176,11 @@ func (r *Repository) CreateEvalSessionWithQueuedRuns(
 		runs = append(runs, run)
 	}
 
+	if params.RequestID != uuid.Nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO eval_session_admissions(workspace_id,request_id,request_hash,eval_session_id) VALUES($1,$2,$3,$4)`, owner, params.RequestID, params.RequestHash, session.ID); err != nil {
+			return CreateEvalSessionWithQueuedRunsResult{}, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return CreateEvalSessionWithQueuedRunsResult{}, fmt.Errorf("commit eval session create transaction: %w", err)
 	}

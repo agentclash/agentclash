@@ -34,6 +34,10 @@ spec:
             - secretRef:
                 name: {{ include "agentclash.secretName" . }}
           env:
+            # Kubernetes container networking requires a pod-reachable listener;
+            # local development examples remain loopback-only.
+            - name: API_SERVER_BIND_ADDRESS
+              value: {{ printf ":%v" .Values.apiServer.service.port | quote }}
             - name: TEMPORAL_HOST_PORT
               value: {{ .Values.external.temporalAddress | quote }}
             - name: TEMPORAL_NAMESPACE
@@ -44,6 +48,10 @@ spec:
             - name: METRICS_ADDR
               value: {{ printf ":%v" .Values.apiServer.metrics.port | quote }}
             {{- end }}
+          {{- with .Values.apiServer.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           readinessProbe:
             {{- toYaml .Values.apiServer.readinessProbe | nindent 12 }}
           resources:

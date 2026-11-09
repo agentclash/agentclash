@@ -36,7 +36,7 @@ func (g Gate) Healthy(ctx context.Context) error {
 	if g.Redis == nil {
 		return temporaryAdmission("accounting_unavailable", "Budget protection is offline.")
 	}
-	if err := g.Redis.Ping(ctx).Err(); err != nil {
+	if err := g.Redis.Eval(ctx, `redis.call('SET',KEYS[1],0,'EX',10); local n=redis.call('INCR',KEYS[1]); redis.call('EXPIRE',KEYS[1],10); local v=redis.call('GET',KEYS[1]); redis.call('DEL',KEYS[1]); return v`, []string{uniqueReadinessKey()}).Err(); err != nil {
 		return temporaryAdmission("accounting_unavailable", "Budget protection is offline.")
 	}
 	return nil

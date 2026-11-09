@@ -56,19 +56,19 @@ export function ConversationActions({ session, busy, onAction, onReload, primary
   return (
     <section aria-label="Conversation choices" aria-busy={pending} className="min-w-0 space-y-3 text-builder-fg">
       {proposal ? (
-        <div className="space-y-3 rounded-xl border border-builder-border p-4">
-          <p className="text-xs text-builder-fg-muted">Suggested checks</p>
-          <ul className="list-disc space-y-1 break-words pl-5 text-sm leading-6">
+        <div className="space-y-3 rounded-[var(--vibe-radius-md)] border border-builder-border p-4">
+          <p className="text-xs text-builder-fg-muted">Suggested rules</p>
+          <ul className="list-disc space-y-1 break-words pl-5 text-sm">
             {proposal.facts.map(fact => <li key={fact.id}>{fact.text}</li>)}
           </ul>
           <div className="flex flex-wrap gap-2">
-            <VibeButton type="button" className={button} disabled={disabled} variant={primary && !error ? "primary" : "secondary"} onClick={() => void send({ kind: "adopt_proposal", target_id: proposal.id, target_revision: proposal.revision })}>Use these checks</VibeButton>
+            <VibeButton type="button" className={button} disabled={disabled} variant={primary && !error ? "primary" : "secondary"} onClick={() => void send({ kind: "adopt_proposal", target_id: proposal.id, target_revision: proposal.revision })}>Use these rules</VibeButton>
             <VibeButton type="button" className={button} disabled={disabled} onClick={() => void send({ kind: "reject_proposal", target_id: proposal.id, target_revision: proposal.revision })}>Leave these out</VibeButton>
           </div>
         </div>
       ) : question && (question.options.length > 0 || question.purpose === "offer_help") ? (
         <fieldset className="min-w-0 space-y-3">
-          <legend className={session.document.messages.at(-1)?.id === question.origin_message_id ? "sr-only" : "mb-2 break-words text-sm leading-6"}>{question.text}</legend>
+          <legend className={session.document.messages.at(-1)?.id === question.origin_message_id ? "sr-only" : "mb-2 break-words text-sm"}>{question.text}</legend>
           <div className="flex flex-wrap gap-2">
             {(question.purpose === "offer_help" ? [] : question.options).map(option => question.max_selections === 1 ? (
               <VibeButton type="button" className={button} key={option.id} disabled={disabled} onClick={() => void send({ kind: "answer_question", target_id: question.id, target_revision: question.revision, option_ids: [option.id] })}>{option.label}</VibeButton>

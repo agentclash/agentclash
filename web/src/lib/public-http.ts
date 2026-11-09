@@ -37,6 +37,7 @@ const PUBLIC_EXACT_PATHS = new Set([
   "/publications",
   "/resources/eval-checklist",
   "/services",
+  "/security",
   "/synthetic-data-generation-agents",
   "/team",
   "/trace-to-dataset",

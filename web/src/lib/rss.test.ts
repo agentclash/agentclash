@@ -13,6 +13,7 @@ const posts = [
     slug: "older-post",
     title: "Older Post",
     date: "2026-04-01",
+    dateModified: "2026-06-01",
     description: "Earlier release note.",
     author: "Team",
   },
@@ -61,6 +62,8 @@ describe("rss feed", () => {
       '<guid isPermaLink="true">https://example.test/blog/agent-evaluation</guid>',
     );
     expect(feed).toContain("<pubDate>Thu, 07 May 2026 00:00:00 GMT</pubDate>");
+    expect(feed).toContain("<pubDate>Wed, 01 Apr 2026 00:00:00 GMT</pubDate>");
+    expect(feed.indexOf("Agent Eval &amp;")).toBeLessThan(feed.indexOf("Older Post"));
     expect(feed).toContain("<dc:creator>Atharva</dc:creator>");
     expect(feed).toContain(
       "<description>Compare &lt;agents&gt; &amp; ship the reliable one.</description>",

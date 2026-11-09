@@ -87,7 +87,10 @@ class PublicationContractTests(unittest.TestCase):
     ):
         with patch("build.subprocess.run", side_effect=self.docker):
             publish(self, self.directory, self.prepared)
-        self.assertEqual(len([c for c in self.commands if c[1] == "push"]), 9)
+        self.assertEqual(
+            len([c for c in self.commands if c[1] == "push"]),
+            len(APPLICATIONS) + len(DERIVED),
+        )
         manifest = json.loads((self.directory / "release.json").read_text())
         evidence = json.loads((self.directory / "build-evidence.json").read_text())
         self.assertEqual(manifest["format"], 2)
@@ -106,7 +109,10 @@ class PublicationContractTests(unittest.TestCase):
                 manifest["platform_images"][name],
                 self.prepared["platform_images"][name],
             )
-        self.assertEqual(len(evidence["provenance"]["local_image_ids"]), 9)
+        self.assertEqual(
+            len(evidence["provenance"]["local_image_ids"]),
+            len(APPLICATIONS) + len(DERIVED),
+        )
 
     def test_wrong_local_bytes_fail_before_any_image_push(self):
         self.bad_identity = True

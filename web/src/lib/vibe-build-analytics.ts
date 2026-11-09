@@ -21,7 +21,12 @@ export function captureBuildEvent<E extends BuildEvent>(event: E, fields: BuildF
   captureWebEvent(event, {
     schema_version: 1,
     door: "build",
-    viewport: window.innerWidth <= 600 ? "mobile" : window.innerWidth <= 900 ? "tablet" : "desktop",
+    viewport: window.innerWidth <= 600 ? "mobile" : window.innerWidth <= 1023 ? "tablet" : "desktop",
     ...fields,
   } as WebEventPayloads[E]);
+}
+
+export function captureVibeAttempt(door: "build" | "test", action: string, session_id?: string, error_code?: string) {
+  if (error_code) captureWebEvent(WEB_EVENTS.VIBE_FAILURE, { schema_version: 1, door, action, session_id, error_code });
+  else captureWebEvent(WEB_EVENTS.VIBE_ATTEMPT, { schema_version: 1, door, action, session_id });
 }

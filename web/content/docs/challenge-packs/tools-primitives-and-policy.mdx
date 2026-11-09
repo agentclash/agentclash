@@ -4,7 +4,7 @@ description: How tool_policy and tools.custom map to engine primitives in backen
 dateModified: 2026-06-01
 ---
 
-AgentClash stacks **three** tool notions (also summarized in [Tools, network, and secrets](../concepts/tools-network-and-secrets)):
+AgentClash stacks **three** tool notions (also summarized in [Tools, network, and secrets](/docs/concepts/tools-network-and-secrets)):
 
 1. **Workspace tool resources** — org-level infrastructure objects (not covered by pack YAML)
 2. **Pack composed tools** — `tools.custom[]` entries that expand to a JSON Schema plus an implementation
@@ -33,7 +33,7 @@ An **empty** `allowed_tool_kinds` means **allow every kind** (handled by `allows
 
 ### Mode guardrails
 
-A pack's `version.execution_mode` is one of `native`, `prompt_eval`, `responses`, or `multi_turn`. Of these, **`prompt_eval` packs must omit `tool_policy` entirely** (prompt-eval runs never call tools)—see [Bundle YAML reference](bundle-yaml-reference).
+A pack's `version.execution_mode` is one of `native`, `prompt_eval`, `responses`, or `multi_turn`. Of these, **`prompt_eval` packs must omit `tool_policy` entirely** (prompt-eval runs never call tools)—see [Bundle YAML reference](/docs/challenge-packs/bundle-yaml-reference).
 
 ## Built-in primitive names
 
@@ -50,7 +50,7 @@ These are the primitives the worker can run, and the policy that unlocks each (d
 
 Browser tooling exists in policy (`toolKindBrowser`)—ensure your template + worker build includes whatever browser bridge your pack expects before relying on it in production.
 
-**`terminal`** marks packs that pair with [Try CLI](../concepts/try-cli) — interactive disposable terminal demos for README badges and human try-before-install flows. Eval runs still use standard primitives like `exec` inside the sandbox.
+**`terminal`** marks packs that pair with [Try CLI](/docs/concepts/try-cli) — interactive disposable terminal demos for README badges and human try-before-install flows. Eval runs still use standard primitives like `exec` inside the sandbox.
 
 ## Composed tools (`tools.custom[]`)
 
@@ -101,7 +101,7 @@ The model only ever sees tools that pass both the tool policy and the pack manif
 
 ## See also
 
-- [Sandbox & E2B](sandbox-and-e2b) for network pairing with `http_request`
+- [Sandbox & E2B](/docs/challenge-packs/sandbox-and-e2b) for network pairing with `http_request`
 - `backend/internal/challengepack/tools_validation_test.go` for edge-case fixtures
 - [Multi-turn packs](/docs/challenge-packs/multi-turn)
 - [Security evaluation](/docs/guides/security-evaluation)

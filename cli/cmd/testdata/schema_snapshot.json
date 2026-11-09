@@ -2559,7 +2559,7 @@
     {
       "name": "evaltest",
       "path": "agentclash evaltest",
-      "short": "Run local pre-deploy agent eval tests",
+      "short": "Run local agent evaluation smoke checks",
       "runnable": false,
       "subcommands": [
         {
@@ -2611,7 +2611,7 @@
         {
           "name": "run",
           "path": "agentclash evaltest run",
-          "short": "Run local eval tests and emit JSON/JUnit reports",
+          "short": "Run local smoke checks and emit JSON/JUnit reports",
           "runnable": true,
           "flags": [
             {

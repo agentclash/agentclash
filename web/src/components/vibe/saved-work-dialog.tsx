@@ -1,47 +1,52 @@
 "use client";
+import { CollectionNotice } from "./collection-notice";
+import type { CollectionStatus } from "@/lib/use-vibe-collection";
 import { ArrowRight } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { savedWorkURL } from "@/lib/vibe-keep";
 import type { SavedCheck } from "@/lib/vibe";
 import { VibeButton } from "./vibe-button";
 
-export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, hasResults, onResults}: {
+export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, hasResults, onResults, status, onRetry}: {
+  status?: CollectionStatus; onRetry?: () => void;
   open: boolean; onOpenChange: (open: boolean) => void; testJourney?: boolean;
   savedChecks: SavedCheck[]; hasResults: boolean; onResults: () => void;
 }) {
   return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="vibe-workspace max-h-[85vh] overflow-y-auto">
+        <DialogContent className="vibe-workspace vibe-dialog">
           <DialogTitle>
             Your saved work
           </DialogTitle>
           <DialogDescription>
             {testJourney
               ? "Tests you can return to after your next change."
-              : "Private checks you can return to and repeat."}
+              : "Private results you can return to and run again."}
           </DialogDescription>
+          <div className="vibe-dialog-body space-y-4">
+          <CollectionNotice hasRows={savedChecks.length > 0} status={status} retry={onRetry} />
           {savedChecks.length ? (
             savedChecks.map((c) => (
               <a
                 key={c.id}
-                className="rounded-lg border p-3 text-sm"
+                className="rounded-[var(--vibe-radius-md)] border p-3 text-sm"
                 href={savedWorkURL(c)}
               >
-                {c.title}
+                <span className="block break-words">{c.project_title||c.title}</span><span className="block text-xs">{c.title} · {c.artifact_id.slice(0,8)}</span>
                 <span className="mt-1 block text-xs text-muted-foreground">
                   {c.kind === "brief" ? "Preparation brief · not run" : c.draft_id
                     ? "Saved tests"
                     : c.source?.kind === "provided_conversations"
-                      ? "Provided chats"
+                      ? "Recorded replies"
                       : "Text test"}
                 </span>
               </a>
             ))
-          ) : (
+          ) : (!status || status === "ready") && (
             <p className="text-sm text-muted-foreground">
               {testJourney
                 ? "Choose “Keep these tests” to find them here next time."
-                : "After your first result, choose “Save this check” to keep it here."}
+                : "After your first result, choose “Save this result” to keep it here."}
             </p>
           )}
 
@@ -52,10 +57,11 @@ export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, h
                 onResults();
               }}
             >
-              Results in this conversation
+              Results in this project
               <ArrowRight />
             </VibeButton>
           )}
+          </div>
         </DialogContent>
       </Dialog>
   );

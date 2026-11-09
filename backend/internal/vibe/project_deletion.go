@@ -181,6 +181,12 @@ func (s *Store) CleanupProjects(ctx context.Context) error {
 			// Retain costs, hashes and funding identity for reconciliation and abuse
 			// limits. Content and inference results have no accounting purpose.
 			for _, sql := range []string{
+				`DELETE FROM vibe_sdk_promotions WHERE session_id=$1`,
+				`DELETE FROM vibe_sdk_reports WHERE session_id=$1`,
+				`DELETE FROM vibe_import_originals WHERE session_id=$1`,
+				`DELETE FROM vibe_validation_reviews WHERE session_id=$1`,
+				`DELETE FROM vibe_grade_reviews WHERE session_id=$1`,
+				`DELETE FROM vibe_evidence_receipts WHERE session_id=$1`,
 				`DELETE FROM vibe_case_results WHERE operation_id IN (SELECT id FROM vibe_operations WHERE session_id=$1)`,
 				`UPDATE vibe_attempts SET output='',usage='{}',reconciliation_evidence=CASE WHEN reconciliation_evidence IS NULL THEN NULL ELSE
 				(reconciliation_evidence - 'receipts') || jsonb_build_object('receipts',COALESCE((SELECT jsonb_agg(jsonb_build_object('cost',r->'cost')) FROM jsonb_array_elements(COALESCE(reconciliation_evidence->'receipts','[]')) r),'[]'::jsonb)) END,

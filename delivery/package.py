@@ -15,19 +15,33 @@ from common import require, verify_blob
 from release_contract import platform_files, platform_hash, sha256
 
 
-def bundle(root, compose, destination):
+def bundle(root, compose, destination, compose_notices=None):
     root, compose, destination = Path(root), Path(compose), Path(destination).resolve()
     require(
         not destination.is_relative_to(root.resolve()),
         "Bundle destination must be private and outside Git",
     )
-    expected = json.loads((root / "delivery/tools.lock.json").read_text())["tools"][
+    tool = json.loads((root / "delivery/tools.lock.json").read_text())["tools"][
         "compose"
-    ]["platforms"]["linux_amd64"]["sha256"]
+    ]
+    expected = tool.get("source_build", {}).get(
+        "linux_amd64_sha256", tool["platforms"]["linux_amd64"]["sha256"]
+    )
     binary = compose.read_bytes()
     verify_blob(binary, expected)
     files = {name: (root / name).read_bytes() for name in platform_files(root)}
     files["tools/docker-compose"] = binary
+    if compose_notices is not None:
+        notices = Path(compose_notices)
+        require(
+            notices.is_dir() and not notices.is_symlink(), "Missing Compose notices"
+        )
+        for path in notices.rglob("*"):
+            require(not path.is_symlink(), "Unexpected notice link")
+            if path.is_file():
+                files["tools/licenses-compose/" + str(path.relative_to(notices))] = (
+                    path.read_bytes()
+                )
     files["tools/SHA256SUMS"] = (expected + "  tools/docker-compose\n").encode()
     files["tools/platform-source.sha256"] = (platform_hash(root) + "\n").encode()
     with destination.open("xb") as output:

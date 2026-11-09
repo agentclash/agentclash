@@ -1,0 +1,14 @@
+ARG BUILDER
+FROM ${BUILDER} AS build
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org
+WORKDIR /src
+COPY source/ .
+RUN go mod download && go mod verify
+RUN mkdir -p /out && go build -mod=readonly -trimpath -buildvcs=false \
+    -ldflags="-w -X github.com/docker/compose/v5/internal.Version=v5.5.1" \
+    -o /out/docker-compose github.com/docker/compose/v5/cmd
+COPY licenses.sh /licenses.sh
+RUN sh /licenses.sh /out/notices
+
+FROM scratch AS export
+COPY --from=build /out/ /

@@ -8,12 +8,12 @@ import (
 
 // An agent owns its conversation, specification and runs. New sessions do not
 // need a parent chat or a row in vibe_evaluation_contexts.
-func (s *Store) CreateAgent(ctx context.Context, actor string, ws *uuid.UUID, id uuid.UUID, door string, models Models) (Session, error) {
+func (s *Store) CreateAgent(ctx context.Context, actor string, ws *uuid.UUID, id uuid.UUID, door string, models Models, title ...string) (Session, error) {
 	if id == uuid.Nil || (door != "build" && door != "test") {
 		return Session{}, fault("invalid_request", "Choose Build an agent or Improve an existing agent.")
 	}
 	d := Document{FormatVersion: 1, Evaluation: &EvaluationContext{ID: id, ChatID: id, Door: door}, TestJourney: true, Models: models, Messages: []Message{}, Requirements: []Requirement{}, Artifacts: []Artifact{}}
-	v, err := s.createSession(ctx, actor, ws, id, d)
+	v, err := s.createSession(ctx, actor, ws, id, d, title...)
 	if err == nil && (v.Document.FormatVersion != 1 || v.Document.Evaluation == nil || v.Document.Evaluation.Door != door) {
 		return Session{}, fault("idempotency_conflict", "This request already created a different agent.")
 	}
@@ -22,10 +22,24 @@ func (s *Store) CreateAgent(ctx context.Context, actor string, ws *uuid.UUID, id
 
 // Historical evaluations remain in the same list; empty legacy containers do
 // not appear as duplicate chats. Each row is independently authorized on read.
-func (s *Store) AgentSessions(ctx context.Context, actor string) ([]Session, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id FROM vibe_sessions WHERE actor=$1 AND deleted_at IS NULL AND
+func (s *Store) AgentSessions(ctx context.Context, actor string, workspace ...uuid.UUID) ([]Session, error) {
+	return s.LibrarySessions(ctx, actor, "exclude", workspace...)
+}
+
+func (s *Store) LibrarySessions(ctx context.Context, actor, archived string, workspace ...uuid.UUID) ([]Session, error) {
+	if archived == "" {
+		archived = "exclude"
+	}
+	if archived != "exclude" && archived != "only" && archived != "all" {
+		return nil, fault("invalid_request", "Choose active, archived or all projects.")
+	}
+	var ws *uuid.UUID
+	if len(workspace) > 0 && workspace[0] != uuid.Nil {
+		ws = &workspace[0]
+	}
+	rows, err := s.DB.Query(ctx, `SELECT id FROM vibe_sessions WHERE actor=$1 AND deleted_at IS NULL AND ($3='all' OR ($3='only' AND archived_at IS NOT NULL) OR ($3='exclude' AND archived_at IS NULL)) AND ($2::uuid IS NULL OR workspace_id=$2) AND
 	 (document ? 'evaluation' OR jsonb_array_length(COALESCE(document->'messages','[]'::jsonb))>0)
-	 ORDER BY updated_at DESC LIMIT 100`, actor)
+	 ORDER BY updated_at DESC LIMIT 100`, actor, ws, archived)
 	if err != nil {
 		return nil, err
 	}

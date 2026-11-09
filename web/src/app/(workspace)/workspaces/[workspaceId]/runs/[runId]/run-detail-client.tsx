@@ -1,5 +1,6 @@
 "use client";
 
+import { CanonicalProjectReturn } from "@/components/vibe/canonical-project-return";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 
@@ -340,6 +341,7 @@ export function RunDetailClient({
 
   return (
     <div className="space-y-8">
+      <CanonicalProjectReturn runId={run.id} workspaceId={workspaceId} />
       {/* === Header === */}
       <Panel className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-4 px-5 pt-4 pb-3 border-b border-white/[0.06]">

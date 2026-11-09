@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -24,8 +26,9 @@ type HostedRunWorkflowSignaler interface {
 
 type HostedRunExecutionRepository interface {
 	GetHostedRunExecutionByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.HostedRunExecution, error)
-	ApplyHostedRunEvent(ctx context.Context, params repository.ApplyHostedRunEventParams) (repository.HostedRunExecution, error)
-	RecordHostedRunEvent(ctx context.Context, params repository.RecordHostedRunEventParams) (repository.RunAgentReplay, error)
+	CommitHostedCallback(context.Context, repository.HostedCallback) (repository.RunAgentReplay, error)
+	PendingHostedNotifications(context.Context) ([]repository.HostedNotification, error)
+	MarkHostedNotificationDelivered(context.Context, uuid.UUID) error
 }
 
 type HostedRunIngestionManager struct {
@@ -77,15 +80,10 @@ func (m *HostedRunIngestionManager) IngestEvent(ctx context.Context, runID uuid.
 	if execution.RunID != runID {
 		return errors.New("callback run_id does not match hosted execution")
 	}
-	if execution.ExternalRunID == nil || *execution.ExternalRunID != event.ExternalRunID {
-		return errors.New("callback external_run_id does not match hosted execution")
+	if execution.ExternalRunID != nil && *execution.ExternalRunID != event.ExternalRunID {
+		return repository.ErrHostedEventConflict
 	}
 
-	status, resultPayload, errorMessage := hostedExecutionStateForEvent(event)
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
 	normalizedEvent, err := runevents.NormalizeHostedEvent(runID, event)
 	if err != nil {
 		return err
@@ -98,23 +96,7 @@ func (m *HostedRunIngestionManager) IngestEvent(ctx context.Context, runID uuid.
 	if err != nil {
 		return err
 	}
-	if _, err := m.repo.ApplyHostedRunEvent(ctx, repository.ApplyHostedRunEventParams{
-		RunAgentID:       event.RunAgentID,
-		Status:           status,
-		ExternalRunID:    &event.ExternalRunID,
-		LastEventType:    event.EventType,
-		LastEventPayload: payload,
-		ResultPayload:    resultPayload,
-		ErrorMessage:     errorMessage,
-		OccurredAt:       event.OccurredAt,
-	}); err != nil {
-		return err
-	}
-	replayRecord, err := m.repo.RecordHostedRunEvent(ctx, repository.RecordHostedRunEventParams{
-		Event:            normalizedEvent,
-		AdditionalEvents: traceEvents,
-		Summary:          replaySummary,
-	})
+	replayRecord, err := m.repo.CommitHostedCallback(ctx, repository.HostedCallback{RunID: runID, Event: event, Record: repository.RecordHostedRunEventParams{Event: normalizedEvent, AdditionalEvents: traceEvents, Summary: replaySummary}})
 	if err != nil {
 		return err
 	}
@@ -134,7 +116,7 @@ func (m *HostedRunIngestionManager) IngestEvent(ctx context.Context, runID uuid.
 	}
 
 	if isHostedRunTerminalEvent(event) {
-		return m.signaler.SignalRunAgentWorkflow(ctx, runID, event.RunAgentID, event)
+		return m.DeliverPending(ctx)
 	}
 	return nil
 }
@@ -159,13 +141,13 @@ func ingestHostedRunEventHandler(logger *slog.Logger, service HostedRunIngestion
 		}
 
 		var event hostedruns.Event
-		decoder := json.NewDecoder(r.Body)
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&event); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
 			return
 		}
-		if decoder.More() {
+		if decoder.Decode(new(any)) != io.EOF {
 			writeError(w, http.StatusBadRequest, "invalid_request", "request body must contain exactly one JSON object")
 			return
 		}
@@ -174,6 +156,8 @@ func ingestHostedRunEventHandler(logger *slog.Logger, service HostedRunIngestion
 			switch {
 			case errors.Is(err, hostedruns.ErrInvalidCallbackToken):
 				writeError(w, http.StatusUnauthorized, "invalid_callback_token", "callback token is invalid")
+			case errors.Is(err, repository.ErrHostedEventConflict):
+				writeError(w, http.StatusConflict, "callback_conflict", "callback conflicts with persisted execution evidence")
 			case errors.Is(err, repository.ErrHostedRunExecutionNotFound):
 				writeError(w, http.StatusNotFound, "hosted_run_not_found", "hosted run execution not found")
 			default:
@@ -263,4 +247,43 @@ func hostedReplaySummary(normalizedEvent runevents.Envelope, event hostedruns.Ev
 		return nil, err
 	}
 	return summary, nil
+}
+
+// Delivery retries notification only, never external execution. Persisted intent survives process exit.
+func (m *HostedRunIngestionManager) DeliverPending(ctx context.Context) error {
+	pending, err := m.repo.PendingHostedNotifications(ctx)
+	if err != nil {
+		return err
+	}
+	var deliveryErrors []error
+	for _, n := range pending {
+		if m.signaler == nil {
+			return errors.New("hosted workflow signaler unavailable")
+		}
+		if err = m.signaler.SignalRunAgentWorkflow(ctx, n.RunID, n.RunAgentID, n.Event); err != nil {
+			deliveryErrors = append(deliveryErrors, err)
+			continue
+		}
+		if err = m.repo.MarkHostedNotificationDelivered(ctx, n.RunAgentID); err != nil {
+			deliveryErrors = append(deliveryErrors, err)
+		}
+	}
+	return errors.Join(deliveryErrors...)
+}
+func (m *HostedRunIngestionManager) RunDelivery(ctx context.Context) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			delivery, cancel := context.WithTimeout(ctx, 5*time.Second)
+			err := m.DeliverPending(delivery)
+			cancel()
+			if err != nil {
+				m.logger.Warn("hosted notification delivery pending", "error", err)
+			}
+		}
+	}
 }

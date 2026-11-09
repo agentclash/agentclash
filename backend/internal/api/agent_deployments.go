@@ -55,6 +55,7 @@ func (m *AgentDeploymentReadManager) ListAgentDeployments(ctx context.Context, w
 }
 
 type agentDeploymentResponse struct {
+	Adapter               string     `json:"adapter"`
 	ID                    uuid.UUID  `json:"id"`
 	OrganizationID        uuid.UUID  `json:"organization_id"`
 	WorkspaceID           uuid.UUID  `json:"workspace_id"`
@@ -98,6 +99,7 @@ func listAgentDeploymentsHandler(logger *slog.Logger, service AgentDeploymentRea
 		for _, deployment := range result.Deployments {
 			responseItems = append(responseItems, agentDeploymentResponse{
 				ID:                    deployment.ID,
+				Adapter:               deploymentAdapter(deployment.Adapter),
 				OrganizationID:        deployment.OrganizationID,
 				WorkspaceID:           deployment.WorkspaceID,
 				CurrentBuildVersionID: deployment.CurrentBuildVersionID,
@@ -116,4 +118,11 @@ func listAgentDeploymentsHandler(logger *slog.Logger, service AgentDeploymentRea
 			Offset: result.Offset,
 		})
 	}
+}
+
+func deploymentAdapter(value string) string {
+	if value == "" {
+		return "native"
+	}
+	return value
 }

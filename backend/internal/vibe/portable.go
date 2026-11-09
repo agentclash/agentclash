@@ -69,15 +69,25 @@ func importDefinition(content []byte, l Limits) (Artifact, error) {
 		if d.ScopeNote != "" {
 			a.ScopeNote = d.ScopeNote
 		}
-	case "agentclash-evaluation-v1":
+	case "agentclash-evaluation-v1", "agentclash-evaluation-v2":
 		var d struct {
-			Format     string          `json:"format"`
-			ArtifactID uuid.UUID       `json:"artifact_id"`
-			Artifacts  []Artifact      `json:"artifacts"`
-			Scope      string          `json:"scope"`
-			Sample     *string         `json:"sample"`
-			Rules      json.RawMessage `json:"rules"`
-			Runs       json.RawMessage `json:"runs"`
+			Format           string          `json:"format"`
+			SessionID        uuid.UUID       `json:"session_id,omitempty"`
+			Title            string          `json:"title,omitempty"`
+			CapturedAt       string          `json:"captured_at,omitempty"`
+			Selection        json.RawMessage `json:"selection,omitempty"`
+			Evidence         json.RawMessage `json:"evidence,omitempty"`
+			CaseMappings     json.RawMessage `json:"case_mappings,omitempty"`
+			Omissions        json.RawMessage `json:"omissions,omitempty"`
+			Manifest         json.RawMessage `json:"manifest,omitempty"`
+			ArtifactID       uuid.UUID       `json:"artifact_id"`
+			Artifacts        []Artifact      `json:"artifacts"`
+			Scope            string          `json:"scope"`
+			Sample           *string         `json:"sample"`
+			Rules            json.RawMessage `json:"rules"`
+			Runs             json.RawMessage `json:"runs"`
+			SDKReports       json.RawMessage `json:"sdk_reports,omitempty"`
+			CanonicalResults json.RawMessage `json:"canonical_results,omitempty"`
 		}
 		if err = Decode(b, l, &d); err != nil {
 			return a, err
@@ -161,7 +171,7 @@ func importDefinition(content []byte, l Limits) (Artifact, error) {
 // Binding holds the same session lock used by file deletion and project edits.
 // Revisions are immutable: a failed or stale attachment publishes no version.
 func (s *Service) BindReference(ctx context.Context, actor string, session uuid.UUID, revision int64, artifact uuid.UUID, key string, binding inputs.Binding) error {
-	return s.Store.edit(ctx, actor, session, revision, func(ctx context.Context, tx pgx.Tx, v *Session) error {
+	return s.Store.edit(ctx, actor, session, revision, nil, func(ctx context.Context, tx pgx.Tx, v *Session) error {
 		var original *Artifact
 		for i := range v.Document.Artifacts {
 			if v.Document.Artifacts[i].ID == artifact {

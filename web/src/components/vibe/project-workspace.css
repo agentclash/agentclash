@@ -1,0 +1,363 @@
+/* Route and every portaled subtree share semantic appearance, never html state.
+   "Graphite": neutral graphite, ink for every control, issue only for a finding,
+   pass only for a pass, brass only for contact with the team. Text levels 2-4 are ink at an
+   opacity, so each keeps its contrast on every surface: 12px text uses text-2 or higher; text-3 is for 14px and up; text-4 is
+   for disabled and decorative use only. Control borders are 3:1 or more on every surface.
+   Status colours never carry meaning alone: each comes with a glyph and a word. */
+.vibe-workspace[data-appearance] {
+  --vibe-bg: #fafafa; --vibe-sidebar: #f4f4f5; --vibe-surface: #ffffff; --vibe-surface-2: #f1f1f3; --vibe-surface-3: #e7e7ea; --vibe-elevated: #ffffff;
+  --vibe-text-1: #17171a; --vibe-text-2: rgba(23,23,26,.76); --vibe-text-3: rgba(23,23,26,.66); --vibe-text-4: rgba(23,23,26,.4);
+  --vibe-separator: rgba(23,23,26,.1); --vibe-control-border: rgba(23,23,26,.56);
+  --vibe-ink: #17171a; --vibe-on-ink: #fafafa; --vibe-ink-hover: #2e2e33; --vibe-ink-pressed: #050506; --vibe-focus: #2456c9;
+  --vibe-issue: #b8352a; --vibe-issue-tint: #fcebe8; --vibe-on-issue: #ffffff; --vibe-pass: #1b6e40; --vibe-pass-tint: #e4f3ea; --vibe-caution: #875400;
+  --vibe-overlay: rgba(9,9,11,.45);
+  --vibe-shadow-2: 0 8px 24px rgba(9,9,11,.08); --vibe-shadow-3: 0 24px 64px rgba(9,9,11,.14);
+  --vibe-diff-add-bg: #e3f3e8; --vibe-diff-add-fg: #17572f; --vibe-diff-del-bg: #fde6e3; --vibe-diff-del-fg: #8f2a1d; --vibe-selection: #d5e1fb;
+  /* Brass is only for contact with the AgentClash team (the agency offer), never for a status. */
+  --vibe-brass: #7a5410; --vibe-brass-tint: #f8f0de; --vibe-on-brass: #ffffff; --vibe-brass-border: #a8823b;
+  /* Earlier names, kept as aliases of the roles above. They resolve on this element, so the
+     dark block below only sets the roles. */
+  --vibe-fg: var(--vibe-text-1); --vibe-muted: var(--vibe-text-2); --vibe-border: var(--vibe-separator);
+  --vibe-hover: var(--vibe-surface-2); --vibe-active: var(--vibe-surface-3); --vibe-error: var(--vibe-issue);
+  --vibe-accent: var(--vibe-ink); --vibe-on-accent: var(--vibe-on-ink); --vibe-accent-hover: var(--vibe-ink-hover); --vibe-accent-pressed: var(--vibe-ink-pressed);
+  --background: var(--vibe-bg); --foreground: var(--vibe-fg); --popover: var(--vibe-elevated); --popover-foreground: var(--vibe-fg);
+  --muted: var(--vibe-hover); --muted-foreground: var(--vibe-muted); --border: var(--vibe-border); --input: var(--vibe-control-border);
+  --card: var(--vibe-surface); --card-foreground: var(--vibe-fg); --primary: var(--vibe-accent); --primary-foreground: var(--vibe-on-accent);
+  --secondary: var(--vibe-hover); --secondary-foreground: var(--vibe-fg); --accent: var(--vibe-hover); --accent-foreground: var(--vibe-fg);
+  /* Existing Vibe consumers also use the builder utilities. Keep their
+     complete palette local to this route and each scoped portal. */
+  --builder-fg: var(--vibe-fg); --builder-fg-muted: var(--vibe-muted);
+  --builder-fg-subtle: var(--vibe-muted); --builder-fg-faint: var(--vibe-muted);
+  --builder-surface: var(--vibe-hover); --builder-surface-hover: var(--vibe-hover); --builder-panel: var(--vibe-surface);
+  --builder-border: var(--vibe-control-border); --builder-border-strong: var(--vibe-focus);
+  --builder-warn: var(--vibe-issue); --builder-warn-soft: var(--vibe-issue-tint);
+  --ring: var(--vibe-focus); --destructive: var(--vibe-issue);
+  color-scheme: light;
+}
+/* Dark: elevated surfaces are lighter than the canvas (sidebar and cards, then dialogs and sheets). */
+.vibe-workspace[data-appearance="dark"] {
+  --vibe-bg: #0a0a0b; --vibe-sidebar: #111113; --vibe-surface: #151517; --vibe-surface-2: #1d1d20; --vibe-surface-3: #28282c; --vibe-elevated: #19191c;
+  --vibe-text-1: #f4f4f2; --vibe-text-2: rgba(244,244,242,.76); --vibe-text-3: rgba(244,244,242,.62); --vibe-text-4: rgba(244,244,242,.36);
+  --vibe-separator: rgba(244,244,242,.09); --vibe-control-border: rgba(244,244,242,.46);
+  --vibe-ink: #f4f4f2; --vibe-on-ink: #0a0a0b; --vibe-ink-hover: #ffffff; --vibe-ink-pressed: #d6d6d2; --vibe-focus: #8ab4ff;
+  --vibe-issue: #ff8f7e; --vibe-issue-tint: #2b1714; --vibe-on-issue: #0a0a0b; --vibe-pass: #6dd49b; --vibe-pass-tint: #11261a; --vibe-caution: #f2c26b;
+  --vibe-overlay: rgba(0,0,0,.6);
+  --vibe-shadow-2: 0 8px 24px rgba(0,0,0,.5); --vibe-shadow-3: 0 24px 64px rgba(0,0,0,.6);
+  --vibe-diff-add-bg: #14301f; --vibe-diff-add-fg: #b9ecca; --vibe-diff-del-bg: #3a1a16; --vibe-diff-del-fg: #ffc5bb; --vibe-selection: #2a3a5c;
+  --vibe-brass: #f0c36b; --vibe-brass-tint: #1e190e; --vibe-on-brass: #0a0a0b; --vibe-brass-border: #8d7442;
+  color-scheme: dark;
+}
+/* The loading fallback renders before the route sets data-appearance. Dark is the default
+   appearance, so the fallback uses the dark canvas (and the theme-color in page.tsx). */
+.vibe-route-fallback { min-height: 100dvh; background: #0a0a0b; }
+.vibe-portal { background: transparent; }
+.vibe-workspace :is([data-slot="dialog-overlay"], [data-slot="sheet-overlay"]) { background: var(--vibe-overlay); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+.vibe-workspace :is([data-slot="popover-content"], [data-slot="dropdown-menu-content"]) { background: var(--vibe-elevated); box-shadow: var(--vibe-shadow-2); border: 1px solid var(--vibe-border); }
+.vibe-workspace .vibe-workspace {
+  --vibe-bg: inherit; --vibe-sidebar: inherit; --vibe-surface: inherit; --vibe-surface-2: inherit; --vibe-surface-3: inherit; --vibe-elevated: inherit;
+  --vibe-text-1: inherit; --vibe-text-2: inherit; --vibe-text-3: inherit; --vibe-text-4: inherit; --vibe-separator: inherit; --vibe-control-border: inherit;
+  --vibe-ink: inherit; --vibe-on-ink: inherit; --vibe-ink-hover: inherit; --vibe-ink-pressed: inherit; --vibe-focus: inherit;
+  --vibe-issue: inherit; --vibe-issue-tint: inherit; --vibe-on-issue: inherit; --vibe-pass: inherit; --vibe-pass-tint: inherit; --vibe-caution: inherit;
+  --vibe-brass: inherit; --vibe-brass-tint: inherit; --vibe-on-brass: inherit; --vibe-brass-border: inherit;
+  --vibe-fg: inherit; --vibe-muted: inherit; --vibe-border: inherit; --vibe-hover: inherit; --vibe-active: inherit;
+  --vibe-accent: inherit; --vibe-accent-hover: inherit; --vibe-accent-pressed: inherit; --vibe-on-accent: inherit;
+  color-scheme: inherit;
+}
+.vibe-workspace .vibe-message-user { background: var(--vibe-hover); color: var(--vibe-fg); border-color: var(--vibe-border); }
+.vibe-workspace [hidden] { display: none !important; }
+/* Title and tabs share the left edge of the content column below (.vibe-project-content, or
+   .vibe-column while the project is a brief), centered in the main pane. Percent padding
+   resolves against the header, which is as wide as the body. */
+.vibe-project-header { --vibe-main-width: 100%; --vibe-content-max: 60rem; flex: none; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: var(--vibe-space-2) var(--vibe-space-4); padding: clamp(var(--vibe-space-2), 1.5dvh, var(--vibe-space-4)) var(--vibe-gutter) var(--vibe-space-2) calc(var(--vibe-gutter) + max(0px, (var(--vibe-main-width) - 2 * var(--vibe-gutter) - var(--vibe-content-max)) / 2)); border-bottom: 1px solid var(--vibe-border); background: color-mix(in srgb, var(--vibe-bg) 88%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.vibe-project-header[data-initial] { --vibe-content-max: calc(50.5rem - 2 * var(--vibe-gutter)); }
+.vibe-project-tabs { grid-row: 2; grid-column: 1; min-width: 0; }
+.vibe-project-header .vibe-nav { flex-wrap: nowrap; margin: 0; gap: var(--vibe-space-5); border: 0; }
+.vibe-project-header .vibe-button { min-height: 44px; padding: var(--vibe-space-2) var(--vibe-space-3); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
+.vibe-project-identity { grid-column: 1; display: flex; align-items: flex-start; gap: var(--vibe-space-3); min-width: 0; }
+.vibe-project-identity > div { min-width: 0; }
+.vibe-project-identity :is(h1, h2) { font-family: var(--vibe-font-heading); font-size: var(--vibe-font-large); line-height: var(--vibe-leading-large); font-weight: 600; letter-spacing: var(--vibe-tracking-title); overflow-wrap: anywhere; }
+.vibe-project-identity p { font-family: var(--vibe-font-data); font-size: var(--vibe-font-footnote); color: var(--vibe-muted); overflow-wrap: anywhere; line-height: var(--vibe-leading-footnote); margin-top: var(--vibe-space-1); }
+.vibe-project-tools { grid-row: 1; grid-column: 2; align-self: start; display: flex; gap: var(--vibe-space-2); align-items: center; }
+.vibe-project-tools > .vibe-button { height: 44px; white-space: nowrap; }
+.vibe-project-tools .vibe-project-tool-icon { display: block; }
+.vibe-project-tools .vibe-project-guide { background: var(--vibe-surface-2); border-color: var(--vibe-surface-2); }
+.vibe-project-tab { display: inline-flex; align-items: center; justify-content: center; gap: var(--vibe-space-1); min-height: 44px; min-width: 44px; padding: var(--vibe-space-2) 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); white-space: nowrap; cursor: pointer; }
+.vibe-project-tab[aria-selected="true"] { border-bottom-color: var(--vibe-ink); background: transparent; color: var(--vibe-fg); font-weight: 600; }
+.vibe-project-tab:focus-visible { outline: 2px solid var(--vibe-focus); outline-offset: 3px; }
+/* The status sits beside "Guide" on one line, so Guide and Details keep one height. */
+.vibe-guide-attention { display: inline-flex; align-items: center; min-height: 20px; padding-inline: var(--vibe-space-2); border-radius: var(--vibe-radius-pill); background: var(--vibe-active); color: var(--vibe-fg); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); font-weight: 500; white-space: nowrap; }
+.vibe-project-tools [aria-pressed="true"] { color: var(--vibe-fg); background: var(--vibe-hover); }
+.vibe-project-body { --vibe-section-gap: var(--vibe-space-6); display: grid; grid-template-columns: minmax(0,1fr); min-height: 0; flex: 1; }
+.vibe-project-main { min-width: 0; overflow: auto; padding: var(--vibe-section-gap) var(--vibe-gutter); overscroll-behavior: contain; }
+.vibe-project-content { width: 100%; max-width: 60rem; min-width: 0; margin-inline: auto; }
+.vibe-project-content > section, .vibe-project-content > .vibe-notice { margin-block-end: var(--vibe-section-gap); }
+.vibe-project-content :is(article[aria-label="Run results"], section[aria-label="Your tests"]) > :not(:last-child) { margin-block-end: var(--vibe-section-gap); }
+/* The answer of a run is a milestone, so it speaks in the display serif. Weight 400 is the only one loaded. */
+.vibe-workspace .vibe-results-outcome { font-family: var(--vibe-font-heading); font-size: var(--vibe-font-display-s); line-height: var(--vibe-leading-display); font-weight: 600; letter-spacing: var(--vibe-tracking-display); text-wrap: balance; }
+.vibe-results-filter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); font-size: var(--vibe-font-callout); color: var(--vibe-muted); line-height: var(--vibe-leading-callout); }
+.vibe-results-filter select { min-width: 128px; }
+.vibe-test-review > summary, .vibe-test-review-history > summary { min-height: 44px; padding-block: var(--vibe-space-3); color: var(--vibe-muted); font-size: var(--vibe-font-callout); cursor: pointer; line-height: var(--vibe-leading-callout); }
+.vibe-test-review-history { margin-top: var(--vibe-space-5); border-top: 1px solid var(--vibe-border); padding-top: var(--vibe-space-2); }
+/* The scorecard keeps the main result actions; occasional ones share one disclosure. */
+.vibe-results-more { margin-top: var(--vibe-space-5); }
+.vibe-results-more > summary { width: fit-content; min-height: 44px; padding-block: var(--vibe-space-3); color: var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); cursor: pointer; }
+.vibe-results-more-body { display: grid; gap: var(--vibe-space-5); min-width: 0; margin-top: var(--vibe-space-3); }
+.vibe-results-contact { margin-top: var(--vibe-space-5); }
+.vibe-results-contact[hidden] { display: none; }
+.vibe-results-more-body > .vibe-build-next-actions { margin-block: 0; padding-block: 0; border-top: 0; }
+.vibe-results-more-body > details { margin-top: 0; }
+.vibe-empty-state { display: grid; justify-items: start; gap: var(--vibe-space-3); }
+.vibe-workspace .vibe-empty-state :is(h2, h3), .vibe-workspace .vibe-empty-title { font-family: var(--vibe-font-heading); font-size: var(--vibe-font-title1); line-height: var(--vibe-leading-title1); font-weight: 600; letter-spacing: var(--vibe-tracking-title); }
+/* A finished run or test preparation that the user left: a link to its view. */
+.vibe-arrival { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-bottom: var(--vibe-space-4); }
+/* One progress strip at the top of the content, or of the Guide sheet below 1280px. It stays in view
+   while the content scrolls, and holds the only Stop and Approve controls. Idle, it is an empty live region. */
+.vibe-progress-strip[data-active] { position: sticky; top: calc(-1 * var(--vibe-section-gap)); z-index: 2; display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-areas: "copy actions" "bar bar" "note note"; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-block-end: var(--vibe-section-gap); padding: var(--vibe-space-3) var(--vibe-space-4); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); background: color-mix(in srgb, var(--vibe-bg) 88%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+/* The sticky strip is the one content-layer material; it turns opaque when transparency is reduced. */
+@media (prefers-reduced-transparency: reduce) { .vibe-workspace :is([data-slot="dialog-overlay"], [data-slot="sheet-overlay"]), .vibe-project-header, .vibe-progress-strip[data-active] { background: var(--vibe-bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+.vibe-progress-row { display: contents; }
+.vibe-progress-copy { grid-area: copy; min-width: 0; }
+.vibe-progress-strip .vibe-status-text { color: var(--vibe-fg); font-weight: 500; }
+.vibe-progress-detail, .vibe-progress-note { font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); color: var(--vibe-muted); }
+.vibe-progress-note { grid-area: note; }
+.vibe-progress-actions { grid-area: actions; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--vibe-space-2); }
+.vibe-progress-bar { grid-area: bar; position: relative; height: 4px; overflow: hidden; border-radius: 2px; background: var(--vibe-hover); }
+.vibe-progress-bar > span { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: inherit; background: var(--vibe-ink); transition: inline-size 300ms ease-out; }
+/* Unknown totals: a soft ink highlight sweeps along the track. Paused, or with reduced motion,
+   it rests as a 35% bar. The status text always names the step, so motion is never the only signal. */
+.vibe-progress-bar[data-indeterminate] > span { inline-size: 35%; background: linear-gradient(90deg, var(--vibe-ink) 55%, transparent); transition: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .vibe-progress-bar[data-indeterminate]:not([data-paused]) > span { inline-size: 30%; background: linear-gradient(90deg, transparent, var(--vibe-ink) 50%, transparent); animation: vibe-progress-sweep 1.4s var(--vibe-ease-std) infinite; }
+}
+@keyframes vibe-progress-sweep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.vibe-workspace .vibe-button .vibe-stop-icon { width: 12px; height: 12px; }
+.vibe-utility-sheet .vibe-progress-strip[data-active] { position: static; flex: none; margin: var(--vibe-space-3) var(--vibe-space-4) 0; }
+/* Focus that scrolls into view stops below the sticky strip, so the strip never hides it (WCAG 2.4.11). */
+@media (min-width: 601px) { .vibe-project-main:has(> .vibe-project-content > .vibe-progress-strip[data-active]) { scroll-padding-top: 9rem; } }
+@media (forced-colors: active) {
+  .vibe-progress-bar { border: 1px solid CanvasText; }
+  .vibe-progress-bar > span, .vibe-progress-bar[data-indeterminate] > span, .vibe-progress-bar[data-indeterminate]:not([data-paused]) > span { forced-color-adjust: none; background: Highlight; }
+}
+.vibe-project-content > label:has(> select[aria-label="Result history"]) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-bottom: var(--vibe-space-4); font-size: var(--vibe-font-callout); color: var(--vibe-muted); line-height: var(--vibe-leading-callout); }
+.vibe-project-main .vibe-instructions-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: var(--vibe-surface); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); padding: var(--vibe-space-4); }
+.vibe-utility, .vibe-utility-sheet { --vibe-utility-inset: var(--vibe-space-4); display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--vibe-surface); color: var(--vibe-fg); }
+/* Sheets are elevation 3: the elevated surface (lighter than the canvas in dark) and a deep shadow. */
+.vibe-workspace .vibe-utility-sheet { background: var(--vibe-elevated); box-shadow: var(--vibe-shadow-3); }
+.vibe-utility { border-left: 1px solid var(--vibe-border); }
+.vibe-utility-heading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: var(--vibe-space-3); padding: clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-4)) var(--vibe-utility-inset); border-bottom: 1px solid var(--vibe-border); }
+/* Close has a full hit target, with its text aligned to the panel's right inset. */
+.vibe-utility-heading > .vibe-button { padding-inline: var(--vibe-space-3); margin-inline-end: calc(-1 * var(--vibe-space-3)); }
+.vibe-utility-heading h2 { font-size: var(--vibe-font-title2); font-weight: 600; line-height: var(--vibe-leading-title2); }
+.vibe-utility-scroll { min-height: 0; flex: 1; overflow: auto; padding: clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-4)) var(--vibe-utility-inset); overscroll-behavior: contain; overflow-wrap: anywhere; }
+.vibe-utility-scroll > [data-message-id] { margin-bottom: var(--vibe-space-5); }
+.vibe-guide-composer { display: flex; flex-direction: column; gap: var(--vibe-space-2); flex: 0 1 auto; min-height: 0; padding: clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-3)) var(--vibe-utility-inset) max(clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-4)), env(safe-area-inset-bottom)); border-top: 1px solid var(--vibe-border); max-height: 55dvh; }
+.vibe-guide-context { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.vibe-guide-tools { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--vibe-space-2); }
+.vibe-workspace .vibe-guide-data-use { flex: 1; min-width: 0; margin: 0; align-self: center; }
+.vibe-guide-composer .vibe-composer { flex: none; padding: var(--vibe-space-3); }
+.vibe-guide-composer textarea { height: clamp(2.75rem, 12dvh, 6rem); min-height: 44px; max-height: min(10rem, 24dvh); resize: vertical; }
+.vibe-utility-sheet[data-slot="sheet-content"] { width: min(30rem, 100dvw); max-width: none; height: 100dvh; gap: 0; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.vibe-appearance { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-3); margin-block: var(--vibe-space-4); }
+.vibe-workspace :is(input:not([type="checkbox"], [type="file"]), textarea, select) { border-color: var(--vibe-control-border); font-size: var(--vibe-font-body); font-weight: 400; color: var(--vibe-fg); background-color: var(--vibe-surface); max-width: 100%; line-height: var(--vibe-leading-body); }
+.vibe-workspace .vibe-composer textarea { background-color: transparent; }
+.vibe-workspace select { border: 1px solid var(--vibe-control-border); border-radius: var(--vibe-radius-sm); padding: var(--vibe-space-2); }
+.vibe-workspace .vibe-input { display: block; min-height: 44px; margin-block: var(--vibe-space-1) var(--vibe-space-2); padding: var(--vibe-space-2) var(--vibe-space-3); border: 1px solid var(--vibe-control-border); border-radius: var(--vibe-radius-sm); }
+.vibe-workspace :is(button, a, summary, select, textarea, input):focus-visible { outline-color: var(--vibe-focus); }
+.vibe-workspace .vibe-button { white-space: normal; overflow-wrap: anywhere; }
+.vibe-workspace [data-slot="dialog-close"], .vibe-workspace [data-slot="sheet-close"], .vibe-utility-heading button, .vibe-material-dialog-head > button { min-height: 44px; min-width: 44px; }
+.vibe-workspace .vibe-dialog { display: flex; flex-direction: column; max-height: calc(100dvh - max(1rem, env(safe-area-inset-top)) - max(1rem, env(safe-area-inset-bottom))); gap: var(--vibe-space-4); }
+.vibe-workspace .vibe-dialog > :not(.vibe-dialog-body) { flex: none; }
+.vibe-workspace .vibe-dialog-body { flex: 1; min-height: 0; overflow: auto; }
+.vibe-workspace .vibe-dialog :is(label,[data-slot="dialog-description"]), .vibe-workspace .vibe-material-hint { font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
+.vibe-workspace .vibe-dialog small { font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); }
+.vibe-workspace .vibe-context-title, .vibe-workspace .vibe-sidebar-item-copy > span, .vibe-workspace .vibe-material-chip-name, .vibe-workspace .vibe-header-title { white-space: normal; overflow: visible; text-overflow: clip; max-width: none; overflow-wrap: anywhere; }
+.vibe-workspace .vibe-composer, .vibe-workspace .vibe-material-tabs, .vibe-workspace .vibe-trial-recipient, .vibe-workspace .vibe-prototype-card { background: var(--vibe-surface); color: var(--vibe-fg); border-color: var(--vibe-border); }
+/* The sidebar is the secondary background: darker than the canvas in light, lighter in dark. */
+.vibe-workspace .vibe-sidebar, .vibe-workspace .vibe-sidebar-sheet { background: var(--vibe-sidebar); color: var(--vibe-fg); border-color: var(--vibe-border); }
+.vibe-workspace .vibe-sidebar-sheet { box-shadow: var(--vibe-shadow-3); }
+/* The composer is a control, so its boundary is 3:1 at rest (it is level 1: no shadow). */
+.vibe-workspace .vibe-composer { border-color: var(--vibe-control-border); }
+.vibe-workspace ::placeholder { color: var(--vibe-text-3); opacity: 1; }
+.vibe-workspace ::selection { background: var(--vibe-selection); color: var(--vibe-fg); }
+/* Secondary buttons are controls, so their boundary is 3:1 at rest and on hover. */
+.vibe-workspace .vibe-button-secondary { border-color: var(--vibe-control-border); }
+.vibe-workspace .vibe-button-secondary:hover { background: var(--vibe-hover); border-color: var(--vibe-control-border); color: var(--vibe-fg); }
+.vibe-workspace .vibe-button-quiet:hover, .vibe-workspace .vibe-sidebar-item:hover { background: var(--vibe-hover); border-color: var(--vibe-border); color: var(--vibe-fg); }
+/* In the sidebar a hover tints the sidebar colour, which surface-2 does not do in light. */
+.vibe-workspace :is(.vibe-sidebar, .vibe-sidebar-sheet) :is(.vibe-sidebar-item, .vibe-button-quiet):hover:not(:disabled) { background: color-mix(in srgb, var(--vibe-text-1) 6%, var(--vibe-sidebar)); }
+.vibe-workspace .vibe-sidebar-selected { background: var(--vibe-surface-3); border-color: transparent; }
+.vibe-workspace select.vibe-sidebar-filter { background-color: transparent; }
+/* One primary per region: a solid ink fill. */
+.vibe-workspace .vibe-button-primary, .vibe-workspace .vibe-material-tab[data-active] { background: var(--vibe-ink); border-color: var(--vibe-ink); color: var(--vibe-on-ink); }
+.vibe-workspace .vibe-button-primary:hover:not(:disabled) { background: var(--vibe-ink-hover); border-color: var(--vibe-ink-hover); }
+.vibe-workspace .vibe-button-primary:active:not(:disabled) { background: var(--vibe-ink-pressed); border-color: var(--vibe-ink-pressed); }
+.vibe-workspace .vibe-button-primary:disabled { background: var(--vibe-surface-3); color: var(--vibe-text-3); border-color: transparent; opacity: 1; cursor: default; }
+/* A status colour is never alone: test rows pair it with a glyph and a word. */
+.vibe-workspace .vibe-verdict-pass { color: var(--vibe-pass); }
+.vibe-workspace .vibe-verdict-issue { color: var(--vibe-issue); }
+.vibe-workspace .vibe-verdict-word { font-weight: 500; }
+.vibe-workspace :is(.vibe-button-secondary, .vibe-button-quiet):active:not(:disabled) { background: var(--vibe-active); }
+.vibe-workspace .vibe-material-error, .vibe-workspace .vibe-material-inline-error { color: var(--vibe-error); }
+.vibe-workspace .vibe-material-delete { background: var(--vibe-hover); }
+.vibe-workspace .vibe-trial-messages { max-height: none; overflow: visible; }
+.vibe-workspace .vibe-trial-dock .vibe-trial-messages { display: block; }
+.vibe-workspace .vibe-run-reference { display: flex; flex-wrap: wrap; gap: var(--vibe-space-2); margin-bottom: var(--vibe-space-2); }
+@media (min-width: 1280px) {
+  .vibe-project-body[data-utility-open="true"] { grid-template-columns: minmax(0,1fr) var(--vibe-utility-width); }
+  .vibe-project-header[data-utility-open="true"] { --vibe-main-width: calc(100% - var(--vibe-utility-width)); }
+}
+@media (min-width: 1024px) { .vibe-workspace .vibe-sidebar { display: flex; flex: 0 0 auto; } .vibe-workspace .vibe-mobile-toggle { display: none; } }
+@media (max-width: 1023px) {
+  .vibe-workspace .vibe-sidebar { display: none; }
+  .vibe-workspace .vibe-mobile-toggle { display: inline-flex; }
+  .vibe-workspace .vibe-desktop-toggle { display: none; }
+  .vibe-project-identity .vibe-mobile-toggle { width: 44px; }
+  /* Tabs get their own full row at the content gutter; only the title follows the toggle. */
+  .vibe-project-header { padding-block: var(--vibe-space-2) 0; row-gap: 0; }
+  .vibe-project-tabs { grid-column: 1 / -1; margin-inline-start: 0; }
+}
+@media (max-width: 600px) {
+  .vibe-project-body { --vibe-section-gap: var(--vibe-space-5); }
+  .vibe-project-header { padding: var(--vibe-space-2) var(--vibe-gutter) 0; gap: 0 var(--vibe-space-1); }
+  .vibe-project-header .vibe-nav { gap: var(--vibe-space-1); flex-wrap: wrap; }
+  /* The full-width tab row wraps at the content gutter on the narrowest phones. */
+  .vibe-project-header .vibe-button { padding-inline: var(--vibe-space-2); }
+  .vibe-project-tools > button { position: relative; width: 44px; height: 44px; padding: 0; }
+  .vibe-project-tools .vibe-project-tool-icon { display: block; width: 18px; height: 18px; }
+  .vibe-project-tool-label { display: none; }
+  .vibe-project-tools .vibe-guide-attention { position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; min-height: 0; padding: 0; overflow: hidden; border-radius: 50%; font-size: 0; background: var(--vibe-fg); }
+  .vibe-utility-sheet[data-slot="sheet-content"] { width: 100%; border: 0; }
+  /* The status takes the full row; Stop sits beside the note that explains it. */
+  /* A sticky strip would cover a third of a short screen, so it scrolls with the content here. */
+  .vibe-progress-strip[data-active] { position: static; grid-template-areas: "copy copy" "bar bar" "note actions"; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vibe-workspace, .vibe-workspace *, .vibe-workspace *::before, .vibe-workspace *::after { animation: none !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
+}
+/* Increased contrast: secondary text, hairlines and control borders darken, status colours deepen.
+   The dark block repeats every role, because both blocks match a dark route. */
+@media (prefers-contrast: more) {
+  .vibe-workspace[data-appearance] {
+    --vibe-text-2: rgba(23,23,26,.88); --vibe-text-3: rgba(23,23,26,.88); --vibe-separator: rgba(23,23,26,.7); --vibe-control-border: rgba(23,23,26,.72);
+    --vibe-issue: #922a20; --vibe-pass: #14552f; --vibe-caution: #6b4300;
+    --vibe-brass: #5f410c; --vibe-brass-border: #5f410c;
+    --vibe-diff-add-fg: var(--vibe-fg); --vibe-diff-del-fg: var(--vibe-fg); --vibe-selection: color-mix(in srgb, var(--vibe-focus) 35%, var(--vibe-bg));
+  }
+  .vibe-workspace[data-appearance="dark"] {
+    --vibe-text-2: rgba(244,244,242,.9); --vibe-text-3: rgba(244,244,242,.9); --vibe-separator: rgba(244,244,242,.66); --vibe-control-border: rgba(244,244,242,.66);
+    --vibe-issue: #ffb8ab; --vibe-pass: #a3e6bf; --vibe-caution: #f7d494;
+    --vibe-brass: #f6d898; --vibe-brass-border: #cfb57d;
+  }
+}
+.vibe-reply-body[data-collapsed="true"] { max-height: 24rem; overflow: hidden; }
+.vibe-project-main[data-initial] { container-type: inline-size; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.vibe-project-main[data-initial] > .vibe-project-content { display: contents; }
+/* The strip uses the inner edges of .vibe-column, including its gutters. */
+.vibe-project-main[data-initial] > .vibe-project-content > .vibe-progress-strip[data-active] { position: static; flex: none; width: calc(min(100%, 50.5rem) - 2 * var(--vibe-gutter)); margin: var(--vibe-section-gap) auto 0; }
+.vibe-project-main[data-initial] .vibe-scroll-region { overflow-x: hidden; }
+/* The scroll wrapper keeps the pane width; its scrollbar fits inside the content gutter. */
+.vibe-project-main[data-initial] .vibe-scroll-region > div { width: 100cqw; }
+.vibe-project-main[data-initial] .vibe-composer-dock-inner { width: min(100cqw, 50.5rem); max-width: none; margin-inline: max(0px, (100cqw - 50.5rem) / 2); }
+.vibe-project-main[data-initial] .vibe-scroll-region .vibe-column { padding-block: var(--vibe-section-gap); }
+/* Keep quiet conversation text on the column edge while retaining its full hit area. */
+.vibe-workspace .vibe-project-main[data-initial] .vibe-scroll-region .vibe-button-quiet:not(.vibe-example-chip) { padding-inline: 0; border-inline-width: 0; min-height: 44px; min-width: 44px; justify-content: flex-start; }
+.vibe-project-main[data-initial] > .vibe-project-content > .vibe-composer-dock { flex-shrink: 1; min-height: 0; max-height: 100%; overflow-y: auto; }
+.vibe-workspace .vibe-sidebar-create .vibe-button { background: var(--vibe-surface); color: var(--vibe-fg); border-color: var(--vibe-control-border); }
+.vibe-workspace .vibe-sidebar-create .vibe-button:hover:not(:disabled) { background: var(--vibe-hover); }
+/* Shared outline buttons follow the route appearance even under html.dark. */
+.vibe-workspace [data-slot="button"][data-variant="outline"] { background: var(--vibe-surface); color: var(--vibe-fg); border-color: var(--vibe-control-border); }
+.vibe-workspace [data-slot="button"][data-variant="outline"]:hover { background: var(--vibe-hover); }
+
+/* Source reports share the Results pane and its scoped appearance tokens. */
+.vibe-sdk-results { min-width: 0; max-width: 100%; display: grid; gap: var(--vibe-space-5); margin-block-end: var(--vibe-space-5); overflow-wrap: anywhere; }
+.vibe-sdk-results :is(section, article, fieldset, details) { min-width: 0; }
+.vibe-sdk-results h3 { font-size: var(--vibe-font-headline); font-weight: 600; line-height: var(--vibe-leading-headline); }
+.vibe-sdk-results h4 { font-weight: 600; }
+.vibe-sdk-results label { display: block; }
+.vibe-sdk-results :is(input:not([type="checkbox"], [type="file"]), select, textarea) { display: block; width: 100%; min-width: 0; max-width: 100%; margin-block: var(--vibe-space-2) var(--vibe-space-3); border: 1px solid var(--vibe-control-border); border-radius: var(--vibe-radius-sm); padding: var(--vibe-space-2) var(--vibe-space-3); }
+.vibe-sdk-results input[type="file"] { display: block; width: 100%; margin-block: var(--vibe-space-2) var(--vibe-space-3); }
+.vibe-sdk-results input[type="checkbox"] { margin-inline-end: var(--vibe-space-2); }
+.vibe-sdk-results pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 28rem; overflow: auto; padding: var(--vibe-space-3); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-sm); background: var(--vibe-surface); }
+.vibe-sdk-results summary { cursor: pointer; min-height: 44px; padding-block: var(--vibe-space-3); color: var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
+.vibe-sdk-results ul { display: grid; gap: var(--vibe-space-2); }
+.vibe-sdk-results :is(article[aria-label="Imported report detail"], details:has(> section[aria-label="Import SDK report"])) { border-block-start: 1px solid var(--vibe-border); padding-block-start: var(--vibe-space-4); }
+
+@media (forced-colors: active) {
+  .vibe-workspace :is(.vibe-verdict-pass, .vibe-verdict-issue) { color: CanvasText; }
+}
+
+.vibe-workspace .vibe-start-title { margin: 0; font-family: var(--vibe-font-heading); font-size: var(--vibe-font-display-s); line-height: var(--vibe-leading-display); font-weight: 600; letter-spacing: var(--vibe-tracking-display); text-wrap: balance; }
+.vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) .vibe-button-quiet:not(.vibe-example-chip) { padding-inline: 0; border-inline-width: 0; min-height: 44px; min-width: 44px; justify-content: flex-start; }
+.vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) .vibe-button-quiet { text-decoration: none; text-underline-offset: 3px; }
+.vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) .vibe-button-quiet:is(:hover, :focus-visible) { text-decoration: underline; }
+.vibe-workspace .vibe-data-use-notice a { text-decoration-line: underline; text-underline-offset: 4px; }
+.vibe-workspace .vibe-start-page label:not(.sr-only):not(h1 > label) { font-family: var(--font-sans), sans-serif; font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight: 600; }
+.vibe-workspace summary { list-style: none; }
+.vibe-workspace summary::-webkit-details-marker { display: none; }
+.vibe-workspace details:not(.vibe-result-row):not(:has(> summary > .vibe-chevron)) > summary { display: flex; align-items: center; gap: var(--vibe-space-2); cursor: pointer; min-height: 44px; }
+.vibe-workspace details:not(.vibe-result-row):not(:has(> summary > .vibe-chevron)) > summary::before { content: ""; flex: 0 0 auto; width: 6px; height: 6px; border-top: 1.5px solid currentColor; border-right: 1.5px solid currentColor; transform: rotate(45deg); }
+.vibe-workspace details[open]:not(.vibe-result-row):not(:has(> summary > .vibe-chevron)) > summary::before { transform: rotate(135deg); }
+@media (prefers-reduced-motion: no-preference) { .vibe-workspace summary::before { transition: transform var(--vibe-dur-2) var(--vibe-ease-std); } }
+.vibe-other-results { margin-block: var(--vibe-space-4); }
+.vibe-other-results .vibe-result-row > summary { min-height: 44px; }
+.vibe-other-results .vibe-row-title { white-space: normal; overflow-wrap: anywhere; }
+.vibe-build-result + .vibe-prototype-trial, article:has(> .vibe-build-result) + .vibe-prototype-trial { margin-block-start: var(--vibe-section-gap, var(--vibe-space-6)); }
+.vibe-project-body[data-guide-open] .vibe-project-main .vibe-data-use-notice { display: none; }
+
+.vibe-workspace .vibe-results-outcome:focus-visible { outline: 2px solid var(--vibe-focus); outline-offset: 3px; }
+
+
+.vibe-workspace .vibe-start-title[tabindex="-1"]:focus { outline: none; }
+.vibe-start-region { position: relative; display: grid; min-height: 100%; }
+.vibe-start-region > [inert] { position: absolute; inset: 0; }
+.vibe-start-loading { align-self: center; justify-self: center; margin: 0; padding: var(--vibe-gutter); text-align: center; }
+
+/* Shared start-screen rhythm. Text controls keep 44px targets without adding visible gaps. */
+.vibe-start-page.vibe-start-layout { --vibe-start-section-gap: var(--vibe-space-6); box-sizing: border-box; width: min(100%, calc(760px + 2 * var(--vibe-gutter))); min-width: 0; margin-inline: auto; padding: calc(var(--vibe-space-7) - var(--vibe-space-3)) var(--vibe-gutter) calc(2 * var(--vibe-space-6)); display: grid; align-content: start; gap: var(--vibe-start-section-gap); }
+.vibe-start-layout > header { display: flex; margin-bottom: calc(var(--vibe-space-4) - var(--vibe-start-section-gap)); }
+.vibe-start-layout > .vibe-start-intro { display: grid; gap: var(--vibe-space-2); margin: 0; }
+.vibe-start-intro > p { margin: 0; }
+.vibe-start-eyebrow { font-family: var(--vibe-font-data); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); letter-spacing: .08em; text-transform: uppercase; color: var(--vibe-text-3); }
+.vibe-start-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: var(--vibe-space-4) var(--vibe-space-5); }
+.vibe-workspace .vibe-start-footer .vibe-data-use-notice { flex: 1 1 320px; max-width: 440px; margin: 0; color: var(--vibe-text-3); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); }
+.vibe-workspace .vibe-start-footer .vibe-data-use-notice a { display: inline; min-height: 0; padding: 0; color: var(--vibe-text-2); }
+.vibe-workspace .vibe-start-page .vibe-start-back { height: 44px; padding-block: 0; margin-block: calc((var(--vibe-leading-callout) - 44px) / 2); gap: 6px; color: var(--vibe-text-2); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
+.vibe-start-back > svg { width: 16px; height: 16px; }
+.vibe-workspace .vibe-start-page .vibe-start-switch { height: 44px; padding-block: 0; margin-block: calc((var(--vibe-leading-callout) - 44px) / 2); color: var(--vibe-fg); font-weight: 500; text-decoration: underline; text-decoration-color: var(--vibe-control-border); }
+@media (max-width: 600px) {
+  .vibe-start-page.vibe-start-layout { --vibe-start-section-gap: var(--vibe-space-5); padding: var(--vibe-space-6) var(--vibe-space-4); }
+  .vibe-start-footer { flex-direction: column; }
+  .vibe-workspace .vibe-start-footer .vibe-data-use-notice { flex: auto; }
+}
+
+/* The bar is decorative; the adjacent mono counts remain readable without color. */
+.vibe-result-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-3); margin-top: var(--vibe-space-4); min-width: 0; }
+.vibe-result-bar { display: flex; flex: 0 1 15rem; min-width: 0; max-width: 100%; gap: var(--vibe-space-1); }
+.vibe-result-segment { flex: 1 1 0; min-width: 0; height: 6px; border-radius: var(--vibe-radius-pill); background: var(--vibe-surface-3); }
+.vibe-result-segment[data-status="pass"] { background: var(--vibe-pass); }
+.vibe-result-segment[data-status="fail"] { background: var(--vibe-issue); }
+.vibe-result-counts { font-family: var(--vibe-font-data); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); color: var(--vibe-muted); overflow-wrap: anywhere; }
+.vibe-results-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2); }
+.vibe-results-list { min-width: 0; }
+
+/* Proposed instruction changes share the same card in Guide and version views. */
+.vibe-prompt-change { min-width: 0; border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); background: var(--vibe-surface); overflow: clip; font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); }
+.vibe-prompt-change-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--vibe-space-3); min-height: 44px; padding: var(--vibe-space-3) var(--vibe-space-4); background: var(--vibe-surface-2); cursor: pointer; font-weight: 600; }
+.vibe-prompt-change-heading > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.vibe-prompt-change-versions { flex-shrink: 0; font-family: var(--vibe-font-data); font-weight: 400; color: var(--vibe-muted); }
+.vibe-line-diff { padding: var(--vibe-space-3) var(--vibe-space-2); font-family: var(--vibe-font-data); color: var(--vibe-muted); }
+.vibe-diff-line { display: flex; gap: var(--vibe-space-2); min-height: var(--vibe-leading-footnote); padding: var(--vibe-space-1) var(--vibe-space-2); border-radius: var(--vibe-radius-sm); }
+.vibe-diff-line-text { min-width: 0; flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
+.vibe-diff-marker { flex: 0 0 1ch; }
+.vibe-diff-line-added { background: var(--vibe-diff-add-bg); color: var(--vibe-diff-add-fg); }
+.vibe-diff-line-added ins { text-decoration: none; }
+.vibe-diff-line-removed { background: var(--vibe-diff-del-bg); color: var(--vibe-diff-del-fg); }
+.vibe-diff-fold { padding: var(--vibe-space-2); color: var(--vibe-muted); }
+.vibe-prompt-change-more { display: grid; justify-items: start; gap: var(--vibe-space-2); padding: 0 var(--vibe-space-4) var(--vibe-space-3); color: var(--vibe-muted); }
+.vibe-prompt-change-more > details { width: 100%; min-width: 0; }
+.vibe-prompt-change-more summary { min-height: 44px; cursor: pointer; }
+.vibe-prompt-change-more pre { margin-top: var(--vibe-space-2); white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.vibe-prompt-change-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2); padding: var(--vibe-space-3) var(--vibe-space-4); border-top: 1px solid var(--vibe-border); }
+@media (forced-colors: active) {
+  .vibe-diff-line-added, .vibe-diff-line-removed { color: CanvasText; background: Canvas; }
+}

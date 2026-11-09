@@ -1,19 +1,21 @@
 name: Release Please CLI
 
+# Runs on every push to main, not only on cli/ changes. A push that does not
+# touch cli/ can still put the open release PR behind main. Strict status
+# checks then block the merge until this workflow rebases the PR.
 on:
   push:
     branches: [main]
-    paths:
-      - "cli/**"
-      - ".github/workflows/release-please.yml"
-      - ".github/release-please-config.json"
-      - ".github/.release-please-manifest.json"
   workflow_dispatch:
 
 permissions:
   contents: write
   issues: write
   pull-requests: write
+
+concurrency:
+  group: release-please-cli
+  cancel-in-progress: false
 
 jobs:
   release-please:
@@ -33,3 +35,42 @@ jobs:
           token: ${{ env.RELEASE_PLEASE_TOKEN }}
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
+
+      # The release PR merges without a person when "Release checks" passes.
+      # This step must use the release token. A merge by GITHUB_TOKEN does not
+      # start the push workflow that tags the release.
+      # To hold releases, set the repository variable CLI_RELEASE_AUTOMERGE to
+      # "false" and run `gh pr merge <pr> --disable-auto` on the open PR.
+      - name: Auto-merge the CLI release PR
+        if: ${{ vars.CLI_RELEASE_AUTOMERGE != 'false' }}
+        env:
+          GH_TOKEN: ${{ env.RELEASE_PLEASE_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          pr="$(gh pr list --state open --base main --label 'autorelease: pending' \
+            --json number,headRefName \
+            --jq 'map(select(.headRefName | startswith("release-please--branches--main"))) | .[0].number // empty')"
+          if [ -z "${pr}" ]; then
+            echo "No open CLI release PR."
+            exit 0
+          fi
+
+          head="$(gh pr view "${pr}" --json headRefOid --jq .headRefOid)"
+          behind="$(gh api "repos/${GH_REPO}/compare/main...${head}" --jq .behind_by)"
+          if [ "${behind}" -gt 0 ]; then
+            echo "Release PR #${pr} is ${behind} commit(s) behind main. Rebase it."
+            gh pr update-branch "${pr}" --rebase
+          elif [ "$(gh pr view "${pr}" --json mergeStateStatus --jq .mergeStateStatus)" = "CLEAN" ]; then
+            # GitHub does not accept auto-merge on a PR that can merge now.
+            echo "Release PR #${pr} passed its checks. Merge it now."
+            gh pr merge "${pr}" --merge --match-head-commit "${head}"
+            exit 0
+          fi
+
+          if [ "$(gh pr view "${pr}" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
+            echo "Auto-merge is already on for release PR #${pr}."
+          else
+            gh pr merge "${pr}" --auto --merge
+            echo "Auto-merge is on for release PR #${pr}."
+          fi

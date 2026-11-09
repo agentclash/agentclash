@@ -312,6 +312,7 @@ func TestIngestHostedRunEventHandlerReturnsInternalErrorForRepositoryFailure(t *
 }
 
 type fakeHostedRunExecutionRepository struct {
+	pending      *repository.HostedCallback
 	execution    repository.HostedRunExecution
 	getErr       error
 	applyParams  *repository.ApplyHostedRunEventParams
@@ -345,4 +346,24 @@ func (f *fakeHostedRunWorkflowSignaler) SignalRunAgentWorkflow(_ context.Context
 
 func stringPtr(value string) *string {
 	return &value
+}
+
+func (f *fakeHostedRunExecutionRepository) CommitHostedCallback(ctx context.Context, in repository.HostedCallback) (repository.RunAgentReplay, error) {
+	status, output, message := hostedExecutionStateForEvent(in.Event)
+	_, err := f.ApplyHostedRunEvent(ctx, repository.ApplyHostedRunEventParams{RunAgentID: in.Event.RunAgentID, Status: status, ExternalRunID: &in.Event.ExternalRunID, ResultPayload: output, ErrorMessage: message})
+	if err != nil {
+		return repository.RunAgentReplay{}, err
+	}
+	f.pending = &in
+	return f.RecordHostedRunEvent(ctx, in.Record)
+}
+func (f *fakeHostedRunExecutionRepository) PendingHostedNotifications(context.Context) ([]repository.HostedNotification, error) {
+	if f.pending != nil && isHostedRunTerminalEvent(f.pending.Event) {
+		return []repository.HostedNotification{{RunID: f.pending.RunID, RunAgentID: f.pending.Event.RunAgentID, Event: f.pending.Event}}, nil
+	}
+	return nil, nil
+}
+func (f *fakeHostedRunExecutionRepository) MarkHostedNotificationDelivered(context.Context, uuid.UUID) error {
+	f.pending = nil
+	return nil
 }

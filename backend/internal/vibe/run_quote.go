@@ -11,6 +11,7 @@ import (
 // A quote prepares the real graph without executing it. Run fingerprints bind
 // execution choices; preparation also binds the exact message receipt.
 type RunQuote struct {
+	ServerTime  time.Time `json:"server_time,omitempty"`
 	ID          uuid.UUID `json:"id"`
 	Kind        string    `json:"kind"`
 	Revision    int64     `json:"revision"`
@@ -27,18 +28,21 @@ func runFingerprint(p Plan) string {
 		return Hash(raw(p))
 	}
 	return Hash(raw(struct {
-		Kind     string
-		Purpose  string
-		Models   Models
-		Artifact *Artifact
-		Evidence *EvidenceSet
-		Baseline *uuid.UUID
-		Cost     int64
-		Calls    int
-		Grading  *GradingContract
-		Target   *TargetConfiguration
-		Limits   *Limits
-	}{p.Submission.Kind, p.Submission.Purpose, p.Submission.Models, p.Artifact, p.Evidence, p.Submission.BaselineID, p.MaxCost, p.Calls, p.Grading, p.TargetConfig, p.ExecutionLimits}))
+		SDKSource *ResultRecovery `json:"SDKSource,omitempty"`
+		Cases     []string
+		Recovery  *ResultRecovery
+		Kind      string
+		Purpose   string
+		Models    Models
+		Artifact  *Artifact
+		Evidence  *EvidenceSet
+		Baseline  *uuid.UUID
+		Cost      int64
+		Calls     int
+		Grading   *GradingContract
+		Target    *TargetConfiguration
+		Limits    *Limits
+	}{p.RegradeSource, p.Cases, p.Recovery, p.Submission.Kind, p.Submission.Purpose, p.Submission.Models, p.Artifact, p.Evidence, p.Submission.BaselineID, p.MaxCost, p.Calls, p.Grading, p.TargetConfig, p.ExecutionLimits}))
 }
 func (s *Service) QuoteRun(ctx context.Context, actor string, id uuid.UUID, sub Submission) (RunQuote, error) {
 	if sub.Kind != "check" && sub.Kind != "retest" && !(sub.Kind == "message" && sub.AdditionalExamples > 0) {
@@ -58,7 +62,8 @@ func (s *Service) QuoteRun(ctx context.Context, actor string, id uuid.UUID, sub 
 	if p.MaxCost > MaxOperationCost {
 		return RunQuote{}, fault("budget_limit", "Choose a smaller batch before running.")
 	}
-	q := RunQuote{ID: uuid.New(), Kind: "run", Revision: sub.Revision, Fingerprint: runFingerprint(p), MaxCost: p.MaxCost, Cases: len(p.Cases), Calls: p.Calls, ExpiresAt: timestamp().Add(10 * time.Minute)}
+	now := timestamp()
+	q := RunQuote{ServerTime: now, ID: uuid.New(), Kind: "run", Revision: sub.Revision, Fingerprint: runFingerprint(p), MaxCost: p.MaxCost, Cases: len(p.Cases), Calls: p.Calls, ExpiresAt: now.Add(10 * time.Minute)}
 	err = s.Store.persistQuote(ctx, actor, id, sub.Revision, quoteRecord{q.ID, q.Fingerprint, raw(q), q.MaxCost, q.ExpiresAt})
 	return q, err
 }

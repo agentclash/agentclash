@@ -20,6 +20,7 @@ const (
 // The reviewer continues to use SuiteReviewInput, which has no author prose,
 // target instructions, prior scores, guidance history or unadopted dialogue.
 type taskInput struct {
+	ReferencedTest      *ReferencedTest       `json:"referenced_test,omitempty"`
 	PolicyEditBase      *policyEditBase       `json:"policy_edit_base,omitempty"`
 	Task                conversationTask      `json:"task"`
 	CurrentRequest      SourceBlock           `json:"current_request"`
@@ -77,6 +78,9 @@ func buildTaskInput(p Plan, task conversationTask, action string, extra any) (ta
 		return taskInput{}, fmt.Errorf("missing typed conversation context")
 	}
 	out := taskInput{Task: task, CurrentRequest: c.CurrentRequest, ServerContext: extra}
+	if task == taskRoute || task == taskExplain {
+		out.ReferencedTest = p.ReferencedTest
+	}
 	s := effectiveConversationState(p)
 	q := s.PendingQuestion
 	if q != nil && q.Status == "active" && q.ScopeID == s.Brief.ScopeID {

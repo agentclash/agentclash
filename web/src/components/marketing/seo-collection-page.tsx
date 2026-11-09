@@ -124,7 +124,7 @@ export function SeoCollectionPage({
           <p className="mt-10 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-cyan-200/70">
             {eyebrow}
           </p>
-          <h1 className="mt-5 font-[family-name:var(--font-display)] text-5xl font-normal leading-none tracking-normal text-white sm:text-6xl">
+          <h1 className="mt-5 font-sans text-5xl font-semibold leading-none tracking-tight text-white sm:text-6xl">
             {h1}
           </h1>
           <p className="mt-8 max-w-[58ch] text-base leading-8 text-white/62 sm:text-lg">
@@ -144,7 +144,7 @@ export function SeoCollectionPage({
                       {page.sitemapTitle}
                     </h2>
                     <p className="mt-2 text-sm leading-6 text-white/50">
-                      {page.sitemapDescription}
+                      {page.editorial.title}
                     </p>
                   </div>
                   <ArrowRight className="size-4 shrink-0 text-white/35 transition-colors group-hover:text-white/75" />
@@ -175,7 +175,7 @@ export function SeoCollectionPage({
                           {page.sitemapTitle}
                         </h3>
                         <p className="mt-2 text-sm leading-6 text-white/50">
-                          {page.sitemapDescription}
+                          {page.editorial.title}
                         </p>
                       </div>
                       <ArrowRight className="size-4 shrink-0 text-white/35 transition-colors group-hover:text-white/75" />

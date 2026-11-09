@@ -1,0 +1,84 @@
+import React, { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { Artifact, Models, Session } from "@/lib/vibe";
+import { ImproveRunProvider, ImproveRunButton } from "./improve-run-quote";
+let node: HTMLDivElement, root: Root;
+const models: Models = { assistant: "author", target: "agent", evaluator: "grader" };
+const artifact: Artifact = { id: "a", kind: "test_suite", title: "Tests", agent_prompt: "Policy", blueprint: { cases: [{ key: "one" }] }, source_message_id: "m", accepted: false };
+const session = { id: "project", revision: 3, document: { evaluation: { door: "test" }, artifacts: [artifact] }, operations: [] } as unknown as Session;
+const run = vi.fn(), credits = vi.fn();
+const quote = () => ({ id: "q", cases: 3, calls: 6, max_cost_nano_usd: 250000000, server_time: new Date().toISOString(), expires_at: new Date(Date.now() + 60000).toISOString() });
+const admitted = () => ({ quote: quote(), sessionID: session.id, revision: session.revision, selectionArtifact: artifact.id, kind: "check", requestModels: models, extra: { artifact_id: artifact.id } });
+type Props = Partial<Omit<React.ComponentProps<typeof ImproveRunProvider>, "children">>;
+const draw = async (props: Props = {}, blockedReason?: string, comparison = false) => act(async () => root.render(<ImproveRunProvider session={session} artifact={artifact} models={models} now={Date.now()} onCredits={credits} {...props}><ImproveRunButton count={3} comparison={comparison} blockedReason={blockedReason} onRun={run} /></ImproveRunProvider>));
+beforeEach(() => { vi.clearAllMocks(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => new Response(JSON.stringify(quote())))); node = document.createElement("div"); root = createRoot(node); });
+afterEach(async () => { await act(async () => root.unmount()); vi.useRealTimers(); vi.unstubAllGlobals(); });
+it("makes no request before Run, on expiry, on revision changes or on reload", async () => {
+  vi.useFakeTimers(); await draw();
+  expect(node.querySelector("button")?.textContent).toBe("Run 3 tests");
+  expect(node.querySelector<HTMLButtonElement>("button")?.disabled).toBe(false);
+  expect(node.textContent).not.toContain("Getting the run price");
+  await act(async () => vi.advanceTimersByTimeAsync(60001));
+  await draw({ session: { ...session, revision: 4 } });
+  await act(async () => root.unmount()); root = createRoot(node); await draw();
+  expect(fetch).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
+  await act(async () => node.querySelector("button")!.click());
+  expect(run).toHaveBeenCalledOnce(); expect(fetch).not.toHaveBeenCalled();
+});
+it("shows an already admitted price for the same scope and retains it after closing consent", async () => {
+  await draw({ admitted: admitted() });
+  expect(node.querySelector("button")?.textContent).toBe("Run 3 tests · up to $0.25");
+  await draw();
+  expect(node.querySelector("button")?.textContent).toBe("Run 3 tests · up to $0.25");
+  expect(fetch).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
+});
+it.each(["session", "revision", "artifact", "models", "baseline", "selection", "subset", "regrade"])("hides a cached price from a different %s scope", async scope => {
+  const other = admitted();
+  if (scope === "session") other.sessionID = "other-project";
+  if (scope === "revision") other.revision++;
+  if (scope === "artifact") other.extra.artifact_id = "other-artifact";
+  if (scope === "models") other.requestModels = { ...models, target: "other-agent" };
+  if (scope === "selection") other.selectionArtifact = "other-artifact";
+  await draw({ admitted: { ...other, ...(scope === "baseline" ? { kind: "retest", baseline: { id: "old-result" } } : {}), ...(scope === "subset" ? { extra: { ...other.extra, case_keys: ["one"] } } : {}), ...(scope === "regrade" ? { extra: { ...other.extra, purpose: "regrade" } } : {}) } });
+  expect(node.querySelector("button")?.textContent).toBe("Run 3 tests");
+  expect(node.querySelector<HTMLButtonElement>("button")?.disabled).toBe(false);
+  expect(fetch).not.toHaveBeenCalled();
+});
+it("expires a cached price using server time without refreshing it or disabling Run", async () => {
+  vi.useFakeTimers(); const current = admitted();
+  current.quote.server_time = new Date(Date.now() + 86400000).toISOString();
+  current.quote.expires_at = new Date(Date.now() + 86401000).toISOString();
+  await draw({ admitted: current, now: Date.now() + 86400000 }); expect(node.textContent).toContain("up to $0.25");
+  await act(async () => vi.advanceTimersByTimeAsync(1001)); await draw({ now: Date.now() + 86400000 });
+  expect(node.querySelector("button")?.textContent).toBe("Run 3 tests");
+  expect(node.querySelector<HTMLButtonElement>("button")?.disabled).toBe(false);
+  expect(fetch).not.toHaveBeenCalled();
+});
+it.each([NaN, -1])("does not display an invalid price (%s)", async cost => {
+  const current = admitted(); current.quote.max_cost_nano_usd = cost; await draw({ admitted: current });
+  expect(node.querySelector("button")?.textContent).toBe("Run 3 tests");
+  expect(fetch).not.toHaveBeenCalled();
+});
+it("keeps blocked reasons and Credits beside Run, and clears a credit block only on retry", async () => {
+  const clear = vi.fn(); await draw({ creditError: "No credits", onClearError: clear });
+  expect(node.querySelector<HTMLButtonElement>("button")?.disabled).toBe(true);
+  expect(node.textContent).toContain("No credits");
+  await act(async () => [...node.querySelectorAll("button")].find(b => b.textContent === "Credits")!.click());
+  expect(credits).toHaveBeenCalledOnce(); expect(clear).not.toHaveBeenCalled();
+  await act(async () => [...node.querySelectorAll("button")].find(b => b.textContent === "Try again")!.click());
+  expect(clear).toHaveBeenCalledOnce(); expect(fetch).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
+  await draw(); expect(node.querySelector<HTMLButtonElement>("button")?.disabled).toBe(false);
+  await draw({}, "Save or discard your draft before running.");
+  expect(node.textContent).toContain("Save or discard your draft before running.");
+  expect(node.querySelector<HTMLButtonElement>("button")?.disabled).toBe(true);
+});
+it("binds recorded comparison prices to evidence and the baseline grading model", async () => {
+  const recorded = { ...artifact, kind: "conversation_evaluation" as const, agent_prompt: "", conversation_evaluation: { evidence_set_id: "saved-chats", expectations: [{ id: "rule", statement: "Keep facts" }] } };
+  const baseline = { id: "baseline", models: { ...models, evaluator: "original-grader" } } as import("@/lib/vibe").Operation;
+  const current = { ...admitted(), kind: "retest", baseline, requestModels: baseline.models, extra: { artifact_id: artifact.id, evidence_set_id: "saved-chats" } };
+  await draw({ artifact: recorded, baseline, admitted: current }, undefined, true);
+  expect(node.querySelector("button")?.textContent).toBe("Test this change · up to $0.25");
+  await draw({ artifact: { ...recorded, conversation_evaluation: { ...recorded.conversation_evaluation, evidence_set_id: "other-chats" } }, baseline });
+  expect(node.querySelector("button")?.textContent).toBe("Run 3 tests"); expect(fetch).not.toHaveBeenCalled();
+});

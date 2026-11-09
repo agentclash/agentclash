@@ -80,6 +80,9 @@ type ConversationContext struct {
 	ContractVersion  string                `json:"contract_version"`
 	ValidatorVersion string                `json:"validator_version,omitempty"`
 	Profile          *ModelProfile         `json:"profile,omitempty"`
+
+	// Omitted in retained plans so their provider schema and prompt stay replayable.
+	BoundSourceReferences bool `json:"bound_source_references,omitempty"`
 }
 
 func originalBlock(id uuid.UUID, content string) SourceBlock {
@@ -157,7 +160,10 @@ func prepareReliableContext(p *Plan, v Session, version ...string) error {
 		sourceVersion = version[0]
 	}
 	if sourceVersion != "" {
-		return prepareSourceBoundary(p, v, sourceVersion)
+		if err := prepareSourceBoundary(p, v, sourceVersion); err != nil {
+			return err
+		}
+		c.BoundSourceReferences = true
 	}
 	return nil
 }

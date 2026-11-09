@@ -25,7 +25,7 @@ func init() {
 
 var evaltestCmd = &cobra.Command{
 	Use:   "evaltest",
-	Short: "Run local pre-deploy agent eval tests",
+	Short: "Run local agent evaluation smoke checks",
 }
 
 var evaltestInitCmd = &cobra.Command{
@@ -57,7 +57,7 @@ var evaltestInitCmd = &cobra.Command{
 
 var evaltestRunCmd = &cobra.Command{
 	Use:   "run",
-	Short: "Run local eval tests and emit JSON/JUnit reports",
+	Short: "Run local smoke checks and emit JSON/JUnit reports",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		format, _ := cmd.Flags().GetString("format")
 		outDir, _ := cmd.Flags().GetString("out")

@@ -20,13 +20,15 @@ func (f endpointResolverFunc) LookupNetIP(ctx context.Context, network, host str
 
 // fakeRepo implements connection.Repository.
 type fakeRepo struct {
-	orgID         uuid.UUID
-	orgCalls      int
-	secrets       map[string]string
-	created       repository.CreateProviderAccountParams
-	createCalls   int
-	upsertedKey   string
-	upsertedValue string
+	orgID              uuid.UUID
+	orgCalls           int
+	secrets            map[string]string
+	secretsByWorkspace map[uuid.UUID]map[string]string
+	loadedWorkspaces   []uuid.UUID
+	created            repository.CreateProviderAccountParams
+	createCalls        int
+	upsertedKey        string
+	upsertedValue      string
 }
 
 func (r *fakeRepo) GetOrganizationIDByWorkspaceID(context.Context, uuid.UUID) (uuid.UUID, error) {
@@ -39,7 +41,8 @@ func (r *fakeRepo) GetOrganizationIDByWorkspaceID(context.Context, uuid.UUID) (u
 func (r *fakeRepo) CreateProviderAccount(_ context.Context, p repository.CreateProviderAccountParams) (repository.ProviderAccountRow, error) {
 	r.createCalls++
 	r.created = p
-	return repository.ProviderAccountRow{ID: uuid.New(), ProviderKey: p.ProviderKey, Name: p.Name, CredentialReference: p.CredentialReference, BaseURL: p.BaseURL}, nil
+	workspaceID := p.WorkspaceID
+	return repository.ProviderAccountRow{ID: uuid.New(), WorkspaceID: &workspaceID, OrganizationID: p.OrganizationID, ProviderKey: p.ProviderKey, Name: p.Name, CredentialReference: p.CredentialReference, BaseURL: p.BaseURL}, nil
 }
 func (r *fakeRepo) GetProviderAccountByID(context.Context, uuid.UUID) (repository.ProviderAccountRow, error) {
 	return repository.ProviderAccountRow{}, repository.ErrProviderAccountNotFound
@@ -51,9 +54,17 @@ func (r *fakeRepo) ArchiveProviderAccount(context.Context, uuid.UUID) error { re
 func (r *fakeRepo) UpsertWorkspaceSecret(_ context.Context, p repository.UpsertWorkspaceSecretParams) error {
 	r.upsertedKey = p.Key
 	r.upsertedValue = p.Value
+	if r.secrets == nil {
+		r.secrets = map[string]string{}
+	}
+	r.secrets[p.Key] = p.Value
 	return nil
 }
-func (r *fakeRepo) LoadWorkspaceSecrets(context.Context, uuid.UUID) (map[string]string, error) {
+func (r *fakeRepo) LoadWorkspaceSecrets(_ context.Context, workspaceID uuid.UUID) (map[string]string, error) {
+	r.loadedWorkspaces = append(r.loadedWorkspaces, workspaceID)
+	if r.secretsByWorkspace != nil {
+		return r.secretsByWorkspace[workspaceID], nil
+	}
 	return r.secrets, nil
 }
 
@@ -97,6 +108,14 @@ func TestCreateStoresAPIKeyAsWorkspaceSecret(t *testing.T) {
 	}
 	if row.CredentialReference != "workspace-secret://PROVIDER_OPENAI_API_KEY" {
 		t.Fatalf("credential reference = %q", row.CredentialReference)
+	}
+	ctx, err := svc.ResolveCredentialContext(context.Background(), row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := (provider.EnvCredentialResolver{}).Resolve(ctx, row.CredentialReference)
+	if err != nil || value != repo.upsertedValue {
+		t.Fatal("stored workspace key did not resolve")
 	}
 }
 
@@ -253,28 +272,6 @@ func TestTestFailureIsSanitized(t *testing.T) {
 	}
 }
 
-func TestTestSanitizesEnvCredential(t *testing.T) {
-	workspaceID := uuid.New()
-	secret := "env-secret-value"
-	t.Setenv("OPENAI_API_KEY", secret)
-	router := &fakeRouter{invokeErr: provider.NewFailure("openai", provider.FailureCodeAuth, "bad key "+secret, false, errors.New("auth"))}
-	svc := NewService(&fakeRepo{}, router)
-
-	result, err := svc.Test(context.Background(), repository.ProviderAccountRow{
-		ID:                  uuid.New(),
-		WorkspaceID:         &workspaceID,
-		ProviderKey:         "openai",
-		CredentialReference: "env://OPENAI_API_KEY",
-		Status:              "active",
-	}, TestInput{})
-	if err != nil {
-		t.Fatalf("Test: %v", err)
-	}
-	if strings.Contains(result.Message, secret) || !strings.Contains(result.Message, "[redacted]") {
-		t.Fatalf("message not sanitized: %q", result.Message)
-	}
-}
-
 func TestTestUnconfiguredRouter(t *testing.T) {
 	svc := NewService(&fakeRepo{}, nil)
 	result, err := svc.Test(context.Background(), repository.ProviderAccountRow{ProviderKey: "openai"}, TestInput{})
@@ -357,5 +354,84 @@ func TestListModelsUnconfiguredRouterReturnsFailure(t *testing.T) {
 	failure, ok := provider.AsFailure(err)
 	if !ok || failure.Code != provider.FailureCodeUnsupportedCapability {
 		t.Fatalf("ListModels error = %v, want unsupported-capability failure", err)
+	}
+}
+
+func TestCreateRejectsInvalidCredentialsBeforePersistence(t *testing.T) {
+	for _, input := range []CreateConnectionInput{
+		{CredentialReference: "env://SYNTHETIC_KEY"},
+		{CredentialReference: "secret://synthetic"},
+		{CredentialReference: "workspace-secret://"},
+		{CredentialReference: "workspace-secret://OTHER/KEY"},
+		{CredentialReference: "workspace-secret://" + strings.Repeat("A", 129)},
+		{CredentialReference: " workspace-secret://KEY"},
+		{APIKey: "synthetic", CredentialReference: "workspace-secret://KEY"},
+		{}, {APIKey: "   "},
+	} {
+		t.Run(input.CredentialReference+input.APIKey, func(t *testing.T) {
+			repo := &fakeRepo{}
+			svc := NewService(repo, &fakeRouter{})
+			input.ProviderKey = "openai"
+			_, err := svc.Create(context.Background(), uuid.New(), input)
+			if err == nil {
+				t.Fatal("invalid credentials accepted")
+			}
+			if repo.orgCalls != 0 || repo.createCalls != 0 || repo.upsertedKey != "" {
+				t.Fatal("invalid input touched persistence")
+			}
+		})
+	}
+}
+
+func TestCreateReferenceUsesOnlyCurrentWorkspaceVault(t *testing.T) {
+	own, other := uuid.New(), uuid.New()
+	repo := &fakeRepo{secretsByWorkspace: map[uuid.UUID]map[string]string{own: {}, other: {"KEY": "other-workspace-value"}}}
+	svc := NewService(repo, &fakeRouter{})
+	input := CreateConnectionInput{ProviderKey: "openai", CredentialReference: "workspace-secret://KEY"}
+	if _, err := svc.Create(context.Background(), own, input); err == nil {
+		t.Fatal("used missing workspace secret")
+	}
+	if repo.createCalls != 0 || len(repo.loadedWorkspaces) != 1 || repo.loadedWorkspaces[0] != own {
+		t.Fatal("wrong workspace or unexpected write")
+	}
+	repo.secretsByWorkspace[own]["KEY"] = "own-workspace-value"
+	if _, err := svc.Create(context.Background(), own, input); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := svc.ResolveCredentialContext(context.Background(), repository.ProviderAccountRow{WorkspaceID: &own, CredentialReference: input.CredentialReference})
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := (provider.EnvCredentialResolver{}).Resolve(ctx, input.CredentialReference)
+	if err != nil || value != "own-workspace-value" {
+		t.Fatalf("workspace resolution failed: %v", err)
+	}
+}
+
+func TestExistingInvalidConnectionsNeverReachProviderOrCache(t *testing.T) {
+	ws := uuid.New()
+	for _, ref := range []string{"env://SYNTHETIC_KEY", "secret://synthetic", "workspace-secret://", "workspace-secret://MISSING"} {
+		router := &fakeRouter{}
+		svc := NewService(&fakeRepo{}, router)
+		account := repository.ProviderAccountRow{ID: uuid.New(), WorkspaceID: &ws, ProviderKey: "openai", CredentialReference: ref, Status: "active"}
+		svc.cache.set(account.ID, []provider.ModelInfo{{ID: "cached"}})
+		if _, err := svc.ResolveCredentialContext(context.Background(), account); err == nil {
+			t.Errorf("Resolve accepted %q", ref)
+		}
+		if _, err := svc.ListModels(context.Background(), account); err == nil {
+			t.Errorf("ListModels accepted %q", ref)
+		}
+		if _, err := svc.Test(context.Background(), account, TestInput{}); err == nil {
+			t.Errorf("Test accepted %q", ref)
+		}
+		if router.listCalls != 0 || router.invokeCalls != 0 {
+			t.Fatal("invalid account reached provider")
+		}
+	}
+	svc := NewService(&fakeRepo{secrets: map[string]string{"KEY": "value"}}, &fakeRouter{})
+	for _, ws := range []*uuid.UUID{nil, new(uuid.UUID)} {
+		if _, err := svc.ResolveCredentialContext(context.Background(), repository.ProviderAccountRow{WorkspaceID: ws, CredentialReference: "workspace-secret://KEY"}); err == nil {
+			t.Fatal("account without a workspace resolved")
+		}
 	}
 }

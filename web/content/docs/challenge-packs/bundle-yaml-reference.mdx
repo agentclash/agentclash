@@ -37,7 +37,7 @@ The executable spine of the bundle:
 
 - `network_access` (bool)
 - `network_allowlist` (CIDR strings; invalid CIDR rejects publish)
-- `env_vars` (map of string literals—see [Sandbox & E2B](sandbox-and-e2b))
+- `env_vars` (map of string literals—see [Sandbox & E2B](/docs/challenge-packs/sandbox-and-e2b))
 - `additional_packages` (APT-style names constrained by regexp in validation)
 - `sandbox_template_id` (optional provider template override)
 
@@ -47,7 +47,7 @@ Manifest JSON merges `sandbox_template_id` from `version.sandbox` into the seria
 
 Optional map keyed by integration style; authoring today uses **`tools.custom`** as an array of composed tools. **Must be empty** when `execution_mode` is `prompt_eval` or `responses`.
 
-See [Tools, primitives & policy](tools-primitives-and-policy).
+See [Tools, primitives & policy](/docs/challenge-packs/tools-primitives-and-policy).
 
 ### `challenges` (required, non-empty)
 
@@ -74,7 +74,7 @@ Defines runnable **cases**:
 
 Cases are modeled by `CaseDefinition` with `challenge_key`, `case_key`, optional rich `inputs`/`expectations`, `artifacts`, `assets`, plus legacy **`payload`** for blob-only authoring.
 
-Deep dive: [Input sets & cases](input-sets-and-cases).
+Deep dive: [Input sets & cases](/docs/challenge-packs/input-sets-and-cases).
 
 ## Execution mode compatibility
 
@@ -101,7 +101,7 @@ Run creation binds `challenge_pack_version_id` specifically—YAML filenames sto
 
 ## See also
 
-- [Evaluation spec reference](evaluation-spec-reference)
-- [Challenge packs and inputs — conceptual overview](../concepts/challenge-packs-and-inputs)
+- [Evaluation spec reference](/docs/challenge-packs/evaluation-spec-reference)
+- [Challenge packs and inputs — conceptual overview](/docs/concepts/challenge-packs-and-inputs)
 - [Multi-turn packs](/docs/challenge-packs/multi-turn)
 - [Security evaluation](/docs/guides/security-evaluation)

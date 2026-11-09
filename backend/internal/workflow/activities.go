@@ -69,10 +69,13 @@ type FakeWorkHooks struct {
 	SimulateExecution    func(ctx context.Context, input RunAgentWorkflowInput) error
 	SimulateEvaluation   func(ctx context.Context, input RunAgentWorkflowInput) error
 	HostedRunStarter     HostedRunStarter
-	NativeModelInvoker   NativeModelInvoker
-	PromptEvalInvoker    PromptEvalInvoker
-	ResponsesInvoker     ResponsesInvoker
-	MultiTurnInvoker     MultiTurnInvoker
+	ConnectorInvoker     interface {
+		InvokeConnector(context.Context, repository.RunAgentExecutionContext) error
+	}
+	NativeModelInvoker NativeModelInvoker
+	PromptEvalInvoker  PromptEvalInvoker
+	ResponsesInvoker   ResponsesInvoker
+	MultiTurnInvoker   MultiTurnInvoker
 }
 
 type ResponsesInvoker interface {
@@ -174,6 +177,7 @@ type StartHostedRunInput struct {
 }
 
 type StartHostedRunResult struct {
+	Completed     bool      `json:"completed,omitempty"`
 	ExternalRunID string    `json:"external_run_id"`
 	DeadlineAt    time.Time `json:"deadline_at"`
 }
@@ -452,20 +456,41 @@ func (a *Activities) StartHostedRun(ctx context.Context, input StartHostedRunInp
 		return StartHostedRunResult{}, wrapActivityError(err)
 	}
 
+	if executionContext.Deployment.EndpointURL == nil || *executionContext.Deployment.EndpointURL == "" {
+		return StartHostedRunResult{}, errors.New("hosted endpoint is missing")
+	}
+
 	taskPayload, err := buildHostedTaskPayload(executionContext)
 	if err != nil {
 		return StartHostedRunResult{}, err
 	}
 
 	deadlineAt := time.Now().UTC().Add(time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds) * time.Second)
-	if _, err := a.repo.CreateHostedRunExecution(ctx, repository.CreateHostedRunExecutionParams{
+	execution, err := a.repo.CreateHostedRunExecution(ctx, repository.CreateHostedRunExecutionParams{
 		RunID:       executionContext.Run.ID,
 		RunAgentID:  executionContext.RunAgent.ID,
 		EndpointURL: *executionContext.Deployment.EndpointURL,
 		TraceLevel:  input.TraceLevel,
 		DeadlineAt:  deadlineAt,
-	}); err != nil {
+	})
+	if err != nil {
 		return StartHostedRunResult{}, wrapActivityError(err)
+	}
+
+	deadlineAt = execution.DeadlineAt
+	result := StartHostedRunResult{DeadlineAt: deadlineAt, Completed: execution.Status == "completed"}
+	if execution.Status == "failed" {
+		return result, errors.New("hosted dispatch previously failed; it will not be repeated")
+	}
+	if execution.ExternalRunID != nil {
+		result.ExternalRunID = *execution.ExternalRunID
+	}
+	claimed, err := a.repo.ClaimHostedRunDispatch(ctx, input.RunAgentID)
+	if err != nil {
+		return result, err
+	}
+	if !claimed {
+		return result, nil
 	}
 
 	response, err := a.hooks.HostedRunStarter.Start(ctx, HostedRunStartInput{
@@ -475,18 +500,25 @@ func (a *Activities) StartHostedRun(ctx context.Context, input StartHostedRunInp
 		DeadlineAt:       deadlineAt,
 	})
 	if err != nil {
-		_, markErr := a.repo.MarkHostedRunExecutionFailed(ctx, repository.MarkHostedRunExecutionFailedParams{
-			RunAgentID:   input.RunAgentID,
-			ErrorMessage: err.Error(),
-		})
-		if markErr != nil {
-			return StartHostedRunResult{}, fmt.Errorf("%w; additionally failed to persist hosted start failure: %v", err, markErr)
+		persist, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+		defer cancel()
+		if markErr := a.repo.MarkHostedRunUnknown(persist, input.RunAgentID); markErr != nil {
+			return result, markErr
 		}
-		return StartHostedRunResult{}, err
+		latest, getErr := a.repo.GetHostedRunExecutionByRunAgentID(persist, input.RunAgentID)
+		if getErr != nil {
+			return result, getErr
+		}
+		result.Completed = latest.Status == "completed"
+		if latest.ExternalRunID != nil {
+			result.ExternalRunID = *latest.ExternalRunID
+		}
+		return result, nil // possible remote acceptance: wait on the original callback deadline
 	}
+
 	if !response.Accepted {
 		rejectedErr := errors.New("hosted deployment rejected run")
-		_, markErr := a.repo.MarkHostedRunExecutionFailed(ctx, repository.MarkHostedRunExecutionFailedParams{
+		latest, markErr := a.repo.MarkHostedRunExecutionFailed(ctx, repository.MarkHostedRunExecutionFailedParams{
 			RunAgentID:    input.RunAgentID,
 			ErrorMessage:  rejectedErr.Error(),
 			ResultPayload: cloneJSON(mustJSON(response)),
@@ -494,30 +526,34 @@ func (a *Activities) StartHostedRun(ctx context.Context, input StartHostedRunInp
 		if markErr != nil {
 			return StartHostedRunResult{}, fmt.Errorf("%w; additionally failed to persist hosted rejection: %v", rejectedErr, markErr)
 		}
+		if latest.Status != "failed" {
+			result.Completed = latest.Status == "completed"
+			if latest.ExternalRunID != nil {
+				result.ExternalRunID = *latest.ExternalRunID
+			}
+			return result, nil
+		}
 		return StartHostedRunResult{}, rejectedErr
 	}
 	if response.ExternalRunID == "" {
-		malformedErr := errors.New("hosted deployment response is missing external_run_id")
-		_, markErr := a.repo.MarkHostedRunExecutionFailed(ctx, repository.MarkHostedRunExecutionFailedParams{
-			RunAgentID:    input.RunAgentID,
-			ErrorMessage:  malformedErr.Error(),
-			ResultPayload: cloneJSON(mustJSON(response)),
-		})
-		if markErr != nil {
-			return StartHostedRunResult{}, fmt.Errorf("%w; additionally failed to persist hosted malformed response: %v", malformedErr, markErr)
+		if err := a.repo.MarkHostedRunUnknown(ctx, input.RunAgentID); err != nil {
+			return result, err
 		}
-		return StartHostedRunResult{}, malformedErr
+		return result, nil
 	}
-	if _, err := a.repo.MarkHostedRunExecutionAccepted(ctx, repository.MarkHostedRunExecutionAcceptedParams{
+
+	latest, err := a.repo.MarkHostedRunExecutionAccepted(ctx, repository.MarkHostedRunExecutionAcceptedParams{
 		RunAgentID:       input.RunAgentID,
 		ExternalRunID:    response.ExternalRunID,
 		AcceptedResponse: mustJSON(response),
-	}); err != nil {
+	})
+	if err != nil {
 		return StartHostedRunResult{}, wrapActivityError(err)
 	}
 
 	return StartHostedRunResult{
 		ExternalRunID: response.ExternalRunID,
+		Completed:     latest.Status == "completed",
 		DeadlineAt:    deadlineAt,
 	}, nil
 }
@@ -546,15 +582,19 @@ func (a *Activities) BuildRunScorecard(ctx context.Context, input BuildRunScorec
 }
 
 func (a *Activities) ExecuteNativeModelStep(ctx context.Context, input RunAgentWorkflowInput) error {
-	if a.hooks.NativeModelInvoker == nil {
-		return nil
-	}
-
 	executionContext, err := a.repo.GetRunAgentExecutionContextByID(ctx, input.RunAgentID)
 	if err != nil {
 		return wrapActivityError(err)
 	}
-
+	if executionContext.Deployment.Connector != nil && executionContext.Deployment.Connector.Config.Adapter == "http_json" {
+		if a.hooks.ConnectorInvoker == nil {
+			return errors.New("connector invoker is not configured")
+		}
+		return a.hooks.ConnectorInvoker.InvokeConnector(ctx, executionContext)
+	}
+	if a.hooks.NativeModelInvoker == nil {
+		return nil
+	}
 	_, err = a.hooks.NativeModelInvoker.InvokeNativeModel(ctx, executionContext)
 	return wrapActivityError(err)
 }
@@ -785,15 +825,18 @@ func buildHostedTaskPayload(executionContext repository.RunAgentExecutionContext
 		InputChecksum string    `json:"input_checksum"`
 	}
 	type taskPayload struct {
-		RunID                uuid.UUID          `json:"run_id"`
-		RunAgentID           uuid.UUID          `json:"run_agent_id"`
-		ChallengePackVersion json.RawMessage    `json:"challenge_pack_version"`
-		ChallengeInputSet    *challengeInputSet `json:"challenge_input_set,omitempty"`
-		DeploymentConfig     json.RawMessage    `json:"deployment_config"`
+		Cases                []repository.ChallengeCaseExecutionContext `json:"cases,omitempty"`
+		RunID                uuid.UUID                                  `json:"run_id"`
+		RunAgentID           uuid.UUID                                  `json:"run_agent_id"`
+		ChallengePackVersion json.RawMessage                            `json:"challenge_pack_version"`
+		ChallengeInputSet    *challengeInputSet                         `json:"challenge_input_set,omitempty"`
+		DeploymentConfig     json.RawMessage                            `json:"deployment_config"`
 	}
 
+	var cases []repository.ChallengeCaseExecutionContext
 	var inputSet *challengeInputSet
 	if executionContext.ChallengeInputSet != nil {
+		cases = executionContext.ChallengeInputSet.Cases
 		inputSet = &challengeInputSet{
 			ID:            executionContext.ChallengeInputSet.ID,
 			InputKey:      executionContext.ChallengeInputSet.InputKey,
@@ -804,6 +847,7 @@ func buildHostedTaskPayload(executionContext repository.RunAgentExecutionContext
 	}
 
 	payload, err := json.Marshal(taskPayload{
+		Cases:                cases,
 		RunID:                executionContext.Run.ID,
 		RunAgentID:           executionContext.RunAgent.ID,
 		ChallengePackVersion: executionContext.ChallengePackVersion.Manifest,

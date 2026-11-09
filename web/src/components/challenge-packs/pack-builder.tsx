@@ -1,5 +1,6 @@
 "use client";
 
+import {VibeReturn} from "./vibe-return";
 import { Loader2 } from "lucide-react";
 
 import { useApiQuery } from "@/lib/api/swr";
@@ -23,7 +24,7 @@ function toComposition(raw: unknown): Composition {
   };
 }
 
-export function PackBuilder({ workspaceId, draftId }: { workspaceId: string; draftId: string }) {
+export function PackBuilder({ workspaceId, draftId, returnTo, returnTitle }: { workspaceId: string; draftId: string;returnTo?:string;returnTitle?:string }) {
   const { data, error, isLoading } = useApiQuery<ChallengePackDraft>(draftPath(workspaceId, draftId));
 
   if (isLoading) {
@@ -43,7 +44,7 @@ export function PackBuilder({ workspaceId, draftId }: { workspaceId: string; dra
       draftId={draftId}
       initialComposition={toComposition(data.composition)}
     >
-      <BuilderShell />
+      <VibeReturn path={returnTo} draft={draftId} title={returnTitle}/><BuilderShell />
     </PackDraftProvider>
   );
 }

@@ -1,13 +1,17 @@
 package worker
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/agentclash/agentclash/runtime/connectors"
+	"github.com/google/uuid"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/hostedruns"
@@ -15,6 +19,8 @@ import (
 
 type HostedRunClient struct {
 	httpClient      *http.Client
+	transport       connectors.Client
+	credentials     ConnectorCredentialSource
 	callbackBaseURL string
 	callbackSigner  hostedruns.CallbackTokenSigner
 }
@@ -22,16 +28,37 @@ type HostedRunClient struct {
 func NewHostedRunClient(httpClient *http.Client, callbackBaseURL string, callbackSecret string) HostedRunClient {
 	return HostedRunClient{
 		httpClient:      httpClient,
+		transport:       connectors.Client{HTTP: httpClient},
 		callbackBaseURL: strings.TrimRight(callbackBaseURL, "/"),
 		callbackSigner:  hostedruns.NewCallbackTokenSigner(callbackSecret),
 	}
 }
 
+type ConnectorCredentialSource interface {
+	ResolveApprovedConnector(context.Context, uuid.UUID, uuid.UUID) (connectors.Binding, string, error)
+}
+
+func (c HostedRunClient) WithConnectorRepository(repo ConnectorCredentialSource) HostedRunClient {
+	c.credentials = repo
+	return c
+}
+
 func (c HostedRunClient) Start(ctx context.Context, input workflowpkg.HostedRunStartInput) (hostedruns.StartResponse, error) {
-	endpointURL, err := hostedEndpointURL(*input.ExecutionContext.Deployment.EndpointURL)
+	if c.credentials == nil {
+		return hostedruns.StartResponse{}, errors.New("hosted connector approval is unavailable")
+	}
+	binding, secret, err := c.credentials.ResolveApprovedConnector(ctx, input.ExecutionContext.Deployment.AgentDeploymentSnapshotID, input.ExecutionContext.Run.WorkspaceID)
 	if err != nil {
 		return hostedruns.StartResponse{}, err
 	}
+	if binding.Config.Adapter != connectors.Hosted {
+		return hostedruns.StartResponse{}, errors.New("snapshot is not a hosted connector")
+	}
+	endpointURL, err := hostedEndpointURL(binding.Config.EndpointURL)
+	if err != nil {
+		return hostedruns.StartResponse{}, err
+	}
+
 	callbackToken, err := c.callbackSigner.Sign(input.ExecutionContext.Run.ID, input.ExecutionContext.RunAgent.ID)
 	if err != nil {
 		return hostedruns.StartResponse{}, err
@@ -56,33 +83,31 @@ func (c HostedRunClient) Start(ctx context.Context, input workflowpkg.HostedRunS
 		return hostedruns.StartResponse{}, fmt.Errorf("marshal hosted run request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpointURL, bytes.NewReader(payload))
-	if err != nil {
-		return hostedruns.StartResponse{}, fmt.Errorf("build hosted run request: %w", err)
+	deadline := input.DeadlineAt
+	if bound := time.Now().Add(time.Duration(binding.Config.TimeoutSeconds) * time.Second); bound.Before(deadline) {
+		deadline = bound
 	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return hostedruns.StartResponse{}, fmt.Errorf("post hosted run request: %w", err)
+	transport := c.transport
+	transport.ResolveSecret = func(ctx context.Context) (string, error) {
+		_, secret, err := c.credentials.ResolveApprovedConnector(ctx, input.ExecutionContext.Deployment.AgentDeploymentSnapshotID, input.ExecutionContext.Run.WorkspaceID)
+		return secret, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return hostedruns.StartResponse{}, fmt.Errorf("hosted run request returned status %d", resp.StatusCode)
+	response, err := transport.DoJSON(ctx, endpointURL, binding.Config.Auth, secret, payload, deadline)
+	if err != nil {
+		return hostedruns.StartResponse{}, err
 	}
 
 	var startResponse hostedruns.StartResponse
-	decoder := json.NewDecoder(resp.Body)
+	decoder := json.NewDecoder(strings.NewReader(string(response)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&startResponse); err != nil {
 		return hostedruns.StartResponse{}, fmt.Errorf("decode hosted run response: %w", err)
 	}
-	if decoder.More() {
+	if decoder.Decode(new(any)) != io.EOF {
 		return hostedruns.StartResponse{}, fmt.Errorf("decode hosted run response: response must contain exactly one JSON object")
 	}
 	if !startResponse.Accepted {
-		return hostedruns.StartResponse{}, fmt.Errorf("hosted deployment rejected run")
+		return startResponse, nil
 	}
 	if startResponse.ExternalRunID == "" {
 		return hostedruns.StartResponse{}, fmt.Errorf("hosted deployment response is missing external_run_id")

@@ -1,5 +1,8 @@
 import { defineConfig } from "@playwright/test";
-const baseURL = process.env.VIBE_TEST_BASE_URL ?? "http://127.0.0.1:53517";
+// Override the ports to run two mocked suites at once (for example in two worktrees).
+const webPort = process.env.VIBE_TEST_WEB_PORT ?? "53517";
+const authPort = process.env.VIBE_TEST_AUTH_PORT ?? "55442";
+const baseURL = process.env.VIBE_TEST_BASE_URL ?? `http://127.0.0.1:${webPort}`;
 
 export default defineConfig({
   testDir: "./e2e/vibe",
@@ -19,18 +22,25 @@ export default defineConfig({
   webServer: process.env.VIBE_TEST_BASE_URL
     ? undefined
     : {
-        command: "npm run dev -- --hostname 127.0.0.1 --port 53517",
+        command: "node e2e/vibe-stack/start-web.mjs",
         url: `${baseURL}/vibe-evals`,
-        reuseExistingServer: true,
+        reuseExistingServer: false,
+        gracefulShutdown: { signal: "SIGTERM", timeout: 20_000 },
         timeout: 120_000,
         env: {
+          VIBE_BROWSER_WEB_PORT: webPort,
+          WORKOS_API_HOSTNAME: "127.0.0.1",
+          WORKOS_API_PORT: authPort,
+          WORKOS_API_HTTPS: "false",
+          NEXT_TELEMETRY_DISABLED: "1",
+          NEXT_PUBLIC_POSTHOG_KEY: "",
+          ANALYTICS_REQUIRED: "false",
           NEXT_PUBLIC_API_URL: "http://127.0.0.1:55440",
           WORKOS_CLIENT_ID: "client_test_vibe",
           WORKOS_API_KEY: "sk_test_not_a_real_key",
           WORKOS_COOKIE_PASSWORD:
             "vibe-test-cookie-password-32-characters-long",
-          NEXT_PUBLIC_WORKOS_REDIRECT_URI:
-            "http://127.0.0.1:53517/auth/callback",
+          NEXT_PUBLIC_WORKOS_REDIRECT_URI: `http://127.0.0.1:${webPort}/auth/callback`,
         },
       },
 });

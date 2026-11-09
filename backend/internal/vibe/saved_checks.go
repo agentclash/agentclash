@@ -13,17 +13,18 @@ import (
 )
 
 type SavedCheck struct {
-	Models      *Models           `json:"models,omitempty"`
-	Kind        string            `json:"kind,omitempty"`
-	DraftID     *uuid.UUID        `json:"draft_id,omitempty"`
-	ID          uuid.UUID         `json:"id"`
-	SessionID   uuid.UUID         `json:"session_id"`
-	ArtifactID  uuid.UUID         `json:"artifact_id"`
-	BaselineID  uuid.UUID         `json:"baseline_operation_id"`
-	WorkspaceID uuid.UUID         `json:"workspace_id"`
-	Title       string            `json:"title"`
-	Source      *EvaluationSource `json:"source"`
-	CreatedAt   time.Time         `json:"created_at"`
+	ProjectTitle string            `json:"project_title,omitempty"`
+	Models       *Models           `json:"models,omitempty"`
+	Kind         string            `json:"kind,omitempty"`
+	DraftID      *uuid.UUID        `json:"draft_id,omitempty"`
+	ID           uuid.UUID         `json:"id"`
+	SessionID    uuid.UUID         `json:"session_id"`
+	ArtifactID   uuid.UUID         `json:"artifact_id"`
+	BaselineID   uuid.UUID         `json:"baseline_operation_id"`
+	WorkspaceID  uuid.UUID         `json:"workspace_id"`
+	Title        string            `json:"title"`
+	Source       *EvaluationSource `json:"source"`
+	CreatedAt    time.Time         `json:"created_at"`
 }
 
 func (s *Store) SaveCheck(ctx context.Context, actor string, id uuid.UUID, revision int64, ws, baseline uuid.UUID) (SavedCheck, error) {
@@ -188,6 +189,9 @@ func (s *Store) ListChecks(ctx context.Context, actor string, ws uuid.UUID) ([]S
 	accessible := []SavedCheck{}
 	for _, c := range items {
 		if err = authorize(ctx, s.DB, actor, &c.WorkspaceID, false); err == nil {
+			if err = s.DB.QueryRow(ctx, "SELECT title FROM vibe_sessions WHERE id=$1 AND actor=$2", c.SessionID, actor).Scan(&c.ProjectTitle); err != nil {
+				return nil, err
+			}
 			accessible = append(accessible, c)
 		}
 	}

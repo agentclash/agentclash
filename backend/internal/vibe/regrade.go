@@ -46,13 +46,21 @@ func (s *Service) prepareRegrade(ctx context.Context, actor string, v Session, s
 		}
 		p.ConversationJudgeVersion = 1
 		p.ChecksPerCase = len(p.Artifact.ConversationEvaluation.Expectations)
-		for _, c := range p.Evidence.Conversations {
+		selected, err := selectConversations(p.Evidence.Conversations, old.Cases)
+		if err != nil {
+			return Operation{}, err
+		}
+		for _, c := range selected {
 			p.Cases = append(p.Cases, c.Key)
 			p.CasePreviews = append(p.CasePreviews, conversationResult(p, c))
 		}
 		p.Calls = len(p.Cases)
 	} else {
 		compiled, err := s.Compiler.Compile(p.Artifact.Blueprint, sub.Models.Evaluator, p.Artifact.ID, l)
+		if err != nil {
+			return Operation{}, err
+		}
+		compiled.Cases, err = selectCompiledCases(compiled.Cases, old.Cases)
 		if err != nil {
 			return Operation{}, err
 		}

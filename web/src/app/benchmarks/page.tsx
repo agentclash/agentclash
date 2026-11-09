@@ -7,12 +7,12 @@ import { getAllReports } from "@/lib/benchmarks";
 import { BENCHMARKS_HUB_FAQ } from "@/lib/benchmarks-hub";
 import { benchmarkRssAlternate, markdownAlternate, ogImageUrl } from "@/lib/seo";
 
-const PAGE_TITLE = "AI Agent Benchmarks Hub | Reproducible Evals | AgentClash";
+const PAGE_TITLE = "AI Agent Benchmarks Hub | AgentClash";
 const PAGE_DESCRIPTION =
-  "Public AI agent benchmarks hub: frozen challenge packs, same-task eval runs, replay evidence, scorecards, and monthly reports. Run the same benchmark on your agents.";
+  "Public agent benchmark reports, documented configurations, scorecards, and limitations.";
 const SOCIAL_IMAGE = ogImageUrl({
   title: "AI Agent Benchmarks",
-  subtitle: "Frozen packs, same-task eval runs, replay evidence",
+  subtitle: "Reported results and methodology",
   kind: "Benchmark",
 });
 

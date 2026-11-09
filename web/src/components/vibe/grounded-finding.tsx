@@ -33,24 +33,25 @@ export function verifiedFinding(result: CaseResult, check?: EvidenceCheck) {
   return null;
 }
 
-export function GroundedFinding({ result, check }: {
+export function GroundedFinding({ result, check, showExpectation = true }: {
   result: CaseResult;
   check?: EvidenceCheck;
+  showExpectation?: boolean;
 }) {
   const finding = verifiedFinding(result, check);
   if (!finding) return null;
   return (
-    <section aria-label="Evidence for this grade" className="space-y-3 text-sm">
-      <div>
+    <section aria-label="Evidence for this grade" className="space-y-3">
+      {showExpectation && <div>
         <p className="mb-1 text-xs vibe-muted">What should happen</p>
         <p className="whitespace-pre-wrap break-words">{expectedBehavior(result, check)}</p>
-      </div>
+      </div>}
       {finding.kind === "missing_behavior" && (
         <div>
           <p className="mb-1 text-xs vibe-muted">Missing from the replies</p>
           <p className="whitespace-pre-wrap break-words">{finding.missing}</p>
-          <p className="mt-1 text-xs vibe-muted">
-            The judge checked the complete replies for this behavior. Open the full evidence to review its conclusion.
+          <p className="mt-1 text-sm vibe-muted">
+            The judge reviewed the complete replies for this behavior. Open the full evidence to review its conclusion.
           </p>
         </div>
       )}

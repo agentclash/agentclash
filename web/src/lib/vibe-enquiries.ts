@@ -6,12 +6,12 @@ export function projectSummary(session: Session, artifact: Artifact, operation?:
   const score = operation?.scorecard;
   return [
     `Project: ${artifact.title}`,
-    ...(artifact.kind === "task_brief" ? [artifact.summary || "", "Unexecuted brief. No prototype or checks have run."] : []),
+    ...(artifact.kind === "task_brief" ? [artifact.summary || "", "Unexecuted brief. No agent or tests have run."] : []),
     artifact.sample ? "Sample demonstration. These assumptions are not verified business policy." : "Based on the supplied requirements.",
     rules.length ? `Rules used:\n${rules.map(r => `• ${r.statement}`).join("\n")}` : "Business-specific rules may still be unspecified.",
     artifact.scope_note || "Runs here using supplied text. Business systems are not connected.",
     ...(artifact.required_capabilities?.some(c => integrationLabels[c]) ? [`Requested capabilities still to connect: ${artifact.required_capabilities.filter(c => integrationLabels[c]).map(c => integrationLabels[c]).join(", ")}.`] : []),
-    score ? `Checks: ${score.passed} passed, ${score.failed} need attention, ${score.unknown} unassessed. These checks do not establish reliability outside the tried situations.` : "No completed check report is included.",
+    score ? `Tests: ${score.passed} passed, ${score.failed} need attention, ${score.unknown} unassessed. These tests do not establish reliability beyond their inputs.` : "No completed run report is included.",
     "I'd like to discuss building and setting this up for my business, including the required integrations, deployment and ongoing operation.",
   ].join("\n\n");
 }

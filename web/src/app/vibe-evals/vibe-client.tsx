@@ -1,5 +1,24 @@
 "use client";
 
+import { friendlyModelName } from "@/components/vibe/model-name";
+import { BuildStart } from "@/components/vibe/build-start";
+import { ImproveOtherStart, type ImproveSource } from "@/components/vibe/improve-other-start";
+import { ImproveStart } from "@/components/vibe/improve-start";
+import { ReimportReview } from "@/components/vibe/reimport-review";
+import {ObservedResults} from "@/components/vibe/observed-results";
+import {ConnectorSetup} from "@/components/vibe/connector-setup";
+import {CanonicalResults} from "@/components/vibe/canonical-results";
+import { SDKReportImportForm } from "@/components/vibe/sdk-report-import";
+import { SDKReports } from "@/components/vibe/sdk-reports";
+
+import {projectTitle, recentProjectSummary} from "@/lib/vibe-project";
+import { vibeContact } from "@/lib/vibe-contact";
+import type { RecentProject } from "@/components/vibe/evaluation-entry";
+import {suiteCases} from "@/components/vibe/test-suite-cases";
+import { ExportDialog } from "@/components/vibe/export-dialog";
+import { VibeAppearance } from "@/components/vibe/appearance";
+import { ImproveRunProvider } from "@/components/vibe/improve-run-quote";
+import { instructionChangeBaseline } from "@/lib/vibe-build-timeline";
 import { VibeConnection } from "@/lib/vibe-connection";
 
 
@@ -17,6 +36,7 @@ import { sessionAccessLost } from "@/lib/use-vibe-session";
 
 
 import Link from "next/link";
+import { useRef, useState } from "react";
 
 
 
@@ -32,28 +52,92 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 
 
 import { dollars } from "@/lib/vibe";
+import { testCount } from "@/lib/vibe-presentation";
 
-import { keepReturnURL, savedWorkURL } from "@/lib/vibe-keep";
+import { keepReturnURL, savedWorkURL, advancedURL } from "@/lib/vibe-keep";
 
 import { useVibeWorkspace } from "@/lib/use-vibe-workspace";
 
 export function VibeClient() {
-  const { active, activeContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, canChangeDoor, changeDoor, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces } = useVibeWorkspace();
+  const { browserReady, serverNow, startedProjects, startDoor, startProject, backFromStart, pendingStartDraft, resolvePendingStart, startBuildDraft, startInputs, setStartInputs, startError, arrival, takeStartFocus, evidenceResult,selectedCanonical,selectedSDKReport,selectedResult,selectedResultLoading,selectedResultError,retrySelectedResult,onSelectResult,onSDKPromoted,onSDKRegraded,evidenceAccess,sdkInferenceAvailable,projectReturnPath,saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,archiveMode,setArchiveMode,metadata,exporter, recordedUpdate, startRecordedUpdate, closeRecordedUpdate, addRecordedEvidence, entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, runInferenceAvailable, unavailableReason, messageLimit, messageError, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, uncertain, upload, view, workspace, workspaces } = useVibeWorkspace();
+  const startConfig = config as (typeof config & { first_build_ceiling_nano_usd?: number; guest_trial?: { initial_build_used: boolean; build_in_progress: boolean } });
+  const buildPrice = !authUser && startConfig?.guest_trial?.initial_build_used === false ? { kind: "trial" as const } : authUser && typeof startConfig?.first_build_ceiling_nano_usd === "number" ? { kind: "ceiling" as const, nanoUSD: startConfig.first_build_ceiling_nano_usd } : { kind: "unknown" as const };
+  const lazyBuildBlockedReason = !authUser && startConfig?.guest_trial?.build_in_progress ? "Another build is using your free trial. Try again when it finishes." : !entryAvailable ? unavailableReason : undefined;
+  const improveBaseline = recordedUpdate?.artifactID === artifact?.id ? recordedUpdate?.baseline : instructionChangeBaseline(session, artifact);
+  const creditMessage = /credits/i.test(error) ? error : runQuoteState === "failure" && /credits/i.test(runQuoteError) ? runQuoteError : undefined;
+  const improveCreditError = session?.document.evaluation?.door === "test" ? creditMessage : undefined;
+  const inlineCreditError = improveCreditError && (view === "tests" || view === "build" && !!instructionChangeBaseline(session, artifact));
+  const choosingEntry = (!session || newEvaluation);
+  const startChatError = new TextEncoder().encode(startInputs.chat || "").length > messageLimit ? `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.` : undefined;
+  const actor = authUser?.id || "guest";
+  const [otherSource, setOtherSource] = useState<{ actor: string; kind: ImproveSource; projectID?: string; reportClosed?: boolean }>();
+  const source = otherSource?.actor === actor && (startDoor === "improve" || otherSource.projectID === session?.id) ? otherSource : undefined;
+  const emptyProject = !newEvaluation && session?.document.evaluation && !session.document.messages.length && !session.document.artifacts.length && !session.operations.length && !session.document.build && (!source?.projectID || source.kind === "chat") && !startedProjects.current.has(session.id) && !pendingMessage && !uncertain && !error;
+  const buildBlockedReason = emptyProject ? !inferenceAvailable ? unavailableReason : undefined : lazyBuildBlockedReason;
+  const visibleStart = startDoor || (emptyProject ? session.document.evaluation?.door === "build" ? "build" : "improve" : undefined);
+  const sourceForProject = source?.projectID === session?.id ? source?.kind : undefined;
+  const [feedbackTarget, setFeedbackTarget] = useState<"project" | "guide" | "edit" | "run" | "trial" | "recorded">("project");
+  // The entry screen offers the latest active project first, when no project is open.
+  const latestContext = contexts.find(context => !context.archived_at && !discardedContextIDs.current.has(context.id));
+  const recentProject: RecentProject | undefined = latestContext && { title: projectTitle(latestContext), ...recentProjectSummary(latestContext), onOpen: () => { setFeedbackTarget("project"); void switchContext(latestContext.id); } };
+  const [creditsOpen, setCreditsOpen] = useState(false);
+  const [utilitySheet, setUtilitySheet] = useState(false);
+  // One dialog at a time: Settings closes, then the dialog it asked for opens.
+  const afterSettings = useRef<(() => void) | null>(null);
+  const fromSettings = (action: () => void) => { afterSettings.current = action; setSettingsOpen(false); };
+  const workspaceSelect = useRef<HTMLSelectElement>(null);
+  const choosingWorkspace = !!authUser && (!navigation.session || newEvaluation);
+  const workspaceName = workspaces.find(item => item.id === workspace)?.name;
+  // The sidebar covers even a single workspace before automatic selection finishes.
+  const workspacePicker = choosingWorkspace && (workspaces.length > 0 || saveAccess === "loading");
+  const workspaceChoice = choosingWorkspace && (workspaces.length > 1 ? <div className="vibe-entry-workspace">
+    <label>Workspace for new projects<select ref={workspaceSelect} aria-label="Workspace for new projects" aria-describedby={workspaceName ? undefined : "vibe-workspace-hint"} value={workspace} disabled={pending} onChange={event => setWorkspace(event.target.value)}><option value="">Choose a workspace</option>{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    {!workspaceName && <p id="vibe-workspace-hint">Choose a workspace to use its credits.</p>}
+  </div> : saveAccess === "loading" && !!config && <p className="vibe-connection-status mt-3" role="status">Loading workspaces…</p>);
+  const resultSources = session && artifact && authUser && session.workspace_id ? [
+          <CanonicalResults hideEmptyHistory key="application" selected={selectedCanonical} onRefreshSelected={retrySelectedResult} sessionId={session.id} workspaceId={session.workspace_id} actorScope={authUser?.id || "guest"} token={token} access={evidenceAccess.access} onSelectResult={onSelectResult} onExport={result=>{const pinned=session.document.artifacts.find(a=>a.id===result.binding.artifact_id);if(pinned)void exporter.startResult(pinned,result.binding.result_ref)}}/>,
+          <SDKReports hideEmptyHistory key="sdk" selectedReport={selectedSDKReport} sessionId={session.id} workspaceId={session.workspace_id} artifactId={artifact.id} actorScope={authUser?.id || "guest"} token={token} access={evidenceAccess.access} onSelectResult={onSelectResult} revision={session.revision} models={models} inferenceAvailable={sdkInferenceAvailable} refresh={session.event_cursor} onPromoted={onSDKPromoted} onRegraded={onSDKRegraded} onExport={report=>{const pinned=session.document.artifacts.find(a=>a.id===report.binding.artifact_id);if(pinned)void exporter.startResult(pinned,report.binding.result_ref);}} />,
+  ] : [];
+  if (selectedResult?.result_ref.kind === "sdk_report") resultSources.reverse();
+  const trialSubmission = !!submission.current && JSON.parse(submission.current.body).kind === "playground";
+  const submissionRecovery = <>            {uncertain && !submission.current?.retryOperationID && (
+              <div className="space-y-2 text-sm vibe-muted">
+                <p>
+                  The submission acknowledgement was not confirmed. Retry to
+                  recover its saved status. Your next message stays here.
+                </p>
+                <VibeButton disabled={pending} onClick={retrySubmission}>
+                  Retry submission
+                </VibeButton>
+              </div>
+            )}
+</>;
 return (
-    <main className="vibe-workspace dark flex h-dvh flex-col overflow-hidden font-sans">
-      <Dialog open={!!runQuote} onOpenChange={open => { if (!open) setRunQuote(undefined); }}>
+    <VibeAppearance>
+ <ExportDialog controller={exporter}/>
+      <Dialog open={!!runQuote && !utilitySheet} onOpenChange={open => { if (!open) setRunQuote(undefined); }}>
         <DialogContent className="vibe-workspace vibe-dialog" initialFocus={quoteHeading} finalFocus={() => {
           const trigger = quoteTrigger.current;
           return trigger?.isConnected && !trigger.matches(":disabled") ? trigger : document.getElementById("vibe-trial-message") || document.getElementById("vibe-message");
-        }}><DialogTitle ref={quoteHeading} tabIndex={-1}>{runQuote?.kind === "message" ? "Try tougher situations" : runQuote?.baseline ? "Rerun the same examples" : "Try these examples"}</DialogTitle>
+        }}><DialogTitle ref={quoteHeading} tabIndex={-1}>{runQuote?.kind === "message" ? "Run harder tests" : runQuote?.baseline ? "Run the same tests again" : "Run these tests"}</DialogTitle>
           <div className="vibe-dialog-body">
-          <DialogDescription>{runQuote?.kind === "message" ? `${runQuote.extra.additional_examples} new situations + ${(runQuote.quote.cases || 0) - (runQuote.extra.additional_examples || 0)} existing examples` : `${runQuote?.quote.cases} examples`} · up to {dollars(runQuote?.quote.max_cost_nano_usd || 0)}. Usually a few minutes; provider queues can take longer. {runQuote?.kind === "message" ? "Includes preparation, review, bounded repairs and running this batch. Existing cases and their earlier results stay unchanged." : runQuote?.baseline ? "The same examples and grading stay fixed. Earlier results are kept." : "This run uses the selected instructions or recorded replies."}</DialogDescription>
-          <VibeButton variant="primary" disabled={busy || runQuote?.sessionID !== sessionID || runQuote?.revision !== session?.revision} onClick={() => { if (!runQuote) return; const q=runQuote; setRunQuote(undefined); void submit(q.kind,q.content || "",q.baseline,{...q.extra,...(q.extra.cycle_id ? {} : {run_quote_id:q.quote.id})}); }}>{runQuote?.kind === "message" ? "Prepare and run this batch" : `Run ${runQuote?.quote.cases} examples`}</VibeButton>
-          <VibeButton variant="quiet" onClick={() => setRunQuote(undefined)}>Cancel</VibeButton>
-        </div></DialogContent>
+          <DialogDescription>{testCount(runQuote?.quote.cases || 0)} · up to {dollars(runQuote?.quote.max_cost_nano_usd || 0)}.</DialogDescription>
+          <details><summary className="min-h-11 cursor-pointer py-3 focus-visible:outline-2 focus-visible:outline-offset-4">What happens when I run?</summary><div className="mt-3 space-y-3">
+            <p>{runQuote?.kind === "message" ? "We prepare and run the new tests. Earlier tests and results are kept." : runQuote?.extra.purpose === "regrade" ? "The grading model grades the same saved replies again. Your agent is not called." : artifacts.find(item => item.id === runQuote?.extra.artifact_id)?.conversation_evaluation ? "The grading model checks your saved conversations and rules. No new replies are generated and your app is not called. We send the saved conversations and rules to the grading provider and store the grades." : "The selected model writes text replies from your saved instructions. We grade and store those replies and results."}</p>
+            {runQuote?.extra.case_keys && <p>Selected tests: {runQuote.extra.case_keys.join(", ")}.</p>}
+            <p>{artifacts.find(item => item.id === runQuote?.selectionArtifact)?.title || "Selected project"} · up to {runQuote?.quote.calls} model calls · {funding}.</p>
+            <VibeButton variant="quiet" disabled={busy} onClick={() => { if (!runQuote) return; const q = runQuote; if (q.kind === "message") void requestPreparation(q.content || "", q.extra.additional_examples || 0, q.extra.artifact_id || ""); else void requestRun(q.baseline, q.extra.evidence_set_id, q.extra.purpose, q.extra.case_keys && q.extra.retry_source_result_ref && q.extra.artifact_id ? {case_keys:q.extra.case_keys,retry_source_result_ref:q.extra.retry_source_result_ref,artifact_id:q.extra.artifact_id} : undefined, q.recordedArtifactID); }}>Refresh estimate</VibeButton>
+          </div></details>
+          {runQuoteState === "preparation" ? <p role="status">Preparing estimate…</p> : runQuoteState === "failure" ? <p role="alert">Estimate failed: {runQuoteError}. Nothing ran.</p> : !runQuoteCurrent && <p role="status">This estimate expired or the project changed. Refresh it before running.</p>}
+          </div>
+          <div className="vibe-dialog-actions">
+
+            <VibeButton onClick={() => setRunQuote(undefined)}>Cancel</VibeButton>
+            <VibeButton variant="primary" disabled={busy || !(runQuote?.kind === "message" ? inferenceAvailable : runInferenceAvailable) || !runQuoteCurrent} onClick={() => { if (!runQuote || !isRunQuoteCurrent()) return; const q=runQuote; setRunQuote(undefined); void submit(q.kind,q.content || "",q.baseline,{...q.extra,...(q.extra.cycle_id ? {} : {run_quote_id:q.quote.id})}); }}>Start run</VibeButton>
+          </div></DialogContent>
       </Dialog>
-      <VibeConnection.Provider value={{ token, contact: config?.contact }}><EvaluationNavigation enabled={twoDoor} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
-        choosing={newEvaluation} disabled={!config || pending || uncertain || dirtyArtifact}
+      <VibeConnection.Provider value={{ token, contact: vibeContact(config?.contact) }}><ImproveRunProvider now={serverNow} admitted={runQuote} creditError={improveCreditError} onClearError={() => { setError(""); if (runQuoteState === "failure" && !busy) void requestRun(improveBaseline, artifact?.conversation_evaluation?.evidence_set_id, undefined, undefined, recordedUpdate?.artifactID === artifact?.id ? artifact?.id : undefined); }} session={session} artifact={artifact} models={models} baseline={improveBaseline} onCredits={() => setCreditsOpen(true)}><EvaluationNavigation signInReturnPath={startDoor ? `/vibe-evals?start=${startDoor}` : undefined} actorScope={authUser?.id || "guest"} archiveMode={archiveMode} onArchiveMode={setArchiveMode} onMetadata={metadata} workspace={choosingWorkspace && workspaces.length > 0 ? { name: workspaceName, onChange: () => workspaceSelect.current?.focus() } : undefined} accountLabel={authLoading ? "Loading account…" : authUser ? authUser.email || "Signed in account" : "Guest · private to this browser"} listStatus={contextList.status} onRetryList={contextList.retry} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
+        choosing={newEvaluation} disabled={!config || pending || uncertain}
         onDeleted={id => {
           discardedContextIDs.current.add(id);
           setContexts(old => old.filter(item => item.id !== id));
@@ -61,36 +145,46 @@ return (
           if (sessionID === id) { select(); drafts.activate(); setNewEvaluation(true); setContent(""); setPendingMessage(undefined); setError(""); navigation.writeURL(new URL("/vibe-evals", window.location.origin)); }
         }}
         onNew={openNewEvaluation}
-        onSwitch={id => { if (id === sessionID) setNewEvaluation(false); else void switchContext(id); }}
+        onSwitch={id => { setFeedbackTarget("project"); if (id === sessionID) setNewEvaluation(false); else void switchContext(id); }}
         onSettings={() => setSettingsOpen(true)} onSavedWork={() => setSavedWorkOpen(true)}>
-      {navigationToggle => <EvaluationWorkspace
+      {navigationToggle => <EvaluationWorkspace onExport={(a,o)=>void exporter.start(a,o)} onOriginal={a=>void exporter.original(a)}
         key={session?.id || "entry"}
-        twoDoor={twoDoor}
+        sourceIntent={sourceForProject === "live_app" || sourceForProject === "sdk_report" ? sourceForProject : undefined}
+        startScreen={visibleStart ? <div className="vibe-start-region">{!browserReady && <p className="vibe-connection-status vibe-start-loading" role="status">Loading…</p>}<div style={{ visibility: browserReady ? undefined : "hidden" }} inert={!browserReady}>{startDoor && pendingStartDraft && <div role="status" className="mx-auto flex max-w-2xl flex-wrap items-center gap-2 px-6"><p>You have text from before you signed in.</p><VibeButton disabled={pending} onClick={() => resolvePendingStart(true)}>Use it</VibeButton><VibeButton disabled={pending} onClick={() => resolvePendingStart(false)}>Discard</VibeButton></div>}{visibleStart === "improve" && source ? <ImproveOtherStart key={source.kind} source={source.kind} projects={contexts} workspace={workspace} loading={contextList.status === "loading"} failed={["failed", "forbidden", "signed_out"].includes(contextList.status)} busy={pending} blockedReason={!(emptyProject ? inferenceAvailable : entryAvailable) ? unavailableReason : startChatError} draft={startInputs.chat || ""} onDraft={chat => setStartInputs({ chat })} onSend={() => { void startProject("test", { kind: "chat", text: startInputs.chat || "" }); }} onProject={id => { setOtherSource({ actor, kind: source.kind, projectID: id }); void switchContext(id).then(() => { if (source.kind === "sdk_report" && new URL(window.location.href).searchParams.get("session") === id) navigate("checks"); }); }} onRetry={contextList.retry} onBack={() => setOtherSource(undefined)} error={startError} /> : visibleStart === "build" ? <><BuildStart draft={emptyProject ? content : startBuildDraft.value} onDraft={emptyProject ? text => { composerEdits.current++; setContent(text); } : startBuildDraft.setValue} price={buildPrice} trialUsed={!authUser && !!startConfig?.guest_trial?.initial_build_used} busy={pending} error={startError} blockedReason={(emptyProject ? messageError : undefined) || (emptyProject && materials.blocked ? "Review your attached material before building." : buildBlockedReason)} onStart={text => void startProject("build", { kind: "build", text })} onSwitchDoor={() => chooseDoor("test")} onBack={backFromStart} />{emptyProject && config?.material_build && <div className="vibe-column"><TaskInput configure inputs={materials} pdfAvailable={!!config.pdf_uploads} disabled={busy} /></div>}</> : <ImproveStart mode={startInputs.mode || "instructions"} onMode={mode => setStartInputs({ mode })} drafts={{ ...startInputs, model: startInputs.model || config?.defaults.target }} onDraft={setStartInputs} models={config?.models || []} signedIn={!!authUser} busy={pending} error={startError} blockedReason={!config || configError ? unavailableReason : startInputs.mode && startInputs.mode !== "instructions" ? undefined : !(emptyProject ? inferenceAvailable : entryAvailable) ? unavailableReason : undefined} onWriteTests={input => void startProject("test", { kind: "instructions", ...input })} onSaveReplies={input => void startProject("test", { kind: "replies", ...input })} onImportPack={file => void startProject("test", { kind: "pack", file })} onOther={kind => setOtherSource({ actor, kind, ...(emptyProject ? { projectID: session.id } : {}) })} onSwitchDoor={() => chooseDoor("build")} onBack={backFromStart} />}</div></div> : undefined}
         navigationToggle={navigationToggle}
         newEvaluation={newEvaluation}
-        contextNavigationBlocked={!config?.enabled || pending || uncertain || dirtyArtifact}
+        contextNavigationBlocked={!config || pending || uncertain}
+        entryBlocked={!entryAvailable}
+        entryNotice={startDoor && (!browserReady || !config && !configError) ? undefined : <>{workspaceChoice}{!entryAvailable && (config || configError ? (configError || !(workspacePicker && !workspaceName)) && <div className="vibe-entry-availability">
+          {configError ? <><p role="alert">Couldn’t connect. Try again.{content.trim() ? " Your message is still here." : ""}</p><VibeButton variant="quiet" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Retry connection</VibeButton></>
+            : choosingWorkspace && !workspaceName && saveAccess === "ready" ? <><p role="status">You need a workspace to start a project. Create one from your dashboard, or ask a workspace owner for access.</p><Link className="underline" href="/dashboard">Open your dashboard</Link></>
+            : choosingWorkspace && !workspaceName && saveAccess === "error" ? <><p role="alert">Your workspaces couldn’t be loaded.</p><VibeButton variant="quiet" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Try again</VibeButton></>
+            : choosingWorkspace && !workspaceName && saveAccess === "signed_out" ? <><p role="alert">Your sign-in expired. Sign in again to choose a workspace.</p><Link className="underline" href={`/auth/login?returnTo=${encodeURIComponent("/vibe-evals")}`}>Sign in again</Link></>
+            : <><p role="status">{unavailableReason}</p><VibeButton variant="quiet" onClick={() => setSettingsOpen(true)}>Review settings</VibeButton></>}
+        </div> : <p className="vibe-connection-status mt-3" role="status">Connecting…</p>)}</>}
         onCancelNew={() => setNewEvaluation(false)}
-        canChangeDoor={canChangeDoor}
-        onChangeDoor={() => void changeDoor()}
         savedWorkOpen={savedWorkOpen}
         onSavedWorkOpenChange={setSavedWorkOpen}
-        onDoor={door => void chooseDoor(door)}
-        contextControl={activeContext && <p className="vibe-context-label" aria-label="Active evaluation" title={`${activeContext.title} · ${activeContext.scope}`}>
+        onDoor={door => void chooseDoor(door)} recentProject={recentProject}
+        contextControl={activeContext && <p className="vibe-context-label" aria-label="Active project" title={`${activeContext.title} · ${activeContext.scope}`}>
           <span className="vibe-context-dot" aria-hidden="true" /><span className="vibe-context-title">{activeContext.title}</span><span>· {activeContext.scope}</span>
         </p>}
         buildStart={buildStart}
+        arrival={arrival}
+        takeStartFocus={takeStartFocus}
         onSample={() => sendMessage("I don’t know. Use a clearly labelled sample policy or a narrower sample demonstration.")}
         onDemo={id => sendMessage("Try a sample email assistant", undefined, id)}
-        materialInput={(config?.material_build || !!materials.items.length) && buildJourney && buildStart ? <TaskInput key={`${sessionID}:${materialScope}`} configure inputs={materials} pdfAvailable={!!config?.material_build && !!config?.pdf_uploads} disabled={busy || !config?.enabled || !config?.material_build} /> : undefined}
-        sendBlocked={!!artifact?.missing_references?.length || !config?.enabled || (!!materials.bindings.length && !config?.material_build) || (buildStart && (!quoteMatches || materials.blocked))}
-        sendError={buildStart ? quoteError : undefined}
+        materialInput={(config?.material_build || !!materials.items.length) && buildJourney && buildStart ? <TaskInput key={`${sessionID}:${materialScope}`} configure inputs={materials} pdfAvailable={!!config?.material_build && !!config?.pdf_uploads} disabled={busy || !config?.material_build} /> : undefined}
+        runInferenceUnavailable={!runInferenceAvailable}
+        inferenceUnavailable={!inferenceAvailable || !session && !entryAvailable}
+        sendBlocked={!inferenceAvailable || !!messageError || !!artifact?.missing_references?.length || (!!materials.bindings.length && !config?.material_build) || buildStart && (!quoteMatches || materials.blocked)}
+        sendError={messageError || (buildStart ? quoteError : undefined)}
         testJourney={testJourney}
         interactionActions={config?.interaction_actions}
         onChoice={applyChoice}
         onReloadChoices={reloadChoices}
         modelLabel={
-          config?.models?.find((m) => m.id === models.target)?.name ||
-          models.target
+          friendlyModelName(config?.models?.find((m) => m.id === models.target) || { id: models.target })
         }
         session={session}
         artifact={artifact}
@@ -103,13 +197,26 @@ return (
         checkingTestChanges={pendingEdit?.artifactID === artifact?.id && !!pendingEdit}
         pendingMessage={pendingMessage}
         requestedRunID={requestedRunID}
+        connectorSettings={session && artifact && <ConnectorSetup sessionId={session.id} workspaceId={session.workspace_id || ""} artifactId={artifact.id} actorScope={authUser?.id || "guest"} token={token} access={evidenceAccess.access} onRunCreated={onSelectResult}/>}
+        selectedResult={selectedResult}
+        onSelectResult={onSelectResult}
+        externalResults={session && artifact && <div className="vibe-sdk-results">
+          {selectedResultLoading && <p role="status">Loading selected result…</p>}
+          {selectedResultError && <div role="alert"><p>{selectedResultError}</p><VibeButton onClick={retrySelectedResult}>Retry selected result</VibeButton></div>}
+          {evidenceAccess.access.status === "unavailable" && <div role="alert"><p>Workspace access could not be confirmed.</p><VibeButton onClick={evidenceAccess.retry}>Retry workspace access</VibeButton></div>}
+          {resultSources}
+          {evidenceResult&&<ObservedResults binding={evidenceResult} actorScope={authUser?.id||"guest"} workspaceId={session.workspace_id} token={token} access={evidenceAccess.access} onExport={()=>{const pinned=session.document.artifacts.find(a=>a.id===evidenceResult.artifact_id);if(pinned)void exporter.startResult(pinned,evidenceResult.result_ref,"selected",undefined,true)}}/>}
+          {authUser && session.workspace_id && evidenceAccess.access.canWrite && <details open={sourceForProject === "sdk_report" && !source?.reportClosed || undefined} onToggle={event => { if (!event.currentTarget.open && sourceForProject === "sdk_report") setOtherSource(current => current && { ...current, reportClosed: true }); }}><summary>Import SDK report</summary><SDKReportImportForm sessionId={session.id} workspaceId={session.workspace_id} artifactId={artifact.id} actorScope={authUser?.id || "guest"} token={token} access={evidenceAccess.access} onImported={binding=>{onSelectResult(binding);void snapshots.reload();}} /></details>}
+        </div>}
+        selectedCase={navigation.case}
+        onSelectCase={key => navigation.update({ case: key })}
         quickChecking={runPending}
         pendingLabel={
-          (loadingSession && !session ? "Loading your conversation…" : undefined) ||
+          (loadingSession && !session ? "Loading your project…" : undefined) ||
           pendingAction ||
           (pending && !active
             ? runPending
-              ? "Starting your check…"
+              ? "Starting your run…"
               : pendingMessage
                 ? "Sending your message…"
                 : "Saving your changes…"
@@ -121,15 +228,13 @@ return (
           composerEdits.current++;
           setContent(value);
         }}
-        onSend={context => sendMessage(content, context)}
+        onSend={context => { setFeedbackTarget("guide"); return sendMessage(content, context); }}
         onTougher={(text, count, artifactID) => {
-          navigate("build");
-          setSelectedArtifactID(null);
-          void requestPreparation(text, count, artifactID);
+          setFeedbackTarget("run"); void requestPreparation(text, count, artifactID);
         }}
         onMessage={(text, operation, instructions) => {
-          navigate("build");
-          void submit("message", instructions && session?.document.format_version === 1 ? `${text}\n\nAgent instructions to check:\n${instructions}` : text, undefined, {
+          setFeedbackTarget("guide"); navigate("build");
+          void submit("message", instructions && session?.document.format_version === 1 ? `${text}\n\nAgent instructions to test:\n${instructions}` : text, undefined, {
             ...(instructions ? { instructions } : {}),
             ...(operation
               ? {
@@ -143,15 +248,25 @@ return (
           });
         }}
         onNavigate={navigate}
-        onSelectRun={run => { navigation.update({ view: "checks", run }); currentView.current = "checks"; }}
-        onRun={(baseline, evidenceID) => void requestRun(baseline, evidenceID)}
-        onEdit={edit}
+        onSelectRun={run => navigation.update({ view: "results", run })}
+        onRun={(baseline, evidenceID, recordedArtifactID) => { setFeedbackTarget("run"); void requestRun(baseline, evidenceID, undefined, undefined, recordedArtifactID); }}
+        recordedUpdate={recordedUpdate}
+        onNewReplies={startRecordedUpdate}
+        onCloseRecordedUpdate={closeRecordedUpdate}
+        onReloadEvidence={() => { void snapshots.reload(); }}
+        onRetryCases={(source, caseKeys) => { setFeedbackTarget("run"); const id=source.source?.artifact_id || source.results[0]?.version; if(id) void requestRun(undefined,source.source?.evidence_set_id,undefined,{case_keys:caseKeys,retry_source_result_ref:{kind:"vibe_operation",id:source.id},artifact_id:id}); }}
+        onRecordedEvidence={request => { setFeedbackTarget("recorded"); return addRecordedEvidence(request); }}
+        onEdit={fields => { setFeedbackTarget("edit"); return edit(fields); }}
         onDirty={(dirty) => {
+          const selected = new URL(window.location.href).searchParams.get("agent");
+          if (selected && selected !== artifact?.id) return;
           setChecksDirtyID(dirty ? artifact?.id || null : null);
           if (dirty && artifact) setSelectedArtifactID(artifact.id);
         }}
         onSave={openSave}
         onSettings={() => setSettingsOpen(true)}
+        estimateOpen={!!runQuote}
+        onUtilitySheet={setUtilitySheet}
         importNotice={importError && importError.sessionID === sessionID && !newEvaluation && <div ref={importNotice} tabIndex={-1} className="vibe-import-error" role="alert">
           <p>{importError.message}</p>
           <VibeButton variant="quiet" disabled={busy} onClick={() => file.current?.click()}>Choose a file</VibeButton>
@@ -159,7 +274,7 @@ return (
         onImport={() => file.current?.click()}
         loadEvidence={loadSavedCase}
         onAction={operationAction}
-        onRegrade={config?.grading_recheck ? operation => void requestRun(operation, undefined, "regrade") : undefined}
+        onRegrade={config?.grading_recheck ? operation => { setFeedbackTarget("run"); void requestRun(operation, undefined, "regrade"); } : undefined}
         onDispute={(rule, result, operation) => {
           const source = artifacts.find((a) => a.id === result.version);
           if (source) setSelectedArtifactID(source.id);
@@ -178,13 +293,28 @@ return (
             document.getElementById("vibe-message")?.focus(),
           );
         }}
-        savedChecks={savedChecks}
+        savedChecks={savedChecks} savedListStatus={savedList.status} onRetrySaved={savedList.retry}
+        feedbackTarget={feedbackTarget}
+        actionError={!saveOpen && (!inlineCreditError || feedbackTarget === "edit") && feedbackTarget !== "project" && !/selected result is unavailable/.test(error) ? error : undefined}
+        runNotice={!runQuote && <>
+            {runQuoteState === "preparation" && <p role="status">Preparing estimate…</p>}
+            {runQuoteState === "failure" && !inlineCreditError && <p role="alert">Couldn&apos;t get the price. {runQuoteError} Nothing ran. Try Run again.</p>}
+        </>}
+        composerNotice={<>{error && pendingMessage && !busy && <VibeButton onClick={() => retryUnsentMessage.current?.()}>Retry unsent message</VibeButton>}            {!drafts.storageAvailable && <p role="status">Browser storage is unavailable. Drafts stay while this page is open, but cannot be restored after a full reload.</p>}{!trialSubmission && submissionRecovery}
+            {dirtyArtifact && !testJourney && (
+              <p className="mb-3 text-sm vibe-muted">
+                Save or discard your edits before starting a run or sending a
+                message.
+              </p>
+            )}</>}
         notice={
           <>
             {session && artifact && !!artifact.missing_references?.length && <MissingReferences session={session} artifact={artifact} inputs={materials} busy={busy || dirtyArtifact} token={token} onBoundSession={(incoming, boundArtifactID) => { if (snapshots.accept(incoming)) setSelectedArtifactID(boundArtifactID); }} />}
             {session && artifact && !!artifact.missing_references?.length && <TaskInput inputs={materials} pdfAvailable={!!config?.material_build && !!config?.pdf_uploads} disabled={busy || dirtyArtifact || !config?.enabled || !config?.material_build} />}
-            {!config && !configError && <p className="vibe-connection-status" role="status">Connecting…</p>}
-            {configError && (
+            {!newEvaluation && !saveOpen && error && (feedbackTarget === "project" || /selected result is unavailable/.test(error) || !artifact && view !== "build") && <p role="alert">{error}</p>}
+            {config && !inferenceAvailable && !choosingEntry && <p role="status">{unavailableReason}</p>}
+            {!choosingEntry && !config && !configError && <p className="vibe-connection-status" role="status">Connecting…</p>}
+            {!choosingEntry && configError && (
               <div className="mb-3 space-y-2 text-sm">
                 <p role="alert">
                   Couldn’t connect. Try again.{content.trim() ? " Your message is still here." : ""}
@@ -196,27 +326,28 @@ return (
                 </VibeButton>
               </div>
             )}
+
             {savedDraft && (
               <div className="mb-3 space-y-2 text-sm vibe-muted">
                 <p>
                   {saved
                     ? testJourney
                       ? "Your tests are saved. Find them in Saved work whenever you update your agent."
-                      : "Your agent and checks are saved."
+                      : "Your agent and tests are saved."
                     : savedModelNotice}
                 </p>
                 <Link
                   className="underline"
-                  href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}
+                  href={advancedURL(savedDraft.workspace_id,savedDraft.draft_id,projectReturnPath,session?projectTitle(session):undefined)}
                 >
                   {testJourney
                     ? "Open tests in the advanced editor"
-                    : "Open your evaluation"}
+                    : "Open in the advanced editor"}
                 </Link>
               </div>
             )}
             {workspace && !testJourney && !session?.document.evaluation_first && (
-              <CreditsDialog workspace={workspace} />
+              <Button variant="ghost" size="sm" onClick={() => setCreditsOpen(true)}>Credits</Button>
             )}
             {artifact &&
               artifact.kind !== "test_plan" &&
@@ -230,22 +361,9 @@ return (
                   Save agent
                 </VibeButton>
               )}
-            {sessionUnavailable && !loadingSession && (
-              <p role="status" className="mb-3 text-sm vibe-muted">
-                This conversation could not be loaded.
-              </p>
-            )}
-            {session && selectedArtifactID && !artifact && <p role="alert" className="text-sm text-builder-warn">This test version is unavailable. Open History to choose saved work.</p>}
-            {(error || snapshots.loadError) && (
-              <p role="alert" className="mb-3 text-sm text-builder-warn">
-                {error || snapshots.loadError}
-              </p>
-            )}
-            {error && pendingMessage && !busy && (
-              <VibeButton onClick={() => retryUnsentMessage.current?.()}>
-                Retry unsent message
-              </VibeButton>
-            )}
+            {session && selectedArtifactID && !artifact && <p role="alert" className="text-sm text-builder-warn">This test version is unavailable. Choose another version in Settings.</p>}
+            {!saveOpen && (snapshots.loadError || sessionUnavailable && !loadingSession) && <p role="alert">{snapshots.loadError || "This project could not be loaded."}</p>}
+            {authUser && snapshots.loadError?.includes("Sign in again") && <Link href={`/auth/login?returnTo=${encodeURIComponent(`/vibe-evals?${new URLSearchParams({ ...(sessionID ? { session: sessionID } : {}), view: navigation.view })}`)}`}>Sign in again</Link>}
             {session?.operations.at(-1)?.error && !session.operations.at(-1)?.completion_receipt && !session.operations.at(-1)?.retry_of_operation_id && !session.document.messages.some(message => message.role === "user" && message.origin !== "playground" && message.operation_id === session.operations.at(-1)?.id) && (
               <p role="alert" className="mb-3 text-sm text-builder-warn">
                 {session.operations.at(-1)?.error?.message}
@@ -281,35 +399,18 @@ return (
                     setContent(content);
                     setError("");
                     setConnection("");
-                    navigation.writeURL(new URL(`/vibe-evals${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`, window.location.origin));
-                    document.getElementById("vibe-message")?.focus();
+                    startBuildDraft.setValue(content);
+                    chooseDoor("build");
                   }}
                 >
-                  Keep message in a new conversation
+                  Keep message in a new project
                 </VibeButton>
               )}
-            {uncertain && !submission.current?.retryOperationID && (
-              <div className="space-y-2 text-sm vibe-muted">
-                <p>
-                  The submission acknowledgement was not confirmed. Retry to
-                  recover its saved status. Your next message stays here.
-                </p>
-                <VibeButton disabled={pending} onClick={retrySubmission}>
-                  Retry submission
-                </VibeButton>
-              </div>
-            )}
-            {dirtyArtifact && !testJourney && (
-              <p className="mb-3 text-sm vibe-muted">
-                Save or discard your edits before running a check or sending a
-                message.
-              </p>
-            )}
+
             {latestArtifact && artifact?.id !== latestArtifact.id && (
               <VibeButton
                 disabled={busy || dirtyArtifact}
                 onClick={() => {
-                  setSelectedArtifactID(latestArtifact.id);
                   navigate("build", latestArtifact.id, "");
                 }}
               >
@@ -319,59 +420,59 @@ return (
           </>
         }
         preview={
-          <PrototypeTrial inline={buildJourney} dock={buildJourney} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} executionAvailable={!artifact?.missing_references?.length && !!config?.enabled && (!materials.bindings.length || !!config?.material_build)} busy={busy || dirtyArtifact || materials.blocked} text={trialText} hasMaterial={materials.bindings.length > 0}
-            materialInput={(config?.material_build || !!materials.items.length) && buildJourney ? <TaskInput key={`${sessionID}:${materialScope}`} inputs={materials} pdfAvailable={!!config?.material_build && !!config?.pdf_uploads} disabled={busy || dirtyArtifact || !config?.enabled || !config?.material_build} /> : undefined}
-            onText={setTrialText} onSend={() => void submit("playground", trialText)}
+          <PrototypeTrial workspace notice={trialSubmission ? submissionRecovery : undefined} sessionID={session?.id} sendError={feedbackTarget === "trial" ? error : undefined} error={new TextEncoder().encode(trialText).length > messageLimit ? `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.` : undefined} inline={buildJourney} dock={false} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} busy={busy} inferenceBlocked={!inferenceAvailable || dirtyArtifact || trialMaterials.blocked || !!artifact?.missing_references?.length || (!!trialMaterials.bindings.length && !config?.material_build)} text={trialText} hasMaterial={trialMaterials.bindings.length > 0}
+            materialInput={(config?.material_build || !!trialMaterials.items.length) && buildJourney ? <TaskInput key={`${sessionID}:${materialScope}`} inputs={trialMaterials} pdfAvailable={!!config?.material_build && !!config?.pdf_uploads} disabled={busy || dirtyArtifact || !config?.material_build} /> : undefined}
+            onText={setTrialText} onSend={() => { setFeedbackTarget("trial"); void submit("playground", trialText); }}
             onBack={() => navigate("build")} onNew={newTrial} thread={threadID}
             history={trialHistory} messages={trialMessages}
             model={config?.models?.find(m => m.id === models.target)}
             example={evaluation?.scenarios?.[0]?.input || evaluation?.examples[0]}
             onThread={id => {
               const next = trialHistory.find(t => t.id === id);
-              setThreadID(id);
               if (next?.model) setModels(old => ({ ...old, target: next.model! }));
               navigate(buildJourney && view !== "try" ? "build" : "try", artifact?.id, id);
             }} />
         }
       />
       }
-      </EvaluationNavigation></VibeConnection.Provider>
-      <AgentSettings loadMaterials={materials.list} open={settingsOpen} onOpenChange={setSettingsOpen}
+      </EvaluationNavigation></ImproveRunProvider></VibeConnection.Provider>
+      <AgentSettings loadMaterials={materials.list} reimport={session && artifact && artifact.kind !== "test_plan" ? <ReimportReview key={`${authUser?.id}:${session.id}:${artifact.id}`} actor={authUser?.id || "guest"} session={session} artifact={artifact} token={token} disabled={busy || dirtyArtifact} onApplied={updated => { if (accept(updated)) { const next = updated.document.artifacts.at(-1); if (next) navigate("tests", next.id, ""); setSettingsOpen(false); } }} /> : undefined} open={settingsOpen} onOpenChange={setSettingsOpen}
+        onOpenChangeComplete={open => { const action = afterSettings.current; afterSettings.current = null; if (!open) action?.(); }}
         config={config} session={session} artifact={artifact} artifacts={artifacts}
         models={models} busy={busy || dirtyArtifact} workspace={workspace}
-        testJourney={testJourney} savedDraft={savedDraft} onModels={changeModels}
-        onVersion={id => {setSelectedArtifactID(id); setThreadID(""); navigate(view, id, "");}}
-        onSave={() => void openSave()} onImport={() => file.current?.click()}
-        onExportConversation={() => void exportConversation()} />
+        testJourney={testJourney} projectReturnPath={projectReturnPath} savedDraft={savedDraft} onModels={changeModels}
+        onVersion={id => navigate(view, id, "")}
+        onSave={() => fromSettings(() => void openSave())} onCredits={() => fromSettings(() => setCreditsOpen(true))} onImport={() => file.current?.click()}
+        onExportConversation={() => fromSettings(() => void exportConversation())} />
+      {workspace && <CreditsDialog key={workspace} workspace={workspace} open={creditsOpen} onOpenChange={setCreditsOpen} />}
       <input
         ref={file}
         type="file"
         accept=".json,.yaml,.yml"
         className="hidden"
-        aria-label="Evaluation file"
+        aria-label="Test pack file"
         onChange={(e) => upload(e.target.files?.[0])}
       />
       <Dialog open={saveOpen} onOpenChange={closeSave}>
-        <DialogContent className="vibe-workspace">
+        <DialogContent className="vibe-workspace vibe-dialog">
           <DialogTitle>
-            {artifact?.kind === "test_plan" ? "Keep this brief" : testJourney
+            {saveArtifact?.kind === "test_plan" ? "Keep this brief" : testJourney
               ? "Keep these tests"
               : saveTarget
-                ? "Save this check"
-                : "Save agent and checks"}
+                ? "Save this result"
+                : "Save agent and tests"}
           </DialogTitle>
           <DialogDescription>
-            {artifact?.kind === "test_plan" ? "Keep your plan for when you’re ready. No agent or results are needed." : testJourney
+            {saveArtifact?.kind === "test_plan" ? "Keep your plan for when you’re ready. No agent or results are needed." : testJourney
               ? "Save this test set so you can run it again after changing your agent."
               : saveTarget
-                ? "Keep the source, expectations and this result together. Only you can reopen this check. Future runs use your workspace’s AI credits."
-                : `Save these instructions and ${scenarioCount || "the reviewed"} checks to your workspace. Future checks use your workspace’s AI credits.`}
+                ? "Keep the source, expectations and this result together. Only you can reopen this result. Future runs use your workspace’s AI credits."
+                : `Save these instructions and ${suiteCases(saveArtifact?.blueprint).length ? testCount(suiteCases(saveArtifact?.blueprint).length) : "the reviewed tests"} to your workspace. Future runs use your workspace’s AI credits.`}
           </DialogDescription>
-          {(error || snapshots.loadError) && (
-            <p role="alert" className="text-xs text-builder-warn">
-              {error || snapshots.loadError}
-            </p>
-          )}
+          <div className="vibe-dialog-body space-y-4">
+          <dl className="space-y-2 text-sm"><dt>Project</dt><dd className="break-words">{session?projectTitle(session):"Selected project"}</dd><dt>Version and tests</dt><dd>{saveArtifact?.title} · {saveArtifact?.id.slice(0,8)} · {saveArtifact?.conversation_evaluation?`${saveArtifact.conversation_evaluation.expectations?.length||0} expectations`:saveAdvanced?"Advanced test count is reviewed in the builder":testCount(suiteCases(saveArtifact?.blueprint).length)}</dd><dt>Baseline</dt><dd>{saveBaseline?`Run ${saveBaseline.slice(0,8)}`:"No baseline selected"}</dd><dt>Workspace and visibility</dt><dd>{workspaces.find(w=>w.id===workspace)?.name||"Choose a workspace"} · {saveTarget||saveArtifact?.kind==="test_plan"?"Private saved result or brief":"Workspace members can access the saved pack/build"}</dd></dl>
+          <p>Future runs use this workspace’s AI credits. Saving does not deploy or run anything.</p>
+          {advancedReceipt&&<a className="underline" href={advancedURL(advancedReceipt.workspace_id,advancedReceipt.draft_id,saveReturnPath,session?projectTitle(session):undefined)}>Open advanced editor and keep a return link</a>}
           {saveAccess === "loading" ? <p role="status" className="text-sm vibe-muted">Loading your workspaces…</p>
             : saveAccess === "error" ? <Button onClick={() => setLoadAttempt(n => n + 1)}>Try again</Button>
             : saveAccess === "ready" && !workspaces.length ? <p className="text-sm">You need a workspace you can save to. <Link className="underline" onClick={rememberSave} href={`/dashboard?${new URLSearchParams({ returnTo: keepReturnURL(sessionID || "", artifact?.id || "", workspace, saveBaseline) })}`}>Open your workspace</Link>, or ask its owner for access. Your work is still here.</p>
@@ -381,9 +482,10 @@ return (
                 Workspace
                 <select
                   aria-label="Save workspace"
+                  disabled={busy}
                   value={workspace}
                   onChange={(e) => setWorkspace(e.target.value)}
-                  className="mt-2 w-full rounded-lg border bg-background p-3"
+                  className="mt-2 w-full rounded-[var(--vibe-radius-sm)] border bg-background p-3"
                 >
                   {workspaces.map((w) => (
                     <option key={w.id} value={w.id}>
@@ -397,56 +499,50 @@ return (
                 disabled={
                   busy ||
                   dirtyArtifact ||
-                  !artifact ||
+                  !saveArtifact ||
                   !workspaces.some(w => w.id === workspace) ||
-                  (artifact?.kind === "test_plan" || saveTarget ? !!savedCheck : saved)
+                  (saveAdvanced?!!advancedReceipt:saveArtifact?.kind === "test_plan" || saveTarget ? !!savedCheck : saveComplete)
                 }
               >
-                {artifact?.kind === "test_plan" ? (savedCheck ? "Saved" : "Keep this brief") : saveTarget
-                  ? savedCheck
-                    ? "Saved"
-                    : "Save this check"
-                  : saved
-                    ? "Saved"
-                    : testJourney
-                      ? "Keep these tests"
-                      : "Save agent and checks"}
+                {savedCheck||advancedReceipt||saveComplete?"Saved":"Save and iterate"}
               </Button>
             </>
           ) : (
             <Link
-              href={`/auth/login?returnTo=${encodeURIComponent(keepReturnURL(sessionID || "", artifact?.id || "", workspace, saveBaseline))}`}
+              href={`/auth/login?returnTo=${encodeURIComponent(keepReturnURL(sessionID || "", saveArtifact?.id || "", workspace, saveBaseline,saveReturnPath,saveAdvanced))}`}
               onClick={rememberSave}
-              className="rounded-lg bg-primary px-4 py-3 text-center text-sm text-primary-foreground"
+              className="rounded-[var(--vibe-radius-sm)] bg-primary px-4 py-3 text-center text-sm text-primary-foreground"
             >
               Sign in to save your work
             </Link>
           )}
+          {(error || snapshots.loadError) && <p role="alert" className="text-sm text-builder-warn">{error || snapshots.loadError}</p>}
           {savedCheck && (
-            <p role="status" className="text-sm">Saved. <a className="underline" href={savedWorkURL(savedCheck)}>Open saved {savedCheck.kind === "brief" ? "brief" : "check"}</a></p>
+            <p role="status" className="text-sm">Saved. <a className="underline" href={savedWorkURL(savedCheck)}>Open saved {savedCheck.kind === "brief" ? "brief" : "result"}</a></p>
           )}
-          {!saveTarget && savedDraft && (
+          {!saveTarget && saveDraft && (
             <>
-              {!saved && (
-                <p className="text-xs text-builder-fg-muted">
-                  {savedModelNotice}
+              {!saveComplete && (
+                <p className="text-sm text-builder-fg-muted">
+                  {saveNotice}
                 </p>
               )}
               <a
                 href={
                   testJourney
-                    ? savedWorkURL(keptArtifact || { session_id: sessionID!, artifact_id: artifact!.id, workspace_id: savedDraft.workspace_id, baseline_operation_id: saveBaseline || "" })
-                    : `/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`
+                    ? savedWorkURL(saveKept || { session_id: sessionID!, artifact_id: saveArtifact!.id, workspace_id: saveDraft.workspace_id, baseline_operation_id: saveBaseline || "" })
+                    : advancedURL(saveDraft.workspace_id,saveDraft.draft_id,saveReturnPath,session?projectTitle(session):undefined)
                 }
                 className="text-sm underline"
               >
-                {testJourney ? "Open saved tests" : "Open your evaluation"}
+                {testJourney ? "Open saved tests" : "Open in the advanced editor"}
               </a>
-              {testJourney && <Link className="text-sm underline" href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}>Open in full pack builder</Link>}
+              {testJourney && <Link className="text-sm underline" href={advancedURL(saveDraft.workspace_id,saveDraft.draft_id,saveReturnPath,session?projectTitle(session):undefined)}>Open in full pack builder</Link>}
             </>
           )}
+          </div>
         </DialogContent>
       </Dialog>
-    </main>
+    </VibeAppearance>
   );
 }

@@ -85,6 +85,7 @@ export const navSections: NavSection[] = [
   {
     title: "Insights",
     items: [
+      ...(process.env.NEXT_PUBLIC_VIBE_EVALS_ENABLED === "true" ? [{ label: "Workspace reports", href: (id: string) => `/workspaces/${id}/reports`, icon: ClipboardCheck }] : []),
       {
         label: "Comparisons",
         href: (id) => `/workspaces/${id}/comparisons`,

@@ -16,6 +16,7 @@ const { mockGetAccessToken, mockUseRunEvents, mockCreateApiClient } =
 let latestOnEvent: ((event: RunEvent) => void) | undefined;
 
 vi.mock("@workos-inc/authkit-nextjs/components", () => ({
+  useAuth: () => ({ user: undefined }),
   useAccessToken: () => ({ getAccessToken: mockGetAccessToken }),
 }));
 

@@ -1454,7 +1454,7 @@ export default function HomePage({
               AgentClash
             </span>
           </Link>
-          <nav className="flex items-center gap-0.5 sm:gap-2 text-xs lg:text-sm">
+          <nav aria-label="Primary navigation" className="flex items-center gap-0.5 sm:gap-2 text-xs lg:text-sm">
             <MarketingNavigation />
             <a
               href="https://github.com/agentclash/agentclash"
@@ -2249,10 +2249,22 @@ export default function HomePage({
             <span className="font-medium text-white/55">AgentClash</span>
             <span className="text-white/40">Beta</span>
           </div>
-          <div className="flex items-center gap-5">
-            <a href="#features" className="hover:text-white/70 transition-colors">
-              Features
-            </a>
+          <nav aria-label="Footer navigation" className="flex flex-wrap items-center gap-5">
+            {[
+              ["/features", "Features"],
+              ["/use-cases", "Use cases"],
+              ["/industries", "Industries"],
+              ["/glossary", "Glossary"],
+              ["/platform/agent-evaluation", "Agent evaluation"],
+              ["/platform/datasmith", "DataSmith"],
+              ["/agent-opportunity", "Agent opportunity"],
+              ["/tryouts", "Tryouts"],
+              ["/publications", "Publications"],
+            ].map(([href, label]) => (
+              <Link key={href} href={href} className="hover:text-white/70 transition-colors">
+                {label}
+              </Link>
+            ))}
             <Link href="/blog" className="hover:text-white/70 transition-colors">
               Blog
             </Link>
@@ -2267,7 +2279,7 @@ export default function HomePage({
             >
               GitHub
             </a>
-          </div>
+          </nav>
         </div>
       </footer>
     </main>

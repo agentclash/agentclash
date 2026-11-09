@@ -42,6 +42,9 @@ type RunRepository interface {
 	SetRunTemporalIDs(ctx context.Context, params repository.SetRunTemporalIDsParams) (domain.Run, error)
 	TransitionRunStatus(ctx context.Context, params repository.TransitionRunStatusParams) (domain.Run, error)
 	TransitionRunAgentStatus(ctx context.Context, params repository.TransitionRunAgentStatusParams) (domain.RunAgent, error)
+	GetHostedRunExecutionByRunAgentID(context.Context, uuid.UUID) (repository.HostedRunExecution, error)
+	ClaimHostedRunDispatch(context.Context, uuid.UUID) (bool, error)
+	MarkHostedRunUnknown(context.Context, uuid.UUID) error
 	CreateHostedRunExecution(ctx context.Context, params repository.CreateHostedRunExecutionParams) (repository.HostedRunExecution, error)
 	MarkHostedRunExecutionAccepted(ctx context.Context, params repository.MarkHostedRunExecutionAcceptedParams) (repository.HostedRunExecution, error)
 	MarkHostedRunExecutionFailed(ctx context.Context, params repository.MarkHostedRunExecutionFailedParams) (repository.HostedRunExecution, error)

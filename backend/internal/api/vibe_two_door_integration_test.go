@@ -86,29 +86,39 @@ func TestVibeIntegrationTwoDoorImportsPreserveEvidence(t *testing.T) {
 	a.RequiredCapabilities = []string{"text_generation"}
 	a.ReferenceInputs = []inputs.Binding{{ID: uuid.New(), Hash: strings.Repeat("a", 64), Usage: "reference"}}
 	exported := map[string]any{"format": "agentclash-evaluation-v1", "artifact_id": a.ID, "artifacts": []vibe.Artifact{a}, "scope": "recreation", "sample": nil, "rules": []any{}, "runs": []any{map[string]any{"state": "COMPLETED", "scorecard": map[string]any{"passed": 999}}}}
-	next, err := store.CreateEvaluation(ctx, root.Actor, root.ID, uuid.New(), "test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = svc.Import(ctx, next.Actor, next.ID, next.Revision, vibeReliabilityJSON(t, exported)); err != nil {
-		t.Fatal(err)
-	}
-	next, _ = store.GetSession(ctx, next.Actor, next.ID)
-	if len(next.Operations) != 0 || next.Document.Artifacts[0].AgentPrompt != a.AgentPrompt {
-		t.Fatal("import invented a run or changed instructions")
-	}
-	imported := next.Document.Artifacts[0]
-	if imported.ScopeNote != a.ScopeNote || imported.InputContract == nil || imported.InputContract.Label != a.InputContract.Label || len(imported.RequiredCapabilities) != 1 {
-		t.Fatal("import lost the target's execution context")
-	}
-	if len(imported.ReferenceInputs) != 0 {
-		t.Fatal("private source input IDs became bindings in another project")
-	}
-	if len(imported.MissingReferences) != 1 || imported.MissingReferences[0].Hash != a.ReferenceInputs[0].Hash {
-		t.Fatal("import silently discarded a required reference")
-	}
-	if len(next.Document.Policies) != 0 || len(next.Document.Requirements) != 0 {
-		t.Fatal("unrelated imported claims became requirements")
+	for _, format := range []string{"agentclash-evaluation-v1", "agentclash-evaluation-v2"} {
+		exported["format"] = format
+		if format == "agentclash-evaluation-v2" {
+			exported["manifest"] = map[string]any{"version": 2, "completeness": "partial", "partial_confirmed": true, "missing": []any{map[string]any{"kind": "case", "id": "missing"}}}
+			exported["selection"] = map[string]any{"scope": "selected", "artifact_id": a.ID}
+			exported["evidence"] = []any{}
+			exported["case_mappings"] = []any{}
+			exported["captured_at"] = "2026-10-26T00:00:00Z"
+		}
+		next, err := store.CreateEvaluation(ctx, root.Actor, root.ID, uuid.New(), "test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = svc.Import(ctx, next.Actor, next.ID, next.Revision, vibeReliabilityJSON(t, exported)); err != nil {
+			t.Fatal(err)
+		}
+		next, _ = store.GetSession(ctx, next.Actor, next.ID)
+		if len(next.Operations) != 0 || next.Document.Artifacts[0].AgentPrompt != a.AgentPrompt {
+			t.Fatal("import invented a run or changed instructions")
+		}
+		imported := next.Document.Artifacts[0]
+		if imported.ScopeNote != a.ScopeNote || imported.InputContract == nil || imported.InputContract.Label != a.InputContract.Label || len(imported.RequiredCapabilities) != 1 {
+			t.Fatalf("%s import lost the target's execution context", format)
+		}
+		if len(imported.ReferenceInputs) != 0 {
+			t.Fatalf("%s import made private source input IDs into bindings in another project", format)
+		}
+		if len(imported.MissingReferences) != 1 || imported.MissingReferences[0].Hash != a.ReferenceInputs[0].Hash {
+			t.Fatalf("%s import silently discarded a required reference", format)
+		}
+		if len(next.Document.Policies) != 0 || len(next.Document.Requirements) != 0 {
+			t.Fatal("unrelated imported claims became requirements")
+		}
 	}
 }
 

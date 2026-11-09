@@ -56,6 +56,7 @@ export function publicationTitle(publication: PublicPublicationResponse): string
 
 export function publicationDescription(publication: PublicPublicationResponse): string {
   const labels: Record<PublicShareResourceType, string> = {
+    report_snapshot: "Selected report",
     challenge_pack_version: "A redacted, user-published AgentClash challenge pack version.",
     run_scorecard: "A redacted, user-published AgentClash run scorecard.",
     run_agent_scorecard: "A redacted, user-published AgentClash agent scorecard.",

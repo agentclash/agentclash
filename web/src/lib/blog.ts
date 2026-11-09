@@ -8,6 +8,7 @@ export type BlogPost = {
   slug: string;
   title: string;
   date: string;
+  dateModified?: string;
   description: string;
   author: string;
 };
@@ -15,6 +16,12 @@ export type BlogPost = {
 export type BlogPostWithContent = BlogPost & {
   content: string;
 };
+
+function authoredDate(value: unknown) {
+  return value instanceof Date && !Number.isNaN(value.getTime())
+    ? value.toISOString().slice(0, 10)
+    : requiredText(value);
+}
 
 function requiredText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -24,7 +31,7 @@ export function parseBlogPost(slug: string, raw: string): BlogPostWithContent | 
   try {
     const { data, content } = matter(raw);
     const title = requiredText(data.title);
-    const date = requiredText(data.date);
+    const date = authoredDate(data.date);
     const description = requiredText(data.description);
     const author = requiredText(data.author);
 
@@ -36,6 +43,7 @@ export function parseBlogPost(slug: string, raw: string): BlogPostWithContent | 
       slug,
       title,
       date,
+      dateModified: authoredDate(data.dateModified) || undefined,
       description,
       author,
       content,
@@ -71,6 +79,7 @@ export function getAllPosts(): BlogPost[] {
       slug: post.slug,
       title: post.title,
       date: post.date,
+      dateModified: post.dateModified,
       description: post.description,
       author: post.author,
     });

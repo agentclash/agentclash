@@ -1,6 +1,10 @@
 "use client";
+import type { RecordedIntakeRequest, RecordedIntakeOutcome } from "@/lib/vibe-result-evidence";
+import { VibeDataUseNotice } from "./vibe-data-use";
 
-import Link from "next/link";
+import { ProjectWorkspace } from "./project-workspace";
+import type { CollectionStatus } from "@/lib/use-vibe-collection";
+import { useVibeEditorDraft } from "@/lib/use-vibe-editor-draft";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
@@ -8,12 +12,6 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowLeft,
-  CircleHelp,
-  FileUp,
-  FileText,
-  History,
-  Plus,
-  Settings,
   Square,
 } from "lucide-react";
 import { Tabs } from "@base-ui/react/tabs";
@@ -23,7 +21,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ClashMark } from "@/components/marketing/clash-mark";
 import {
   terminal,
   type Artifact,
@@ -36,7 +33,7 @@ import { SavedWorkDialog } from "./saved-work-dialog";
 import type { ConversationAction } from "@/lib/vibe-conversation";
 import { hasConversationChoice, primarySurface } from "@/lib/vibe-presentation";
 import { ConversationActions } from "./conversation-actions";
-import { ConversationGuidance, ExampleComparison } from "./conversation-guidance";
+import { ConversationGuidance } from "./conversation-guidance";
 import { EvaluationOutcome } from "./evaluation-outcome";
 import { CoverageNote } from "./coverage-note";
 import { OperationFeedback } from "./operation-feedback";
@@ -50,40 +47,46 @@ import { useComposerAutosize } from "./use-composer-autosize";
 import { sendOnEnter } from "./composer-keyboard";
 import { VibeScorecard } from "./scorecard";
 import { TestSuitePanel, exampleAgentDescription } from "./test-suite-panel";
-import { EvaluationEntry } from "./evaluation-entry";
+import { EvaluationEntry, type RecentProject } from "./evaluation-entry";
 import { BuildWorkspace } from "./build-workspace";
 import { Message } from "./vibe-message";
-import { evaluationIdentity, buildProgress } from "@/lib/vibe-build-timeline";
+import { evaluationIdentity, buildProgress, buildVersion, instructionChangeBaseline } from "@/lib/vibe-build-timeline";
 import { WEB_EVENTS } from "@/lib/analytics/events";
 import { captureBuildEvent } from "@/lib/vibe-build-analytics";
 import "./workspace.css";
+import "./vibe-type.css";
 
-type View = "build" | "try" | "checks";
-
-export const exampleAnswer = `Check this answer from my trip-planning app. It should respect the total budget, including every listed cost.
-
-User: Plan a one-day Jaipur trip for two people with a total budget of ₹5,000, including transport, food, and activities.
-Assistant: Here’s your plan: transport ₹2,000, food ₹2,000, and activities ₹4,000. Total: ₹8,000. This fits within your ₹5,000 budget.`;
+type View = "build" | "try" | "checks" | "tests";
 
 export type EvaluationWorkspaceProps = {
+ startScreen?: ReactNode;
+ sourceIntent?: "live_app" | "sdk_report";
+ embedded?: boolean;
  materialInput?: ReactNode;
-  twoDoor?: boolean;
   onDoor?: (door: "build" | "test") => void;
   contextControl?: ReactNode;
   navigationToggle?: ReactNode;
   newEvaluation?: boolean;
   contextNavigationBlocked?: boolean;
+  entryBlocked?: boolean;
+  entryNotice?: ReactNode;
+  /** The latest project, for the "Continue" row when no project is open. */
+  recentProject?: RecentProject;
   onCancelNew?: () => void;
-  canChangeDoor?: boolean;
-  onChangeDoor?: () => void;
   savedWorkOpen?: boolean;
   onSavedWorkOpenChange?: (open: boolean) => void;
   buildStart?: boolean;
+  // A finished run or test preparation the user left on purpose: a link to its view.
+  arrival?: { target: "results" | "tests"; open: () => void };
+  // True once for the project a door click made: its start screen takes focus (D3).
+  takeStartFocus?: (sessionID: string) => boolean;
   onSample?: () => void;
   onDemo?: (id: string) => void;
   onTougher?: (text: string, count: number, artifactID: string) => void;
   sendBlocked?: boolean;
   sendError?: string;
+  inferenceUnavailable?: boolean;
+  runInferenceUnavailable?: boolean;
   interactionActions?: boolean;
   onChoice?: (action: ConversationAction) => Promise<void>;
   onReloadChoices?: () => Promise<void>;
@@ -97,24 +100,41 @@ export type EvaluationWorkspaceProps = {
   pendingLabel?: string;
   quickChecking?: boolean;
   requestedRunID?: string;
+  selectedResult?: import("@/lib/vibe-result-evidence").ProjectResultBinding;
+  onSelectResult?: (binding: import("@/lib/vibe-result-evidence").ProjectResultBinding, caseKey?: string) => void;
+  externalResults?: ReactNode;
+  connectorSettings?: ReactNode;
+  selectedCase?: string;
+  onSelectCase?: (key?: string) => void;
   dirty: boolean;
   content: string;
   onContent: (value: string) => void;
-  onSend: (context?: { viewed_run_id: string }) => void;
+  onSend: (context?: { viewed_run_id?: string; viewed_case_key?: string; artifact_id?: string }) => void;
   onMessage: (
     text: string,
     operation?: Operation,
     instructions?: string,
   ) => void;
   onNavigate: (view: View, artifactID?: string) => void;
-  onRun: (baseline?: Operation, evidenceID?: string) => void;
+  onReloadEvidence?: () => void;
+  onRetryCases?: (source: Operation, caseKeys: string[]) => void;
+  onRun: (baseline?: Operation, evidenceID?: string, recordedArtifactID?: string) => void;
+  recordedUpdate?: { baseline: Operation; artifactID?: string };
+  onNewReplies?: (baseline: Operation) => void;
+  onCloseRecordedUpdate?: () => void;
   onSelectRun: (run: string) => void;
+  onRecordedEvidence?: (request: RecordedIntakeRequest) => Promise<RecordedIntakeOutcome>;
   onEdit: (fields: Record<string, unknown>) => Promise<boolean>;
   onDirty: (dirty: boolean) => void;
   onSave: (operation?: Operation) => void;
+  onExport?: (artifact:Artifact,operation?:Operation)=>void;
+  onOriginal?: (artifact:Artifact)=>void;
   onImport: () => void;
   importNotice?: ReactNode;
   onSettings: () => void;
+  // The run estimate waits while a modal Guide or Details sheet is open or closing.
+  estimateOpen?: boolean;
+  onUtilitySheet?: (open: boolean) => void;
   loadEvidence: (operation: string, key: string) => Promise<CaseResult>;
   onAction: (id: string, action: "stop" | "approve") => void;
   onRetry?: (id: string, assistantModel?: string) => void;
@@ -124,17 +144,53 @@ export type EvaluationWorkspaceProps = {
   checkingTestChanges?: boolean;
   onRegrade?: (operation: Operation) => void;
   onDispute: (rule: string, result: CaseResult, operation: Operation) => void;
+  feedbackTarget?: "project" | "guide" | "edit" | "run" | "trial" | "recorded";
+  actionError?: string;
+  runNotice?: ReactNode;
+  composerNotice?: ReactNode;
   notice: ReactNode;
   preview: ReactNode;
   savedChecks: SavedCheck[];
+  savedListStatus?: CollectionStatus;
+  onRetrySaved?: () => void;
 };
 
+// D3: after Back, focus the composer, or the project title when there is none.
+function focusProject() {
+  (document.getElementById("vibe-message") || document.querySelector<HTMLElement>(".vibe-project-header h1"))?.focus({ preventScroll: true });
+}
+
+function EntryWorkspace({ p }: { p: EvaluationWorkspaceProps }) {
+  const heading = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (p.newEvaluation) { const title = heading.current?.querySelector<HTMLElement>("h1"); title?.setAttribute("tabindex", "-1"); title?.focus(); } }, [p.newEvaluation]);
+  const back = () => { p.onCancelNew?.(); requestAnimationFrame(focusProject); };
+  return <>
+    <header className="vibe-header vibe-entry-header"><div className="vibe-header-identity">{p.navigationToggle}<span className="vibe-header-title" data-brand>Vibe Evals</span></div></header>
+    <div className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto" ref={heading} aria-label="New project choices" onKeyDown={event => { if (event.key === "Escape" && p.newEvaluation && !p.contextNavigationBlocked) back(); }}>
+      <div className="vibe-column vibe-entry-page">
+        {p.newEvaluation && p.session && <VibeButton variant="quiet" className="vibe-back-button" disabled={p.contextNavigationBlocked} onClick={back}>Back to your project</VibeButton>}
+        <EvaluationEntry busy={!!p.contextNavigationBlocked || !!p.entryBlocked} navigationBlocked={!!p.contextNavigationBlocked} onDoor={p.onDoor} notice={p.entryNotice} recent={p.session ? undefined : p.recentProject} />
+        {p.notice}
+      </div>
+    </div>
+  </>;
+}
+
 export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
+  if (p.startScreen || (p.newEvaluation || !p.session)) return <>
+    {p.startScreen ? <><header className="vibe-header vibe-entry-header"><div className="vibe-header-identity">{p.navigationToggle}<span className="vibe-header-title" data-brand>Vibe Evals</span></div></header><div className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto">{p.startScreen}<div className="vibe-column">{p.entryNotice}</div></div></> : <EntryWorkspace p={p} />}
+    <SavedWorkDialog status={p.savedListStatus} onRetry={p.onRetrySaved} open={!!p.savedWorkOpen} onOpenChange={p.onSavedWorkOpenChange || (() => {})} testJourney={p.testJourney} savedChecks={p.savedChecks} hasResults={false} onResults={() => {}} />
+  </>;
+  if (p.session && (p.session.document.evaluation || p.sourceIntent) && !p.newEvaluation) return <ProjectWorkspace p={p} initial={<LegacyEvaluationWorkspace {...p} notice={null} embedded view="build" />} />;
+  return <LegacyEvaluationWorkspace {...p} />;
+}
+
+function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
   const door = p.session?.document.evaluation?.door;
   const buildJourney = door === "build";
+  const runFeedback = <>{p.runNotice}{p.feedbackTarget === "run" && p.actionError && <p role="alert">{p.actionError}</p>}</>;
   const previewOpen = buildJourney && p.view === "try";
   const [referencedRun, setReferencedRun] = useState<Operation>();
-  const entry = !!p.twoDoor && !door && !p.session?.document.messages.length && !p.session?.document.artifacts.length;
 
   const awaitingBuildAnswer = p.session?.document.build?.phase === "clarifying";
   const pendingDemo = p.session?.document.build?.phase === "waiting" ? p.session.document.conversation_state?.pending_demo : undefined;
@@ -145,16 +201,25 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   }, [buildJourney, p.session, activeBuildQuestion]);
   const reduced = useReducedMotion();
   const [intake, setIntake] = useState<"instructions" | null>(null);
-  const [instructionText, setInstructionText] = useState("");
-  const [welcomeExample, setWelcomeExample] = useState(false);
+  // D3: a source panel focuses its first field; Back returns focus to its source button.
+  const sources = useRef<Partial<Record<"instructions", HTMLButtonElement | null>>>({});
+  const lastSource = useRef<"instructions" | undefined>(undefined);
+  const openSource = (source: "instructions") => { lastSource.current = source; setIntake(source); };
+  useEffect(() => {
+    if (intake) { document.querySelector<HTMLElement>("#vibe-instructions-source")?.focus(); return; }
+    const source = lastSource.current;
+    lastSource.current = undefined;
+    if (source) sources.current[source]?.focus();
+  }, [intake]);
+  const intakeDraft = useVibeEditorDraft(p.session?.id || "entry", "intake", "instructions", "intake-v1", "");
+  const instructionText = intakeDraft.value;
+  const setInstructionText = intakeDraft.setValue;
   const [localHistoryOpen, setLocalHistoryOpen] = useState(false);
   const historyOpen = p.savedWorkOpen ?? localHistoryOpen;
   const setHistoryOpen = p.onSavedWorkOpenChange ?? setLocalHistoryOpen;
-  const newEntry = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (p.newEvaluation) newEntry.current?.focus();
-  }, [p.newEvaluation]);
   const composer = useRef<HTMLTextAreaElement>(null);
+  const questionID = activeBuildQuestion?.id;
+  useEffect(() => { if (questionID) composer.current?.focus(); }, [questionID]);
   const parent = p.session?.document.artifacts.find(
     (a) => a.id === p.artifact?.parent_id,
   );
@@ -163,16 +228,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
     !!parent.agent_prompt.trim() &&
     !!p.artifact?.agent_prompt &&
     parent.agent_prompt !== p.artifact.agent_prompt;
-  const changeBaseline =
-    promptChanged &&
-    JSON.stringify(parent.blueprint) === JSON.stringify(p.artifact?.blueprint)
-      ? p.session?.operations.findLast(
-          (o) =>
-            (o.kind === "check" || o.kind === "retest") &&
-            o.results.some((c) => c.version === parent.id) &&
-            terminal(o.state),
-        )
-      : undefined;
+  const changeBaseline = instructionChangeBaseline(p.session, p.artifact);
   const runs =
     p.session?.operations.filter(
       (o) => o.kind === "check" || o.kind === "retest",
@@ -246,9 +302,9 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
     (active
       ? buildJourney ? buildProgress(active) : conversationActivity(active, p.testJourney)
       : p.quickChecking
-        ? "Preparing the check…"
+        ? "Preparing the run…"
         : waitingForResult
-          ? "Waiting for your check…"
+          ? "Waiting for your run…"
           : undefined);
   const contentStamp = [
     p.session?.document.messages.at(-1)?.id,
@@ -276,18 +332,17 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
     p.onRun(baseline, id);
   };
   const changeSource = () => {
-    setIntake("instructions");
+    openSource("instructions");
     p.onNavigate("build");
   };
   const send = () => {
     if (p.busy || p.dirty || p.sendBlocked || !p.content.trim()) return;
     scroll.follow();
-    if (p.view !== "build") p.onNavigate("build");
     const context = buildJourney ? referencedRun : result;
     p.onSend(context && terminal(context.state) ? { viewed_run_id: context.id } : undefined);
     setReferencedRun(undefined);
   };
-  const showComposer = (p.view !== "try" || buildJourney) && !intake && !entry;
+  const showComposer = (p.view !== "try" || buildJourney) && !intake;
   const compactComposer = true;
   useComposerAutosize(composer, p.content, compactComposer, showComposer && !p.newEvaluation, `${p.view}:${welcome}`);
   const primary = primarySurface({ busy: p.busy, dirty: p.dirty, typing: !!p.content.trim(),
@@ -306,13 +361,13 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
     p.onSelectRun(operation.id);
   }
   const suiteContents = p.artifact?.kind === "test_suite" ? (
-    <div className="space-y-5" data-proposal-id={p.artifact.id}>
-      {promptChanged && <PromptChange key={`instructions:${p.artifact.id}`} before={parent!.agent_prompt} after={p.artifact.agent_prompt} defaultOpen={buildJourney} />}
-      <TestSuitePanel primary={primary === "tests"} key={`tests:${p.artifact.id}`} artifact={p.artifact} busy={p.busy} blocked={p.dirty}
+    <div className="space-y-4" data-proposal-id={p.artifact.id}>
+      {promptChanged && <PromptChange key={`instructions:${p.artifact.id}`} before={parent!.agent_prompt} after={p.artifact.agent_prompt} defaultOpen={buildJourney} title={p.artifact.accepted ? "Instruction change" : "Proposed change"} beforeVersion={p.session ? buildVersion(p.session, parent!) : undefined} afterVersion={p.session ? buildVersion(p.session, p.artifact) : undefined} />}
+      <TestSuitePanel inferenceUnavailable={p.inferenceUnavailable} selectedCase={p.selectedCase} onSelectCase={p.onSelectCase} projectID={p.session?.id} primary={primary === "tests"} key={`tests:${p.artifact.id}`} artifact={p.artifact} busy={p.busy} blocked={p.dirty} editError={p.feedbackTarget === "edit" ? p.actionError : undefined} runNotice={runFeedback}
         buildJourney={buildJourney}
         parent={parent}
         comparison={!!changeBaseline} onRun={() => startRun(changeBaseline)} onEdit={p.onEdit}
-        onDirty={p.onDirty} onSave={() => p.onSave()} onSettings={p.onSettings} modelLabel={p.modelLabel}
+        onDirty={p.onDirty} onOriginal={()=>p.artifact && p.onOriginal?.(p.artifact)} onSave={() => p.onSave()} onSettings={p.onSettings} modelLabel={p.modelLabel}
         checkingChanges={p.checkingTestChanges}
         rules={p.session?.document.policies?.find(policy => policy.id === p.artifact!.policy_id && ["spec-sources-v1", "spec-sources-v2"].includes(policy.source_version || ""))?.rules}
         pendingPolicy={p.session?.document.pending_policy_changes?.some(change => change.status === "pending" && (!change.artifact_id || change.artifact_id === p.artifact!.id))} />
@@ -337,18 +392,19 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
           {(hasNewResponse || (buildJourney && !isNearBottom)) && (
             <VibeButton variant="quiet" className="vibe-new-response" onClick={() => {
               scroll.jumpToLatest();
-              composer.current?.focus({ preventScroll: true });
+              const response = scrollRegion.current?.querySelector<HTMLElement>('[data-message-id]:last-child');
+              if (response) { response.tabIndex = -1; response.focus({ preventScroll: true }); }
             }}>
               {hasNewResponse ? "New response" : "Latest"}<ArrowDown />
             </VibeButton>
           )}
         </div>
-        {p.materialInput}
+        {p.materialInput || <VibeDataUseNotice />}
         {previewOpen ? p.preview : <>
         <div>
-          {referencedRun && <div className="vibe-run-reference"><span>Asking about this saved result · {referencedRun.scorecard?.passed ?? 0} passed</span><button type="button" aria-label="Remove result reference" onClick={() => setReferencedRun(undefined)}>×</button></div>}
+          {referencedRun && <div className="vibe-run-reference"><span>Asking about this saved result · {referencedRun.scorecard?.passed ?? 0} passed</span><button type="button" className="vibe-run-reference-dismiss" aria-label="Remove result reference" onClick={() => setReferencedRun(undefined)}>×</button></div>}
           {!buildJourney && !welcome && !showResult && (
-            <label htmlFor="vibe-message" className="mb-2 block text-xs vibe-muted">
+            <label htmlFor="vibe-message" className="mb-2 block text-sm font-semibold vibe-muted">
               Your next message
             </label>
           )}
@@ -364,19 +420,19 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
               ref={composer}
               id="vibe-message"
               aria-label="Message Vibe Evals"
+              aria-describedby={p.sendError || p.actionError && p.feedbackTarget === "guide" ? "vibe-message-error" : undefined}
               value={p.content}
               onChange={(e) => p.onContent(e.target.value)}
-              maxLength={p.session?.anonymous === false ? 65536 : 16384}
               placeholder={
                 welcome
-                  ? door === "test" ? "Or describe your agent and what you want to check…" : door === "build" ? "We spend hours answering customer questions about returns…" : p.testJourney
+                  ? door === "test" ? "Or describe your agent and what you want to test…" : door === "build" ? "We spend hours answering customer questions about returns…" : p.testJourney
                     ? "My agent helps customers with returns…"
                     : "I made an AI trip planner…"
                   : referencedRun
                     ? "Ask about this saved result…"
                     : showResult && !buildJourney
                     ? "Ask about these results…"
-                    : buildJourney ? "Message Vibe Evals…" : p.testJourney
+                    : buildJourney ? "Message Guide…" : p.testJourney
                       ? "Add a rule, ask a question, or change a test…"
                       : "Paste the question and your app’s answer, or keep talking…"
               }
@@ -394,25 +450,16 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
               <VibeButton
                 variant={p.content.trim() && !p.busy && !p.dirty ? "primary" : "quiet"}
                 type="submit"
-                aria-label="Send message"
+                // E2 (WCAG 2.5.3): a visible label is the name; the icon-only state needs one.
+                aria-label={p.buildStart ? undefined : "Send message"}
                 disabled={p.busy || p.dirty || p.sendBlocked || !p.content.trim()}
               >
-                {p.buildStart ? "Build and try 3 examples" : <span className="sr-only">Send</span>}
+                {p.buildStart ? "Build and run 3 tests" : <span className="sr-only">Send</span>}
                 <ArrowUp />
               </VibeButton>
             </div>
           </form>
-          {p.sendError && <p className="mt-2 text-xs vibe-muted" role="alert">{p.sendError}</p>}
-          {welcome && !entry && (
-            <VibeButton
-              variant="quiet"
-              className="mt-3 !px-0"
-              aria-expanded={welcomeExample}
-              onClick={() => setWelcomeExample(!welcomeExample)}
-            >
-              {welcomeExample ? "Hide example" : "See an example"}
-            </VibeButton>
-          )}
+          {(p.sendError || p.feedbackTarget === "guide" && p.actionError) && <p id="vibe-message-error" className="mt-2 text-sm vibe-muted" role="alert">{p.sendError || p.actionError}</p>}{p.composerNotice}
         </div>
         </>}
       </div>
@@ -421,22 +468,11 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
 
   return (
     <>
-      <header className="vibe-header">
-        {p.twoDoor ? <div className="vibe-header-identity">
-          {p.navigationToggle}
-          <span className="vibe-header-title">{p.newEvaluation || entry ? "New agent" : p.session ? evaluationIdentity(p.session).title : "Vibe Evals"}</span>
-        </div> : (
-        <Link
-          href="/vibe-evals"
-          className="flex w-fit items-center gap-2.5 text-sm font-semibold"
-        >
-          <ClashMark className="size-5 vibe-muted" />
-          Vibe Evals
-        </Link>
-        )}
+      {!p.embedded && <header className="vibe-header">
+        <div className="vibe-header-identity">{p.navigationToggle}<span className="vibe-header-title">{p.session ? evaluationIdentity(p.session).title : "Vibe Evals"}</span></div>
         <div className="vibe-header-nav justify-self-center">
           <AnimatePresence initial={false}>
-            {hasResults && !p.newEvaluation && (
+            {p.session && !p.newEvaluation && (
               <motion.div
                 layout="position"
                 key="navigation"
@@ -460,9 +496,10 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                         [
                           [
                             "build",
-                            "Conversation",
+                            "Agent",
                             "Discuss what matters, ask about findings, or change the rules.",
                           ],
+                          ["tests", "Tests", "Edit tests and expectations for this version."],
                           [
                             "checks",
                             "Results",
@@ -481,7 +518,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                             {currentPane === value && (
                               <motion.span
                                 layoutId="vibe-current-view"
-                                className="absolute inset-0 -z-10 rounded-[10px] bg-[#22211d]"
+                                className="absolute inset-0 -z-10 rounded-[var(--vibe-radius-sm)] bg-[var(--vibe-active)]"
                                 transition={{ duration: reduced ? 0 : 0.22 }}
                               />
                             )}
@@ -497,121 +534,55 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
             )}
           </AnimatePresence>
         </div>
-        {!p.twoDoor && <div className="vibe-header-actions flex items-center justify-self-end gap-1">
-          <TooltipProvider delay={350}>
-            {(
-              [
-                [
-                  "New check",
-                  Plus,
-                  () => {
-                    window.location.href = "/vibe-evals";
-                  },
-                ],
-                ["History", History, () => setHistoryOpen(true)],
-                ["Settings", Settings, p.onSettings],
-              ] as const
-            )
-              .filter(
-                ([label]) =>
-                  label !== "History" || hasResults || p.savedChecks.length > 0,
-              )
-              .map(([label, Icon, action]) => (
-                <Tooltip key={label}>
-                  <TooltipTrigger
-                    render={
-                      <VibeButton
-                        variant="quiet"
-                        className="!px-2.5"
-                        aria-label={label}
-                        onClick={action}
-                      />
-                    }
-                  >
-                    <Icon />
-                  </TooltipTrigger>
-                  <TooltipContent>{label}</TooltipContent>
-                </Tooltip>
-              ))}
-          </TooltipProvider>
-        </div>}
-      </header>
-      {p.newEvaluation && <div className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto" ref={newEntry} tabIndex={-1}
-        aria-label="New agent choices" onKeyDown={event => { if (event.key === "Escape" && !p.contextNavigationBlocked) { p.onCancelNew?.(); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true })); } }}>
-        <div className="vibe-column vibe-entry-page">
-          <VibeButton variant="quiet" className="vibe-back-button" disabled={p.contextNavigationBlocked} onClick={() => {
-            p.onCancelNew?.(); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true }));
-          }}><ArrowLeft />{p.session?.document.evaluation ? "Back to your evaluation" : "Back"}</VibeButton>
-          <EvaluationEntry busy={!!p.contextNavigationBlocked} onDoor={p.onDoor} />
-          {p.pendingLabel && <ActivityStatus label={p.pendingLabel} working />}
-          {p.notice}
-        </div>
-      </div>}
+      </header>}
       <div
         ref={scrollRegion}
-        hidden={p.newEvaluation}
         className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto"
         id="vibe-scroll-region"
         onScroll={scroll.onScroll}
       >
         <div
-          id="vibe-workspace-panel"
-          role={hasResults ? "tabpanel" : undefined}
-          aria-labelledby={hasResults ? `vibe-tab-${currentPane}` : undefined}
+          id={p.embedded ? undefined : "vibe-workspace-panel"}
+          role={!p.embedded && p.session ? "tabpanel" : undefined}
+          aria-labelledby={!p.embedded && p.session ? `vibe-tab-${currentPane}` : undefined}
         >
           <div
             className={`vibe-column ${welcome ? "vibe-entry-page" : "py-8 sm:py-12"}`}
           >
-            {welcome && !intake && (entry ? <EvaluationEntry busy={p.busy || !!p.sendBlocked} onDoor={p.onDoor} /> : <div className="vibe-welcome mb-7">
-              <h1 className="vibe-entry-title">{door === "build" ? "What would you like help with?" : door === "test" ? "Improve an agent you already have." : p.testJourney ? "What should your agent do?" : "Check the AI in your app."}</h1>
-              <p className="mt-4 max-w-[560px] vibe-muted">{door === "build" ? "Describe a repetitive task. We’ll make a prototype and try three situations to see what works." : door === "test" ? "Bring your agent’s instructions or a saved test pack." : p.testJourney ? "Describe its job and rules. We’ll check what works and what needs fixing." : "Tell us what it does, or paste an answer you want checked."}</p>
-              {door === "test" && <><div className="vibe-source-options">
-                <div className="vibe-source-option">
-                  <VibeButton disabled={p.busy} onClick={p.onImport}><FileUp />Import a test pack</VibeButton>
-                  <TooltipProvider delay={250}>
-                    <Tooltip>
-                      <TooltipTrigger aria-label="What is a test pack?" className="vibe-source-tooltip"><CircleHelp aria-hidden="true" /></TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[280px] leading-relaxed">A test pack (also called a challenge pack) contains situations to try and what a good response should do. Import one only if you already have it.</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-                <VibeButton disabled={p.busy} onClick={changeSource}><FileText />Paste agent instructions</VibeButton>
-              </div><p className="vibe-source-note">Live connections aren’t available here yet. Instructions recreate behavior here; a pack supplies tests, not an agent.</p>
-              <details className="vibe-source-help"><summary>What’s a test pack?</summary><p>A saved set of situations to try and what a good response should do. It is also called a challenge pack. Import one only if you already have it.</p></details>
-              {p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Actually, I want to build an agent.</button>}</>}
-              {door === "build" && p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Already have an agent? Improve it instead.</button>}
-              {!door && p.testJourney && <p className="mt-3 text-sm vibe-muted">Already have an agent or challenge pack? Describe it here or <button type="button" className="underline underline-offset-4" disabled={p.busy} onClick={p.onImport}>import your pack</button>.</p>}
-            </div>)}
+            {p.notice}
             {p.importNotice}
-            {door && !buildJourney && p.artifact?.agent_prompt && <section aria-label="Prototype scope" className="mb-5 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-medium">Interactive prototype{p.artifact.sample ? " · Sample demonstration" : ""}</p><VibeButton variant="quiet" onClick={() => p.onNavigate("try")}>Talk to this prototype</VibeButton></div>
+            {door && !buildJourney && p.artifact?.agent_prompt && <section aria-label="Agent scope" className="mb-4 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">Agent{p.artifact.sample ? " · Sample demonstration" : ""}</p><VibeButton variant="quiet" onClick={() => p.onNavigate("try")}>Talk to this agent</VibeButton></div>
               <p className="vibe-muted">{p.artifact.scope_note || "Runs here using what you supplied; your business systems aren’t connected."}</p>
-              {p.artifact.sample && <p className="mt-1 vibe-muted">These results check the sample, not your business policy.</p>}
+              {p.artifact.sample && <p className="mt-1 vibe-muted">These results test the sample, not your business policy.</p>}
             </section>}
             {buildJourney && p.session && !welcome && <div hidden={(p.view !== "build" && p.view !== "try") || !!intake}>
               <BuildWorkspace session={p.session} artifact={p.artifact} busy={p.busy || p.dirty} primary={buildPrimary}
                 onPreviewOpen={(open, id) => p.onNavigate(open ? "try" : "build", id || p.artifact?.id)} onReviewArtifact={id => p.onNavigate("build", id)}
-                proposal={active ? null : suiteCard}
+                proposal={active || p.view === "tests" ? null : suiteCard}
                 pendingMessage={pendingMessage} recovery={{ primary: primary === "recovery", pendingID: p.retryPendingOperationID, uncertainID:p.retryUncertainOperationID, onRetry:p.onRetry, retryModels:p.retryModels }}
                 onDetails={inspectRun}
                 onGuide={() => { p.onNavigate("build"); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true })); }}
                 onImprove={operation => {
                   scroll.follow();
-                  p.onMessage("Suggest a focused improvement to these agent instructions using the failed examples. Preserve the checks and expected behavior.", operation);
+                  p.onMessage("Suggest a focused improvement to these agent instructions using the failed tests. Keep the tests and expected behavior.", operation);
                 }}
-                onSave={p.onSave} onTougher={p.onTougher} loadEvidence={p.loadEvidence} />
+                onSave={p.onSave} onTougher={p.onTougher} onExport={p.onExport} loadEvidence={p.loadEvidence} />
             </div>}
-            {p.view === "try" ? (
-              buildJourney ? null : p.preview
+            {p.view === "tests" ? (suiteContents || <div className="vibe-empty-state"><p>No tests in this version yet. Guide can prepare tests for you to review.</p><VibeButton onClick={() => { p.onNavigate("build"); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true })); }}>Ask Guide for tests</VibeButton></div>) : p.view === "try" ? (
+              buildJourney ? null : <>
+                <VibeButton variant="quiet" onClick={() => { switchView("build"); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true })); }}>← Back to Vibe Evals</VibeButton>
+                {p.preview}
+              </>
             ) : intake === "instructions" ? (
-              <section className="space-y-5">
+              <section className="space-y-4">
                 <div>
-                  <h2 className="text-xl font-semibold">
+                  <h2>
                     Try your app’s instructions
                   </h2>
                   <p className="mt-2 text-sm vibe-muted">
                     Paste the instructions your app gives its AI. We’ll use them
-                    to generate example answers here.
+                    to run tests here.
                   </p>
                 </div>
                 <form
@@ -621,7 +592,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                     if (!instructionText.trim() || p.busy) return;
                     setIntake(null);
                     p.onMessage(
-                      "Prepare three useful examples to check these instructions against the rules we discussed.",
+                      "Write three tests for these instructions.",
                       undefined,
                       instructionText,
                     );
@@ -630,6 +601,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   <label className="sr-only" htmlFor="vibe-instructions-source">
                     Agent instructions to test
                   </label>
+                  <VibeDataUseNotice />
                   <textarea
                     id="vibe-instructions-source"
                     value={instructionText}
@@ -650,7 +622,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                       type="submit"
                       disabled={p.busy || !instructionText.trim()}
                     >
-                      Prepare examples
+                      Prepare tests
                       <ArrowRight />
                     </VibeButton>
                   </div>
@@ -667,8 +639,8 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 transition={{ duration: reduced ? 0 : 0.2 }}
               >
                 {runs.length > 1 && (
-                  <div className="mb-5 flex justify-end">
-                    <label className="text-xs vibe-muted">
+                  <div className="mb-4 flex justify-end">
+                    <label className="vibe-muted">
                       Result{" "}
                       <select
                         aria-label="Result history"
@@ -676,13 +648,13 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                         onChange={(e) =>
                           p.onSelectRun(e.target.value)
                         }
-                        className="ml-2 rounded-lg border border-[var(--vibe-border)] bg-transparent p-2"
+                        className="ml-2 rounded-[var(--vibe-radius-sm)] border border-[var(--vibe-border)] bg-transparent p-2"
                       >
                         {runs.map((r, i) => (
                           <option key={r.id} value={r.id}>
-                            {i === runs.length - 1 ? "Latest · " : ""}Check{" "}
+                            {i === runs.length - 1 ? "Latest · " : ""}Run{" "}
                             {i + 1}
-                            {r.source?.comparison === "regraded" ? " · grades rechecked" : r.kind === "retest" ? " · comparison" : ""}
+                            {r.source?.comparison === "regraded" ? " · regraded" : r.kind === "retest" ? " · comparison" : ""}
                           </option>
                         ))}
                       </select>
@@ -690,6 +662,8 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   </div>
                 )}
                 <VibeScorecard
+                  actionNotice={runFeedback}
+                      buildJourney={buildJourney}
                   findingFirst={!!door}
                   testJourney={p.testJourney}
                   primary={primary === "results"}
@@ -703,7 +677,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                     p.onMessage(
                       result.source?.kind === "provided_conversations"
                         ? "Suggest a concrete instruction change to address the observed failures. Keep the expectations fixed. Explain what to copy into my agent; do not claim to apply it."
-                        : "Suggest a focused improvement to these agent instructions using the failed examples. Preserve the checks and expected behavior.",
+                        : "Suggest a focused improvement to these agent instructions using the failed tests. Keep the tests and expected behavior.",
                       result,
                     );
                   }}
@@ -721,7 +695,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   }
                 />
                 {buildJourney && <VibeButton variant="quiet" onClick={() => askAboutRun(result)}>Ask about this result</VibeButton>}
-                {door && p.session && p.artifact && terminal(result.state) && <EvaluationOutcome key={`outcome:${result.id}`} hideContact={buildJourney} session={p.session} artifact={p.session.document.artifacts.find(a => a.id === result.source?.artifact_id) || p.artifact} operation={result} busy={p.busy || p.dirty} loadEvidence={p.loadEvidence} onTougher={buildJourney && result.source?.artifact_id !== p.artifact.id ? undefined : p.onTougher} />}
+                {door && p.session && p.artifact && terminal(result.state) && <EvaluationOutcome onExport={p.onExport} key={`outcome:${result.id}`} hideContact={buildJourney} session={p.session} artifact={p.session.document.artifacts.find(a => a.id === result.source?.artifact_id) || p.artifact} operation={result} busy={p.busy || p.dirty} loadEvidence={p.loadEvidence} onTougher={buildJourney && result.source?.artifact_id !== p.artifact.id ? undefined : p.onTougher} />}
                 {result.results.length > 0 && terminal(result.state) && (
                   <CoverageNote key={result.id} rows={p.session?.rule_coverage?.[result.source?.artifact_id || result.results[0]?.version] || []}
                     busy={p.busy || p.dirty || !!p.content.trim() || (buildJourney && result.source?.artifact_id !== p.artifact?.id)} onSuggest={rule => {
@@ -731,7 +705,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 )}
               </motion.div>
             ) : buildJourney && p.session && !welcome ? null : waitingForResult ? null : (
-              <div className={welcome ? "" : "space-y-7"}>
+              <div className={welcome ? "" : "space-y-6"}>
                 {hasResults && !activityLabel && (
                   <VibeButton
                     variant="quiet"
@@ -746,7 +720,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                     <summary className="cursor-pointer">
                       Earlier messages
                     </summary>
-                    <div className="mt-5 space-y-6">
+                    <div className="mt-4 space-y-6">
                       {messages.slice(0, recentStart).map((m) => (
                         <div key={m.id} data-message-id={m.id}>
                           <Message message={m} animate={false} /><ConversationGuidance cards={m.cards} scope={p.session?.document.conversation_state?.brief.scope_id} message={m.id} />
@@ -776,7 +750,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                           <OperationFeedback serverTime={p.session?.server_time} original={operationByID.get(m.operation_id)} operation={latestOperations.get(m.operation_id)}
                             primary={primary === "recovery" && latestOperations.get(m.operation_id)?.id === operations.at(-1)?.id} busy={p.busy || p.dirty} pendingID={p.retryPendingOperationID} uncertainID={p.retryUncertainOperationID} onRetry={p.onRetry} retryModels={p.retryModels} />
                         )}
-                        {m.id === proposalMessage?.id && suiteCard && <div className="mt-5">{suiteCard}</div>}
+                        {m.id === proposalMessage?.id && suiteCard && <div className="mt-4">{suiteCard}</div>}
                       </div>
                     ))}
                     {pendingMessage && (
@@ -796,6 +770,9 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                       key={`instructions:${p.artifact.id}`}
                       before={parent!.agent_prompt}
                       after={p.artifact.agent_prompt}
+                      title={p.artifact.accepted ? "Instruction change" : "Proposed change"}
+                      beforeVersion={p.session ? buildVersion(p.session, parent!) : undefined}
+                      afterVersion={p.session ? buildVersion(p.session, p.artifact) : undefined}
                     />
                   )}
                 {!p.quickChecking &&
@@ -805,14 +782,14 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   ) : null)}
               </div>
             )}
-            {p.view === "build" && !intake && p.session && !awaitingBuildAnswer && p.interactionActions && p.onChoice && p.onReloadChoices && (
+            {p.view === "build" && !intake && p.session && p.interactionActions && p.onChoice && p.onReloadChoices && (
               <div className="mt-4"><ConversationActions key={p.session.id} session={p.session} busy={p.busy || p.dirty} primary={primary === "choices"} onAction={p.onChoice} onReload={p.onReloadChoices} /></div>
             )}
             {!buildJourney && p.artifact?.agent_prompt && p.view === "build" && !activityLabel && <VibeButton disabled={p.busy || p.dirty} onClick={() => switchView("try")}>Try it yourself</VibeButton>}
-            {buildJourney && !p.artifact && active?.state === "RUNNING" && active.conversation_decision?.intent === "prepare_tests" && <p className="vibe-build-intro">I’m making a first version, then I’ll try three situations and check its replies. Your business systems won’t be connected.</p>}
-            <ActivityStatus label={activityLabel} working={active?.state === "RUNNING" && !p.pendingLabel} />
+            {buildJourney && !p.artifact && active?.state === "RUNNING" && active.conversation_decision?.intent === "prepare_tests" && <p className="vibe-build-intro">I’m making a first version, then I’ll run three tests on its replies. Your business systems won’t be connected.</p>}
+            {!p.embedded && <ActivityStatus label={activityLabel} working={active?.state === "RUNNING" && !p.pendingLabel} />}
             <AnimatePresence initial={false}>
-              {activityLabel && active && (
+              {!p.embedded && activityLabel && active && (
                 <motion.div
                   key="activity"
                   className="vibe-activity"
@@ -831,11 +808,10 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                         </VibeButton>
                       )}
                       <VibeButton
-                        variant="quiet"
                         disabled={!!p.pendingLabel}
                         onClick={() => p.onAction(active.id, "stop")}
                       >
-                        <Square />
+                        <Square aria-hidden="true" className="vibe-stop-icon" fill="currentColor" />
                         Stop
                       </VibeButton>
                     </div>
@@ -843,34 +819,28 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 </motion.div>
               )}
             </AnimatePresence>
-            <div className={`vibe-notice ${welcome ? "" : "mt-7"}`}>
-              {p.notice}
-            </div>
+
             {p.session?.document.build?.phase === "error" && !activityLabel && !operations.some(operation => operation.error && operation.id === p.session?.operations.at(-1)?.id) && (
               <p role="alert" className="mt-4 text-sm text-builder-warn">
                 {p.session.document.build.error?.message || "This Build cycle stopped. Your work is saved."}{" "}
-                {p.session.document.artifacts.length ? "You can edit this prototype and use Run tests for a fresh estimate." : "Use New agent to start another prototype."}
+                {p.session.document.artifacts.length ? "You can edit this agent. Run the tests again for a new estimate." : "Use New project to start again."}
               </p>
             )}
-            {awaitingBuildAnswer && p.session?.document.conversation_state?.pending_question?.purpose !== "clarify_job" && !p.busy && <div className="mt-4"><VibeButton onClick={p.onSample}>Use a sample policy</VibeButton><p className="mt-2 text-xs vibe-muted">A labelled demonstration. Your real policy stays unspecified.</p></div>}
-            {pendingDemo && !p.busy && <div className="mt-4"><VibeButton onClick={() => p.onDemo?.(pendingDemo.id)}>Try a sample email assistant</VibeButton><p className="mt-2 text-xs vibe-muted">Uses fictional messages. You can describe your own task instead.</p></div>}
-            {welcome && welcomeExample && <div className="mt-3 space-y-3">
-              <p className="text-sm vibe-muted">A test pairs an example task with what should happen.</p>
-              <ExampleComparison input="Can I return an unopened item bought 10 days ago?" expected="With a 30-day policy, this item is eligible. No refund is processed." />
-              <VibeButton variant="quiet" onClick={() => { p.onContent(p.testJourney ? exampleAgentDescription : exampleAnswer); composer.current?.focus({ preventScroll: true }); }}>Use this description</VibeButton>
-            </div>}
+            {awaitingBuildAnswer && p.session?.document.conversation_state?.pending_question?.purpose !== "clarify_job" && !p.busy && <div className="mt-4"><VibeButton variant="quiet" onClick={p.onSample}>Use a sample policy</VibeButton><p className="mt-2 text-sm vibe-muted">A labelled demonstration. Your real policy stays unspecified.</p></div>}
+            {pendingDemo && !p.busy && <div className="mt-4"><VibeButton onClick={() => p.onDemo?.(pendingDemo.id)}>Try a sample email assistant</VibeButton><p className="mt-2 text-sm vibe-muted">Uses fictional messages. You can describe your own task instead.</p></div>}
             {!p.testJourney &&
               !welcome &&
               !intake &&
               p.view !== "try" &&
               !activityLabel && (
-                <details className="vibe-context-options mt-5 text-sm vibe-muted">
+                <details className="vibe-context-options mt-4 text-sm vibe-muted">
                   <summary className="w-fit cursor-pointer py-2">
                     More options
                   </summary>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <VibeButton
                       variant="quiet"
+                      ref={node => { sources.current.instructions = node; }}
                       onClick={changeSource}
                     >
                       Try instructions instead
@@ -891,8 +861,8 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
         </div>
       </div>
       {composerDock}
-      <SavedWorkDialog open={historyOpen} onOpenChange={setHistoryOpen} testJourney={p.testJourney}
-        savedChecks={p.savedChecks} hasResults={runs.length > 0} onResults={() => switchView("checks")} />
+      {!p.embedded && <SavedWorkDialog status={p.savedListStatus} onRetry={p.onRetrySaved} open={historyOpen} onOpenChange={setHistoryOpen} testJourney={p.testJourney}
+        savedChecks={p.savedChecks} hasResults={runs.length > 0} onResults={() => switchView("checks")} />}
     </>
   );
 }

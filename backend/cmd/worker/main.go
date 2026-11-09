@@ -22,6 +22,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/vibe"
 	workerapp "github.com/agentclash/agentclash/backend/internal/worker"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
+	"github.com/agentclash/agentclash/runtime/connectors"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/provider/throttle"
 	"github.com/agentclash/agentclash/runtime/runevents"
@@ -170,7 +171,7 @@ func run() (exitCode int) {
 	}
 
 	httpClient := provider.NewDefaultHTTPClient()
-	hostedRunClient := workerapp.NewHostedRunClient(httpClient, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret)
+	hostedRunClient := workerapp.NewHostedRunClient(httpClient, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret).WithConnectorRepository(repo)
 	providerRouter := provider.NewDefaultRouter(httpClient, provider.EnvCredentialResolver{})
 	if len(cfg.ProviderThrottle.LimitsByProvider) > 0 {
 		var lim throttle.Limiter
@@ -271,7 +272,7 @@ func run() (exitCode int) {
 		workerapp.BackgroundTask(func(ctx context.Context) { vibeStore.ProjectCleanupLoop(ctx, logger) }),
 		workerapp.BackgroundTask(func(ctx context.Context) { enquiries.FromEnv(db).Run(ctx, logger) }),
 		// Accounting recovery continues even when new Vibe execution is disabled.
-		workerapp.BackgroundTask(func(ctx context.Context) { vibe.ReconcileLoop(ctx, vibeStore, vibeConfig, logger) }),
+		workerapp.BackgroundTask(func(ctx context.Context) { vibe.ReconcileLoop(ctx, vibeStore, vibeConfig, logger, vibeService.Gate) }),
 	}
 	var vibeRunner *vibe.Runner
 	if vibeConfig.Enabled {
@@ -279,8 +280,12 @@ func run() (exitCode int) {
 		background = append(background, workerapp.BackgroundTask(func(ctx context.Context) { vibe.DispatchOutbox(ctx, temporalClient, vibeStore, logger, vibeService) }))
 	}
 	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, providerRouter, sandboxProvider, githubClient, workflowpkg.FakeWorkHooks{
-		HostedRunStarter: hostedRunClient, NativeModelInvoker: nativeModelInvoker,
-		PromptEvalInvoker: promptEvalInvoker, ResponsesInvoker: responsesInvoker, MultiTurnInvoker: multiTurnInvoker,
+		ConnectorInvoker:   workerapp.HTTPJSONInvoker{Repository: repo, Client: connectors.Client{HTTP: httpClient}},
+		HostedRunStarter:   hostedRunClient,
+		NativeModelInvoker: nativeModelInvoker,
+		PromptEvalInvoker:  promptEvalInvoker,
+		ResponsesInvoker:   responsesInvoker,
+		MultiTurnInvoker:   multiTurnInvoker,
 	}, artifactStore, vibeRunner, productAnalytics)
 
 	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, background...); err != nil {

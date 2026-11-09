@@ -7,6 +7,11 @@ name: AWS release checks
     branches:
     - main
   workflow_call: {}
+# A new push to a PR stops the old run. In a workflow_call, github.workflow is
+# the caller (aws-release.yml), so a release run has its own group.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
@@ -33,6 +38,12 @@ jobs:
     if: ${{ needs.changes.outputs.backend == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    # Each part runs on its own runner. The aggregate sees one result for the
+    # matrix: success only if every part passes.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [compile, test, migrator]
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
@@ -46,12 +57,18 @@ jobs:
           runtime/go.sum
           cli/go.sum
     - name: Run required backend checks
-      run: python3 delivery/checks.py backend
+      run: python3 delivery/checks.py backend --part ${{ matrix.part }}
   runtime:
     needs: changes
     if: ${{ needs.changes.outputs.runtime == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    # Each part runs on its own runner. The aggregate sees one result for the
+    # matrix: success only if every part passes.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [compile, test]
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
@@ -65,7 +82,7 @@ jobs:
           runtime/go.sum
           cli/go.sum
     - name: Run required runtime checks
-      run: python3 delivery/checks.py runtime
+      run: python3 delivery/checks.py runtime --part ${{ matrix.part }}
   cli:
     needs: changes
     if: ${{ needs.changes.outputs.cli == 'true' }}
@@ -105,6 +122,12 @@ jobs:
     if: ${{ needs.changes.outputs.frontend == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    # Each part runs on its own runner. The aggregate sees one result for the
+    # matrix: success only if every part passes.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [test, static, build]
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
@@ -116,7 +139,7 @@ jobs:
         cache: npm
         cache-dependency-path: web/package-lock.json
     - name: Run required frontend checks
-      run: python3 delivery/checks.py frontend
+      run: python3 delivery/checks.py frontend --part ${{ matrix.part }}
   platform:
     needs: changes
     if: ${{ needs.changes.outputs.platform == 'true' }}
@@ -149,13 +172,20 @@ jobs:
       with:
         version: v29.3.1
         daemon-config: '{"debug":false,"log-level":"fatal","features":{"containerd-snapshotter":true}}'
+    # The rehearsals compile `go test -race -tags=awsplatform` on the runner.
+    # The shared setup-go key holds the build cache of whichever job saved it
+    # first, so this job keeps its own Go cache.
     - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
       with:
         go-version-file: backend/go.mod
-        cache-dependency-path: |-
-          backend/go.sum
-          runtime/go.sum
-          cli/go.sum
+        cache: false
+    - name: Restore the Go cache of the image rehearsals
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: |-
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: go-image-rehearsals-v1-${{ hashFiles('backend/go.mod', 'backend/go.sum', 'runtime/go.sum') }}
     - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
       with:
         bun-version: 1.4.2
@@ -164,7 +194,19 @@ jobs:
         python3 -m venv "$RUNNER_TEMP/aws-image-venv"
         "$RUNNER_TEMP/aws-image-venv/bin/pip" install --disable-pip-version-check PyYAML==6.0.3
         echo "$RUNNER_TEMP/aws-image-venv/bin" >> "$GITHUB_PATH"
+    # Reuse the platform builds of the same recipe (Temporal, Caddy, Compose and
+    # the patched bases). Only a direct run of this workflow uses the cache. In
+    # a workflow_call from aws-release.yml, github.workflow is the caller, so
+    # that run builds from source. Every image still goes through the scans.
+    - name: Restore the platform builds of the same recipe
+      if: ${{ github.workflow == 'AWS release checks' }}
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ${{ runner.temp }}/platform-builds
+        key: platform-builds-v1-${{ hashFiles('delivery/maintained.py', 'deploy/aws/images.lock.json', 'deploy/aws/platform/**') }}
     - name: Run required images checks
+      env:
+        AGENTCLASH_PLATFORM_CACHE: ${{ github.workflow == 'AWS release checks' && format('{0}/platform-builds', runner.temp) || '' }}
       run: python3 delivery/checks.py images
   required:
     name: Release checks

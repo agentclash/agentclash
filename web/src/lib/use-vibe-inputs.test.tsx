@@ -75,3 +75,45 @@ it("does not restore a saved selection over edits made during loading",async()=>
  await act(async()=>state.add("New notes"));await act(async()=>resolve({...material,id:"old"}));
  expect(state.items.map(x=>x.material.id)).toEqual(["new"]);
 });
+
+it("restores successful sources when a sibling source cannot be read", async () => {
+ sessionStorage.setItem("vibe-materials:a:guide", JSON.stringify(["file-a", "missing"].map(id => ({id,usage:"task_input",quote:"",page:1,acknowledged:false}))));
+ vi.mocked(vibeFetch).mockImplementation(async path => { if(String(path).endsWith("missing")) throw Error("Expired source"); return material; });
+ await render();
+ expect(state.items.map(x=>x.material.id)).toContain("file-a");
+ expect(state.error).toContain("missing");
+});
+
+
+it("keeps simultaneous Guide and trial material controllers separate across thread and actor changes", async () => {
+ let guide!:ReturnType<typeof useVibeInputs>, trial!:ReturnType<typeof useVibeInputs>;
+ function Recipients({thread,actor}:{thread:string;actor:string}) {
+  const guideValue=useVibeInputs("a","guide",token,actor), trialValue=useVibeInputs("a",`trial:v1:${thread}`,token,actor); React.useEffect(()=>{guide=guideValue;trial=trialValue}); return null;
+ }
+ const renderRecipients=async(thread="first",actor="person-a")=>act(async()=>root.render(<Recipients thread={thread} actor={actor}/>));
+ vi.mocked(uploadMaterial).mockResolvedValueOnce(material).mockResolvedValueOnce({...material,id:"trial-file"});
+ await renderRecipients(); await act(async()=>guide.add("Guide reference")); await act(async()=>trial.add("Trial input"));
+ expect(guide.bindings.map(item=>item.input_id)).toEqual(["file-a"]);
+ expect(trial.bindings.map(item=>item.input_id)).toEqual(["trial-file"]);
+ await renderRecipients("new"); expect(trial.bindings).toEqual([]); expect(guide.bindings).toHaveLength(1);
+ await renderRecipients(); expect(trial.bindings[0].input_id).toBe("trial-file");
+ await renderRecipients("first","person-b"); expect(guide.bindings).toEqual([]); expect(trial.bindings).toEqual([]);
+});
+
+it.each(["uploaded", "extracting", "failed", "unreadable", "expired", "deleted"] as const)("keeps %s source blocked until refreshed or detached without deleting its sibling", async status => {
+ vi.mocked(vibeFetch).mockResolvedValueOnce({...material,status});
+ await render(); await act(async()=>state.attach("file-a"));
+ vi.mocked(vibeFetch).mockResolvedValueOnce({...material,id:"sibling",warnings:["Missing page"]});
+ await act(async()=>state.attach("sibling"));
+ expect(state.blockers).toEqual(expect.arrayContaining([expect.objectContaining({inputID:"file-a",code:status === "uploaded" || status === "extracting" ? "reading" : status})]));
+ vi.mocked(vibeFetch).mockRejectedValueOnce(Error("Connection lost"));
+ await act(async()=>state.refresh("file-a"));
+ expect(state.blocked).toBe(true);
+ expect(state.blockers.find(item=>item.inputID==="file-a")?.reason).toContain("Could not check this source");
+ await act(async()=>state.remove("file-a"));
+ expect(state.blocked).toBe(true);
+ expect(state.blockers.map(item=>item.inputID)).toEqual(["sibling"]);
+ await act(async()=>state.acknowledge("sibling",true));
+ expect(state.blocked).toBe(false);
+ expect(vi.mocked(vibeFetch).mock.calls.every(call=>!call[2]?.method)).toBe(true);
+});

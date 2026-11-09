@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { parseBenchmarkReport } from "./benchmarks";
+import { benchmarkReportSchema } from "@/components/marketing/json-ld";
+import { getAllSlugs, getReportBySlug, parseBenchmarkReport } from "./benchmarks";
 
 const VALID = `---
 title: "Comparison report"
@@ -60,6 +61,17 @@ describe("parseBenchmarkReport", () => {
       },
     ]);
     expect(report?.content.trim()).toBe("Body content.");
+  });
+
+  it.each(['"2026-10-28"', "2026-10-28"])("carries authored edit date %s into article and dataset metadata", (dateModified) => {
+    const report = parseBenchmarkReport("race-report", VALID.replace('date: "2026-06-06"', `date: "2026-06-06"\ndateModified: ${dateModified}`))!;
+    expect(report.date).toBe("2026-06-06");
+    expect(report.dateModified).toBe("2026-10-28");
+    const schemas = benchmarkReportSchema(report);
+    for (const type of ["BlogPosting", "Dataset"]) {
+      expect(schemas.find((schema) => schema["@type"] === type)).toMatchObject({ datePublished: "2026-06-06", dateModified: "2026-10-28" });
+    }
+    expect(parseBenchmarkReport("unchanged", VALID)?.dateModified).toBeUndefined();
   });
 
   it("sorts results by rank ascending", () => {
@@ -195,4 +207,23 @@ body
     );
     expect(ranks).toEqual([1, 2]);
   });
+});
+
+
+it("reserves methodology for the static page rather than a benchmark report", () => {
+  expect(getReportBySlug("methodology")).toBeNull();
+  expect(getAllSlugs()).not.toContain("methodology");
+});
+
+it("excludes a colliding methodology report file", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const fixture = path.join(process.cwd(), "content", "benchmarks", "methodology.mdx");
+  fs.writeFileSync(fixture, VALID);
+  try {
+    expect(getReportBySlug("methodology")).toBeNull();
+    expect(getAllSlugs()).not.toContain("methodology");
+  } finally {
+    fs.rmSync(fixture, { force: true });
+  }
 });

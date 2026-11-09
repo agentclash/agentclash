@@ -93,7 +93,7 @@ func (s *Service) freezeGrading(p *Plan) error {
 		if err != nil {
 			return err
 		}
-		if p.RegradeOf == nil {
+		if !p.isRegrade() {
 			target, err := s.Config.Profile(p.Submission.Models.Target)
 			if err != nil {
 				return err

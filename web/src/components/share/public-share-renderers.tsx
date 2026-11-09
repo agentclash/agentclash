@@ -1,5 +1,7 @@
 "use client";
 
+import { ReportSnapshotView } from "./report-snapshot-view";
+import type { ReportContent } from "@/lib/report-snapshots";
 import { useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -79,6 +81,9 @@ const agentStatusVariant: Record<
 };
 
 export function PublicShareRenderer({ resource }: { resource: SharedResource }) {
+  if (resource.type === "report_snapshot") {
+    return <ReportSnapshotView content={resource.content as ReportContent} />;
+  }
   if (resource.type === "challenge_pack_version") {
     return <PublicChallengePack resource={resource} />;
   }

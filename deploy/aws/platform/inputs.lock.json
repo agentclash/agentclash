@@ -33,15 +33,15 @@
     },
     "v3.23/curl": {
       "name": "curl",
-      "version": "8.22.0-r0",
-      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/curl-8.22.0-r0.apk",
-      "sha256": "78829ae535239009c2dd615d0d2f58ecc0abd07855e38c1eea389fc68993f5b1"
+      "version": "8.23.0-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/curl-8.23.0-r0.apk",
+      "sha256": "3fa0d88bff24906e311fdc0ea6e8e6400c2181ecef17eb4f51ee191902afbf8d"
     },
     "v3.23/libcurl": {
       "name": "libcurl",
-      "version": "8.22.0-r0",
-      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libcurl-8.22.0-r0.apk",
-      "sha256": "f4070c2bce6aeb660a96f767f5a0eb6876d6c8421b51334d24678e0039720507"
+      "version": "8.23.0-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libcurl-8.23.0-r0.apk",
+      "sha256": "d35e08ce3bafbcaf1a68512ac31483bd93e795ad5e8d8bfd76ada3106d81b569"
     },
     "v3.23/c-ares": {
       "name": "c-ares",
@@ -67,6 +67,12 @@
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libuuid-2.42.3-r1.apk",
       "sha256": "8306e5bb577696c9069fe1dfd9e1dcc39d2d481c6a1b0e707fd03c3e21aa6aa2"
     },
+    "v3.24/libcurl": {
+      "name": "libcurl",
+      "version": "8.23.0-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libcurl-8.23.0-r0.apk",
+      "sha256": "1f70ca404818805a6465b615bbfe84ef861488a963d7e630108ebd7fbaa51665"
+    },
     "v3.24/ca-certificates": {
       "name": "ca-certificates",
       "version": "20260909-r0",
@@ -84,6 +90,70 @@
       "version": "2026d-r0",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/tzdata-2026d-r0.apk",
       "sha256": "e13f0f891c5e231bfb89727556bc05e9a44fce6389c6c1505f2772369da5a262"
+    },
+    "v3.23/brotli-libs": {
+      "version": "1.2.1-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/brotli-libs-1.2.1-r0.apk",
+      "sha256": "cf3dc08928958bb42fe71c07a179ca33adb9e2c341daa29d88777061956d84f5"
+    },
+    "v3.24/brotli-libs": {
+      "version": "1.2.1-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/brotli-libs-1.2.1-r0.apk",
+      "sha256": "62a7e37e43bbfc1f8525a00ad2125fd5897135dc93b849733884cb78ffd8e26c"
+    },
+    "v3.22/zlib": {
+      "name": "zlib",
+      "version": "1.3.2-r1",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/zlib-1.3.2-r1.apk",
+      "sha256": "af24e502645e2b392cae833856d776691ac21655362e5db69d7b89f147f76216"
+    },
+    "v3.23/zlib": {
+      "name": "zlib",
+      "version": "1.3.2-r1",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/zlib-1.3.2-r1.apk",
+      "sha256": "ee62e1864c235901e2aa4d1868c7ae8f7cc5d0740a98c48a2525332eb4bfda73"
+    },
+    "v3.24/zlib": {
+      "name": "zlib",
+      "version": "1.3.2-r1",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/zlib-1.3.2-r1.apk",
+      "sha256": "63aeea03c15a2f9018f81805cfc8aa926bdf5cd68921f22149c2fbb5d0ee9f47"
+    },
+    "v3.22/musl": {
+      "name": "musl",
+      "version": "1.2.5-r13",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/musl-1.2.5-r13.apk",
+      "sha256": "359890bc7c4dc5fee7a85192de60a471c987e4664767288578beca60a44db2c8"
+    },
+    "v3.22/musl-utils": {
+      "name": "musl-utils",
+      "version": "1.2.5-r13",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/musl-utils-1.2.5-r13.apk",
+      "sha256": "0fb52d1d72f34cd69027258adca48db5d75b20872374c5f6bd00600f0279ddd6"
+    },
+    "v3.23/musl": {
+      "name": "musl",
+      "version": "1.2.5-r24",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/musl-1.2.5-r24.apk",
+      "sha256": "d49d703392f1a6d2fe822db1b57e61735063077e1ad846d5f40d79fe507ec727"
+    },
+    "v3.23/musl-utils": {
+      "name": "musl-utils",
+      "version": "1.2.5-r24",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/musl-utils-1.2.5-r24.apk",
+      "sha256": "ee9a8106067ead36b8930f5ccdb3e515574871ac8e07f88cc7bab7049effc945"
+    },
+    "v3.24/musl": {
+      "name": "musl",
+      "version": "1.2.6-r3",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/musl-1.2.6-r3.apk",
+      "sha256": "e142255d0fa397f14318996bc10378093dcc069dc3dd1b6818c8f28a789c21da"
+    },
+    "v3.24/musl-utils": {
+      "name": "musl-utils",
+      "version": "1.2.6-r3",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/musl-utils-1.2.6-r3.apk",
+      "sha256": "47263d05842c5e12d01e0369e5b5bea51733323501c00ca21968a5102de137ca"
     }
   }
 }

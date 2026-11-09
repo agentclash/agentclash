@@ -51,6 +51,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       locale: "en_US",
       siteName: "AgentClash",
       publishedTime: post.date,
+      modifiedTime: post.dateModified ?? post.date,
       authors: [post.author],
       images: [
         {
@@ -96,6 +97,7 @@ export default async function BlogPostPage({ params }: Props) {
             description: post.description,
             url: `/blog/${post.slug}`,
             datePublished: post.date,
+            dateModified: post.dateModified,
             authorName: post.author,
           }),
         ]}

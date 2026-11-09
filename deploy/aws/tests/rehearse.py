@@ -29,6 +29,22 @@ from secret_store import materialize
 from restore import safe_extract
 
 
+PLATFORM_CHECKS = [
+    "three databases and distinct non-DDL runtime roles",
+    "Temporal SQL schema init and repeat upgrade",
+    "SQL TLS and Temporal mTLS",
+    "three queues durable timer recovery after membership IP change",
+    "CA/leaf rotation",
+    "three-database backup restore and visibility",
+]
+CACHE_CHECKS = [
+    "Go and Bun Valkey TLS with ACLs",
+    "Lua, transactions and pubsub",
+    "durable absolute TTL through restart/AOF rewrite and restore",
+    "truncated AOF rejected",
+]
+
+
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser()
@@ -38,8 +54,14 @@ def main():
         required=True,
         help="Private image-selection.json from the scanned build",
     )
-    parser.add_argument(
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument(
         "--cache-only", action="store_true", help="Run only cache integration checks"
+    )
+    scope.add_argument(
+        "--platform-only",
+        action="store_true",
+        help="Run only the database and Temporal checks",
     )
     args = parser.parse_args()
     evidence = Path(args.evidence_dir).resolve()
@@ -633,6 +655,22 @@ def main():
                 "Three-database backup/restore and Temporal visibility passed",
                 flush=True,
             )
+        if args.platform_only:
+            # The cache part runs in its own process (--cache-only). The
+            # finally block still removes this run's resources.
+            (work / "result.json").write_text(
+                json.dumps(
+                    {
+                        "status": "passed",
+                        "scope": "platform-only",
+                        "images": images,
+                        "checks": PLATFORM_CHECKS,
+                    },
+                    indent=2,
+                )
+                + "\n"
+            )
+            return
         os.chdir(ROOT / "backend")
         # Valkey with the production TLS/ACL/AOF configuration.
         cache_secret = private_dir("cache-secret")
@@ -847,18 +885,7 @@ def main():
                 {
                     "status": "passed",
                     "images": images,
-                    "checks": [
-                        "three databases and distinct non-DDL runtime roles",
-                        "Temporal SQL schema init and repeat upgrade",
-                        "SQL TLS and Temporal mTLS",
-                        "three queues durable timer recovery after membership IP change",
-                        "CA/leaf rotation",
-                        "three-database backup restore and visibility",
-                        "Go and Bun Valkey TLS with ACLs",
-                        "Lua, transactions and pubsub",
-                        "durable absolute TTL through restart/AOF rewrite and restore",
-                        "truncated AOF rejected",
-                    ],
+                    "checks": PLATFORM_CHECKS + CACHE_CHECKS,
                 },
                 indent=2,
             )
@@ -867,7 +894,7 @@ def main():
         if args.cache_only:
             result_path = work / "result.json"
             result = json.loads(result_path.read_text())
-            result["checks"] = result["checks"][-4:]
+            result["checks"] = CACHE_CHECKS
             result["scope"] = "cache-only"
             result_path.write_text(json.dumps(result, indent=2) + "\n")
     finally:

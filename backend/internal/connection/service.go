@@ -60,7 +60,7 @@ func NewService(repo Repository, router ProviderRouter) *Service {
 
 // CreateConnectionInput describes a new provider connection. Exactly one of
 // APIKey (a raw key to store in the vault) or CredentialReference (a pointer to
-// an existing secret/env reference) must be set.
+// an existing workspace vault secret) must be set.
 type CreateConnectionInput struct {
 	ProviderKey         string
 	Name                string
@@ -94,6 +94,12 @@ type TestResult struct {
 // Create stores a connection. A raw API key is written to the encrypted
 // workspace-secret vault and replaced with a credential reference pointing at it.
 func (s *Service) Create(ctx context.Context, workspaceID uuid.UUID, input CreateConnectionInput) (repository.ProviderAccountRow, error) {
+	if err := ValidateCredentials(input.APIKey, input.CredentialReference); err != nil {
+		return repository.ProviderAccountRow{}, err
+	}
+	if workspaceID == uuid.Nil {
+		return repository.ProviderAccountRow{}, fmt.Errorf("provider connection requires a workspace")
+	}
 	providerKey, err := provider.NormalizeProviderKey(input.ProviderKey)
 	if err != nil {
 		return repository.ProviderAccountRow{}, err
@@ -120,6 +126,11 @@ func (s *Service) Create(ctx context.Context, workspaceID uuid.UUID, input Creat
 	}
 
 	credRef := input.CredentialReference
+	if input.APIKey == "" {
+		if _, _, err := s.credentialContext(ctx, repository.ProviderAccountRow{WorkspaceID: &workspaceID, CredentialReference: credRef}); err != nil {
+			return repository.ProviderAccountRow{}, err
+		}
+	}
 	if input.APIKey != "" {
 		secretKey := providerSecretKey(providerKey)
 		if err := s.repo.UpsertWorkspaceSecret(ctx, repository.UpsertWorkspaceSecretParams{
@@ -169,25 +180,26 @@ func (s *Service) ResolveCredentialContext(ctx context.Context, account reposito
 // reference needs and injects them into the returned context. It also returns
 // the set of secret values for log redaction.
 func (s *Service) credentialContext(ctx context.Context, account repository.ProviderAccountRow) (context.Context, []string, error) {
-	secrets := map[string]string{}
-	if account.WorkspaceID != nil && strings.HasPrefix(account.CredentialReference, workspaceSecretScheme) {
-		loaded, err := s.repo.LoadWorkspaceSecrets(ctx, *account.WorkspaceID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("load workspace secrets: %w", err)
-		}
-		secrets = loaded
+	if account.WorkspaceID == nil || *account.WorkspaceID == uuid.Nil {
+		return nil, nil, fmt.Errorf("provider connection requires a workspace")
 	}
-	resolved := provider.WithWorkspaceSecrets(ctx, secrets)
-	return resolved, redactionValues(resolved, secrets, account.CredentialReference), nil
+	resolved, err := provider.PrepareCredentialContext(ctx, account.CredentialReference, func() (map[string]string, error) {
+		return s.repo.LoadWorkspaceSecrets(ctx, *account.WorkspaceID)
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	value, err := (provider.EnvCredentialResolver{}).Resolve(resolved, account.CredentialReference)
+	if err != nil {
+		return nil, nil, err
+	}
+	return resolved, []string{value}, nil
 }
 
 // ListModels returns the models reachable with a connection's credential. Results
 // are cached per account (~1h); on a live fetch failure a stale cached list is
 // served when available.
 func (s *Service) ListModels(ctx context.Context, account repository.ProviderAccountRow) ([]provider.ModelInfo, error) {
-	if cached, ok := s.cache.get(account.ID); ok {
-		return cached, nil
-	}
 	if s.router == nil {
 		return nil, provider.NewFailure(
 			account.ProviderKey,
@@ -201,6 +213,10 @@ func (s *Service) ListModels(ctx context.Context, account repository.ProviderAcc
 	if err != nil {
 		return nil, err
 	}
+	if cached, ok := s.cache.get(account.ID); ok {
+		return cached, nil
+	}
+
 	models, err := s.router.ListModels(resolvedCtx, provider.ListModelsRequest{
 		ProviderKey:         account.ProviderKey,
 		CredentialReference: account.CredentialReference,
@@ -341,19 +357,6 @@ func failureResult(result TestResult, err error, redaction []string, credentialR
 	return result
 }
 
-func redactionValues(ctx context.Context, secrets map[string]string, credentialReference string) []string {
-	values := make([]string, 0, len(secrets)+1)
-	for _, value := range secrets {
-		if value != "" {
-			values = append(values, value)
-		}
-	}
-	if resolved, err := (provider.EnvCredentialResolver{}).Resolve(ctx, credentialReference); err == nil && resolved != "" {
-		values = append(values, resolved)
-	}
-	return values
-}
-
 func sanitizeMessage(message string, redaction []string, credentialReference string) string {
 	sanitized := message
 	for _, value := range redaction {
@@ -363,4 +366,15 @@ func sanitizeMessage(message string, redaction []string, credentialReference str
 		sanitized = strings.ReplaceAll(sanitized, credentialReference, "[credential-reference]")
 	}
 	return sanitized
+}
+
+// ValidateCredentials is shared by the hosted API and direct service callers.
+func ValidateCredentials(apiKey, reference string) error {
+	if (apiKey == "") == (reference == "") || (apiKey != "" && strings.TrimSpace(apiKey) == "") {
+		return fmt.Errorf("exactly one api_key or credential_reference is required")
+	}
+	if reference != "" {
+		return provider.ValidateWorkspaceCredentialReference(reference)
+	}
+	return nil
 }

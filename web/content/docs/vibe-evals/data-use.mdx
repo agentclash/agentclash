@@ -1,0 +1,29 @@
+---
+title: Vibe Evals data use and retention
+description: What happens to instructions, task material, conversations, and results in Vibe Evals.
+dateModified: 2026-10-26
+---
+
+## Before you paste or upload
+
+Remove secrets such as API keys, passwords, and customer identifiers before sending instructions, briefs, files, or pasted text. Keep only the information needed for the task.
+
+For example, replace `Customer Jane Smith, jane@example.com, API key sk-secret` with `Customer [NAME], email [EMAIL], API key [REDACTED]`.
+
+## Where content goes
+
+AgentClash stores submitted instructions, task materials, conversations, and results on its server. Uploading stores the file and extracts readable text. Requesting an estimate sends your draft to AgentClash to calculate and store the estimate; it does not run model inference. Running sends the selected instructions and material to the configured model providers.
+
+Provider-specific terms govern their handling of that content. Vibe Evals does not promise a particular provider retention period or exclusion from training. Check the terms for the providers you choose before sending sensitive content. Your live business systems are not connected by this workflow.
+
+## Guest and signed-in materials
+
+Materials uploaded as a guest expire after seven days. Signing in and claiming the project before that expiry keeps still-unexpired materials; expired material is not recovered. Signed-in materials, including unexpired materials claimed from a guest project, persist until you remove them or delete the project.
+
+These rules follow who owns the material, not whether a run uses guest allowance or workspace funding. Signing in does not itself share your raw projects with other workspace members.
+
+## Removing content and saved copies
+
+Deleting a file prevents future use of that source. It does not erase information already stored in conversations or results.
+
+Deleting a project removes its private content. Minimal records required for accounting remain. Independently saved workspace packs and downloaded copies are separate from the original project and are not removed when that project is deleted. Manage those copies separately where you saved them.

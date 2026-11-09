@@ -328,7 +328,7 @@ func (r *Runner) validateBeforeRun(ctx context.Context, o Operation, p *Plan) er
 	if err != nil {
 		return err
 	}
-	input, err := BuildSuiteReviewInput(p.Artifact.Blueprint, *p.Conversation.Policy, p.Conversation.Sources, p.Conversation.CurrentRequest, len(p.Cases), p.limits())
+	input, err := BuildSuiteReviewInput(p.Artifact.Blueprint, *p.Conversation.Policy, p.Conversation.Sources, p.Conversation.CurrentRequest, suiteCaseCount(p.Artifact.Blueprint), p.limits())
 	if err != nil {
 		return err
 	}
@@ -337,9 +337,19 @@ func (r *Runner) validateBeforeRun(ctx context.Context, o Operation, p *Plan) er
 	}
 	resp, err := r.reliableCall(ctx, o, "suite-review", SuiteReviewMessages(input), SuiteReviewFormatFor(profile, input))
 	if err != nil {
+		if saveErr := r.Service.Store.persistValidationReview(ctx, o, "suite-review", p.Artifact, input, nil, err); saveErr != nil {
+			return saveErr
+		}
 		return err
 	}
 	v, err := ParseSuiteReview([]byte(resp.OutputText), input, p.limits())
+	if v != nil && err == nil {
+		v.Model = profile.ID
+		v.ProfileHash = Hash(raw(profile))
+	}
+	if saveErr := r.Service.Store.persistValidationReview(ctx, o, "suite-review", p.Artifact, input, v, err); saveErr != nil {
+		return saveErr
+	}
 	reviewErr := err
 	if err == nil && v.Status != SuiteSupported {
 		reviewErr = fault(v.Status, v.ProblemSummary())

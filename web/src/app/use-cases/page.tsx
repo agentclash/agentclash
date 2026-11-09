@@ -3,6 +3,7 @@ import {
   createSeoCollectionMetadata,
 } from "@/components/marketing/seo-collection-page";
 import { getSeoPagesByPrefix } from "@/lib/seo-pages";
+import { SEO_COLLECTION_INTROS } from "@/lib/seo-pages/collections";
 
 const PAGE_PATH = "/use-cases";
 const PAGE_TITLE = "Agent Evaluation Use Cases - AgentClash";
@@ -23,7 +24,7 @@ export default function UseCasesIndexPage() {
       description={PAGE_DESCRIPTION}
       eyebrow="Use cases"
       h1="Agent evaluation use cases"
-      intro="Pick the workload that matches your team: coding agents, research agents, or customer support agents. Evaluate them on real tasks with replay and scorecards."
+      intro={SEO_COLLECTION_INTROS[PAGE_PATH]}
       pages={getSeoPagesByPrefix(PAGE_PATH)}
       secondarySections={[
         {

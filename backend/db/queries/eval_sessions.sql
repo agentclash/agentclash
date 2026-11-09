@@ -1,5 +1,6 @@
 -- name: CreateEvalSession :one
 INSERT INTO eval_sessions (
+    workspace_id,
     status,
     repetitions,
     aggregation_config,
@@ -9,6 +10,7 @@ INSERT INTO eval_sessions (
     started_at,
     finished_at
 ) VALUES (
+    sqlc.narg('workspace_id'),
     @status,
     @repetitions,
     @aggregation_config,
@@ -35,12 +37,7 @@ LIMIT @result_limit OFFSET @result_offset;
 -- name: ListEvalSessionsByWorkspaceID :many
 SELECT *
 FROM eval_sessions
-WHERE EXISTS (
-    SELECT 1
-    FROM runs
-    WHERE runs.eval_session_id = eval_sessions.id
-      AND runs.workspace_id = @workspace_id
-)
+WHERE workspace_id = @workspace_id
 ORDER BY created_at DESC, id DESC
 LIMIT @result_limit OFFSET @result_offset;
 

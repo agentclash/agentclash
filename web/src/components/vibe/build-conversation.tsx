@@ -2,10 +2,11 @@
 
 import "./build-output.css";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { WEB_EVENTS } from "@/lib/analytics/events";
 import { captureBuildEvent } from "@/lib/vibe-build-analytics";
+import { testCount } from "@/lib/vibe-presentation";
 import { buildTimeline, buildVersion, currentBuildAction, workingBuildArtifact, type BuildMessage } from "@/lib/vibe-build-timeline";
 import { terminal, type Artifact, type CaseResult, type Operation, type Session } from "@/lib/vibe";
 import { BuildNextActions } from "./build-next-actions";
@@ -16,7 +17,7 @@ import { BuildRunResult } from "./build-run-result";
 import { suiteCases } from "./test-suite-cases";
 import { PromptChange } from "./prompt-change";
 
-export function BuildConversation({ session, artifact, busy, primary, onPreviewOpen, onReviewArtifact, onGuide, proposal, pending, renderMessage, onDetails, onImprove, onSave, onTougher, loadEvidence }: {
+export function BuildConversation({ session, artifact, busy, primary, onPreviewOpen, onReviewArtifact, onGuide, proposal, pending, renderMessage, onDetails, onImprove, onSave, onTougher, onExport, loadEvidence }: {
   session: Session;
   artifact?: Artifact;
   busy: boolean;
@@ -30,6 +31,7 @@ export function BuildConversation({ session, artifact, busy, primary, onPreviewO
   onDetails: (operation: Operation) => void;
   onImprove: (operation: Operation) => void;
   onSave: (operation: Operation) => void;
+  onExport?: (artifact: Artifact, operation?: Operation) => void;
   onTougher?: (text: string, count: number, artifactID: string) => void;
   loadEvidence: (id: string, key: string) => Promise<CaseResult>;
 }) {
@@ -62,19 +64,23 @@ export function BuildConversation({ session, artifact, busy, primary, onPreviewO
     requestAnimationFrame(() => document.getElementById("vibe-trial-message")?.focus({ preventScroll: false }));
   }
   return <div className="vibe-build-timeline" role="log" aria-label="Conversation with Vibe Evals" aria-live="polite" aria-relevant="additions">
-    {entries.map(entry => {
+    {entries.map((entry, index) => {
       const entrance = { initial: reduced || initialEntries.has(entry.id) ? false as const : { opacity: 0, y: 4 }, animate: { opacity: 1, y: 0 }, transition: { duration: reduced ? 0 : .18 } };
       if (entry.kind === "message") {
         const trial = entry.message.origin === "playground";
         const target = trial ? session.document.artifacts.find(a => a.id === entry.message.artifact_id) : undefined;
         return <motion.div {...entrance} key={entry.id} data-message-id={entry.message.id} data-build-entry={entry.id}>
-          {trial ? <div className={`vibe-message ${entry.message.role === "user" ? "vibe-message-user" : ""}`}>
-            <p className="vibe-build-eyebrow">{entry.message.role === "user" ? "You → " : ""}{target?.title || "Saved prototype"}{target ? ` · trial v${buildVersion(session, target)}` : ""}{target?.sample ? " · Sample demonstration" : ""}</p>
+          {trial && (index === 0 || entries[index - 1].kind !== "message" || (() => {
+            const previous = (entries[index - 1] as { message?: BuildMessage }).message;
+            return previous?.origin !== "playground" || previous.artifact_id !== entry.message.artifact_id || (previous.preview_thread_id || `legacy:${previous.operation_id}`) !== (entry.message.preview_thread_id || `legacy:${entry.message.operation_id}`);
+          })()) && <h3 key="thread-boundary" className="vibe-build-eyebrow mt-6">{entry.message.preview_thread_id ? "Trial conversation" : "Earlier trial"} · {entry.message.preview_thread_id ? session.document.messages.filter(message => message.origin === "playground").map(message => message.preview_thread_id || `legacy:${message.operation_id}`).filter((id, i, ids) => ids.indexOf(id) === i).indexOf(entry.message.preview_thread_id) + 1 : entry.message.operation_id}</h3>}
+          {trial ? <div key="trial-message" className={`vibe-message ${entry.message.role === "user" ? "vibe-message-user" : ""}`}>
+            <p className="vibe-build-eyebrow">{entry.message.role === "user" ? "You → " : ""}{target?.title || "Saved agent"}{target ? ` · trial v${buildVersion(session, target)}` : ""}{target?.sample ? " · Sample demonstration" : ""}</p>
             {entry.message.role === "assistant" ? <>
               <TaskOutput text={entry.message.content} sessionID={session.id} materials={entry.message.materials} />
               <p className="vibe-build-note">Runs here using what you supplied; your business systems aren’t connected.</p>
             </> : <AgentReply>{entry.message.content}</AgentReply>}
-          </div> : renderMessage(entry.message)}
+          </div> : <Fragment key="guide-message">{renderMessage(entry.message)}</Fragment>}
         </motion.div>;
       }
       if (entry.kind === "prototype") {
@@ -85,16 +91,16 @@ export function BuildConversation({ session, artifact, busy, primary, onPreviewO
         const parent = session.document.artifacts.find(a => a.id === entry.artifact.parent_id);
         const associated = runs.find(r => r.artifact?.id === entry.artifact.id);
         if (associated && terminal(associated.operation.state)) return null;
-        return <motion.div {...entrance} key={entry.id} data-build-entry={entry.id}><section className="vibe-prototype-card" aria-label={entry.artifact.agent_prompt ? `Interactive prototype version ${entry.version}` : "Saved test draft"}>
-          <p className="vibe-build-eyebrow">{!entry.artifact.agent_prompt ? "Saved checks · needs a prototype" : pendingChange && working ? "Proposed version" : `Interactive prototype · v${entry.version}`}{entry.artifact.sample ? " · Sample demonstration" : ""}</p>
+        return <motion.div {...entrance} key={entry.id} data-build-entry={entry.id}><section className="vibe-prototype-card" aria-label={entry.artifact.agent_prompt ? `Agent version ${entry.version}` : "Saved test draft"}>
+          <p className="vibe-build-eyebrow">{!entry.artifact.agent_prompt ? "Saved tests · needs an agent" : pendingChange && working ? "Proposed version" : `Agent · v${entry.version}`}{entry.artifact.sample ? " · Sample demonstration" : ""}</p>
           <h2>{entry.artifact.title}</h2>
           <p className="vibe-build-note">A first version you can try here. Your business systems aren’t connected.</p>
           {entry.artifact.sample && <p className="vibe-build-note">Sample rules are for this demonstration. Your real policy is still unspecified.</p>}
           {entry.artifact.scope_note && <details className="vibe-prototype-details"><summary>What it can do here</summary><p>{entry.artifact.scope_note}</p></details>}
-          {current && !busy && <VibeButton variant="quiet" onClick={() => openTrial()}>Try this prototype</VibeButton>}
+          {current && !busy && <VibeButton variant="quiet" onClick={() => openTrial()}>Try this agent</VibeButton>}
 
           {pendingChange && !selected && <>
-            {parent?.agent_prompt && entry.artifact.agent_prompt && parent.agent_prompt !== entry.artifact.agent_prompt && <PromptChange before={parent.agent_prompt} after={entry.artifact.agent_prompt} defaultOpen />}
+            {parent?.agent_prompt && entry.artifact.agent_prompt && parent.agent_prompt !== entry.artifact.agent_prompt && <PromptChange before={parent.agent_prompt} after={entry.artifact.agent_prompt} defaultOpen title={entry.artifact.accepted ? "Instruction change" : "Proposed change"} beforeVersion={buildVersion(session, parent)} afterVersion={entry.version} />}
             <VibeButton disabled={busy} onClick={() => onReviewArtifact(entry.artifact.id)}>Review update</VibeButton>
           </>}
           {selected && !associated && <div className="vibe-build-proposal">{proposal}</div>}
@@ -103,21 +109,21 @@ export function BuildConversation({ session, artifact, busy, primary, onPreviewO
       const current = entry.operation.id === latestRun?.id && entry.artifact?.id === working?.id;
       const firstCase = entry.artifact && suiteCases(entry.artifact.blueprint)[0];
       return <motion.div {...entrance} key={entry.id} data-build-entry={entry.id}><div>
-        {entry.historical && <p className="vibe-build-eyebrow">Earlier saved check</p>}
+        {entry.historical && <p className="vibe-build-eyebrow">Earlier run</p>}
         {terminal(entry.operation.state) ? <BuildRunResult session={session} operation={entry.operation} artifact={entry.artifact}
           current={current} first={entry.id === firstEvidence} busy={busy} loadEvidence={loadEvidence}
-          onImprove={() => onImprove(entry.operation)} onDetails={() => onDetails(entry.operation)} />
-          : <div><p className="vibe-build-note">Checking {entry.operation.progress?.total_cases || 3} sample situations against {entry.artifact?.sample ? "the sample rules" : "your instructions"}…</p>
-            {firstCase && <details className="vibe-prototype-details"><summary>See one situation we’re checking</summary>
+          onTry={() => openTrial(entry.artifact?.id)} onImprove={() => onImprove(entry.operation)} onDetails={() => onDetails(entry.operation)} />
+          : <div><p className="vibe-build-note">Running {testCount(entry.operation.progress?.total_cases || 3)} against {entry.artifact?.sample ? "the sample rules" : "your instructions"}…</p>
+            {firstCase && <details className="vibe-prototype-details"><summary>See one test we’re running</summary>
               <p className="vibe-evidence-label">We’ll ask</p><AgentReply>{firstCase.input}</AgentReply>
               <p className="vibe-evidence-label">It should</p><AgentReply>{firstCase.expected}</AgentReply>
-              <p className="vibe-build-note">Waiting for the completed check; this is the expectation, not a result.</p>
+              <p className="vibe-build-note">Waiting for the run to finish; this is the expectation, not a result.</p>
             </details>}</div>}
 
       </div></motion.div>;
     })}
     {pending}
-    {active && <BuildNextActions key={`${session.id}:${active.id}`} session={session} artifact={active} operation={latestRun} hasOutput={hasOutput} busy={busy} primary={primary}
-      onTry={() => openTrial(active.id)} onDetails={onDetails} onGuide={onGuide} onSave={onSave} onTougher={onTougher} loadEvidence={loadEvidence} />}
+    {active && <BuildNextActions key={`${session.id}:${active.id}`} session={session} artifact={active} operation={latestRun} hasOutput={hasOutput} busy={busy} primary={primary && !latestRun}
+      onTry={() => openTrial(active.id)} onDetails={onDetails} onGuide={onGuide} onSave={onSave} onTougher={onTougher} onExport={onExport} loadEvidence={loadEvidence} />}
   </div>;
 }

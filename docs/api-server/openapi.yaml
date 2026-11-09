@@ -106,9 +106,80 @@ paths:
                   anonymous_limits: { type: object, additionalProperties: { type: integer } }
                   signed_in_limits: { type: object, additionalProperties: { type: integer } }
                   trial_budget_nano_usd: { type: integer, format: int64 }
+                  first_build_ceiling_nano_usd:
+                    type: integer
+                    format: int64
+                    description: Maximum spend for a first Build, in nano-USD.
+                  guest_trial:
+                    type: object
+                    description: Guest requests only (no Authorization header). Reads the existing cookie without creating a cookie, session or grant. Both flags are false without a cookie or session; omitted if the trial state cannot be read.
+                    required: [initial_build_used, build_in_progress]
+                    properties:
+                      initial_build_used: { type: boolean, description: An anonymous initial check already exists for this guest trial. }
+                      build_in_progress: { type: boolean, description: Another Build is using this guest trial and has not been stopped. }
+                  contact:
+                    type: object
+                    required: [email, available, direct]
+                    properties:
+                      email: { type: string, description: Team address when notification delivery is configured; empty otherwise. }
+                      available: { type: boolean, description: Enquiry notification delivery is configured. }
+                      direct: { type: boolean, description: Project-less enquiries can be sent to POST /v1/vibe/enquiries. Older APIs omit this flag; clients must treat omission as false. }
                   capabilities:
                     type: array
                     items: { $ref: '#/components/schemas/VibeCapability' }
+  /v1/vibe/enquiries:
+    post:
+      operationId: createContactEnquiry
+      summary: Send a contact enquiry without creating a project
+      description: Uses the signed-in actor or an anonymous trial cookie (issued on first use). Requests are limited to five per IP per minute and three per actor in a rolling 24-hour period. Repeating an actor/client_id with identical content returns the original receipt; changed content conflicts.
+      security: [{}, {bearerJWT: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactEnquiryRequest' }
+      responses:
+        '201':
+          description: Enquiry received, or the original receipt on an idempotent retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnquiryReceipt' }
+        '400': { description: Invalid contact details or JSON request }
+        '401': { description: Invalid or expired Authorization token }
+        '409': { description: Client ID already used for different content }
+        '413': { description: Anonymous request body exceeds its byte limit }
+        '429': { description: IP rate limit or actor daily quota reached }
+        '503': { description: Contact delivery or rate protection is unavailable }
+  /v1/vibe/sessions:
+    post:
+      operationId: createVibeSession
+      summary: Create a private project after the first committed input
+      security: [{}, {bearerJWT: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [id]
+              properties:
+                id: { type: string, format: uuid, description: Client-generated idempotency ID. }
+                door: { type: string, enum: [build, test], description: Required when the two-door flow is enabled. }
+                workspace_id: { type: string, format: uuid }
+                title:
+                  type: string
+                  description: Optional project title. Leading and trailing whitespace is trimmed before the 80-character limit is checked. Control characters are rejected. Empty or omitted titles use the existing door default.
+      responses:
+        '201':
+          description: Created project, or the existing project on an idempotent retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VibeSession' }
+        '400': { description: 'Invalid request, title longer than 80 characters after trimming, or title containing control characters' }
+        '401': { description: Sign-in required or expired }
+        '403': { description: Workspace unavailable }
+        '429': { description: 'Trial, rate or project limit' }
   /v1/vibe/sessions/{sessionId}:
     parameters:
       - name: sessionId
@@ -7130,6 +7201,23 @@ components:
   # Schemas
   # ---------------------------------------------------------------------------
   schemas:
+    ContactEnquiryRequest:
+      type: object
+      additionalProperties: false
+      required: [client_id, email, work]
+      properties:
+        client_id: { type: string, format: uuid, description: 'Client-generated idempotency ID, reused on retries.' }
+        email: { type: string, format: email, maxLength: 254, description: 'Plain reply address without a display name or line breaks.' }
+        work: { type: string, minLength: 1, maxLength: 4000, description: 'Nonblank valid UTF-8 text, at most 4000 bytes, with no NUL.' }
+        company: { type: string, maxLength: 200, description: 'Optional company, at most 200 UTF-8 bytes, without CR, LF or NUL.' }
+        website: { type: string, default: '', description: 'Honeypot; leave empty. Nonempty values return a receipt without storing or notifying.' }
+    EnquiryReceipt:
+      type: object
+      required: [id, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [received, sending, provider_accepted, needs_review, cancelled] }
+        created_at: { type: string, format: date-time }
     VibeModels:
       type: object
       required: [assistant, target, evaluator]

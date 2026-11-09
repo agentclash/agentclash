@@ -13,6 +13,7 @@ import (
 )
 
 type CreateEvalSessionParams struct {
+	WorkspaceID            uuid.UUID
 	Repetitions            int32
 	AggregationConfig      json.RawMessage
 	SuccessThresholdConfig json.RawMessage
@@ -39,6 +40,7 @@ func (r *Repository) CreateEvalSession(ctx context.Context, params CreateEvalSes
 	}
 
 	row, err := r.queries.CreateEvalSession(ctx, repositorysqlc.CreateEvalSessionParams{
+		WorkspaceID:            nullableUUID(params.WorkspaceID),
 		Status:                 string(domain.EvalSessionStatusQueued),
 		Repetitions:            params.Repetitions,
 		AggregationConfig:      normalizeJSON(params.AggregationConfig),
@@ -149,7 +151,7 @@ func (r *Repository) ListEvalSessionsByWorkspaceID(ctx context.Context, workspac
 	}
 
 	rows, err := r.queries.ListEvalSessionsByWorkspaceID(ctx, repositorysqlc.ListEvalSessionsByWorkspaceIDParams{
-		WorkspaceID:  workspaceID,
+		WorkspaceID:  &workspaceID,
 		ResultLimit:  limit,
 		ResultOffset: offset,
 	})
@@ -237,7 +239,8 @@ func (r *Repository) AttachRunToEvalSession(ctx context.Context, runID uuid.UUID
 
 	queries := r.queries.WithTx(tx)
 
-	if _, err := queries.GetEvalSessionByID(ctx, repositorysqlc.GetEvalSessionByIDParams{ID: evalSessionID}); err != nil {
+	sessionRow, err := queries.GetEvalSessionByID(ctx, repositorysqlc.GetEvalSessionByIDParams{ID: evalSessionID})
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrEvalSessionNotFound
 		}
@@ -252,6 +255,9 @@ func (r *Repository) AttachRunToEvalSession(ctx context.Context, runID uuid.UUID
 		return fmt.Errorf("load run for eval session attachment: %w", err)
 	}
 
+	if sessionRow.WorkspaceID == nil || *sessionRow.WorkspaceID != runRow.WorkspaceID {
+		return fmt.Errorf("eval session attachment requires matching persisted workspace owner")
+	}
 	if runRow.EvalSessionID != nil {
 		if *runRow.EvalSessionID == evalSessionID {
 			if err := tx.Commit(ctx); err != nil {
@@ -317,6 +323,7 @@ func mapEvalSession(row repositorysqlc.EvalSession) (domain.EvalSession, error) 
 
 	return domain.EvalSession{
 		ID:          row.ID,
+		WorkspaceID: derefUUID(row.WorkspaceID),
 		Status:      status,
 		Repetitions: row.Repetitions,
 		AggregationConfig: domain.EvalSessionSnapshot{
@@ -334,4 +341,11 @@ func mapEvalSession(row repositorysqlc.EvalSession) (domain.EvalSession, error) 
 		FinishedAt:    optionalTime(row.FinishedAt),
 		UpdatedAt:     updatedAt,
 	}, nil
+}
+
+func nullableUUID(id uuid.UUID) *uuid.UUID {
+	if id == uuid.Nil {
+		return nil
+	}
+	return &id
 }

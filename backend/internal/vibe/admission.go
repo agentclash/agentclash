@@ -14,41 +14,57 @@ import (
 )
 
 type Submission struct {
-	AdoptRules         []DocumentSource `json:"adopt_rules,omitempty"`
-	Inputs             []inputs.Binding `json:"inputs,omitempty"`
-	estimateOnly       bool
-	RunQuoteID         *uuid.UUID          `json:"run_quote_id,omitempty"`
-	CycleID            *uuid.UUID          `json:"cycle_id,omitempty"`
-	DemoID             string              `json:"demo_id,omitempty"`
-	Interaction        *interaction.Action `json:"interaction,omitempty"`
-	RetryOf            *uuid.UUID          `json:"retry_of,omitempty"`
-	ViewedRunID        *uuid.UUID          `json:"viewed_run_id,omitempty"`
-	ViewedCaseKey      string              `json:"viewed_case_key,omitempty"`
-	TestJourney        bool                `json:"test_journey,omitempty"`
-	AdditionalExamples int                 `json:"additional_examples,omitempty"`
-	QuickCheck         bool                `json:"quick_check,omitempty"`
-	EvaluationFirst    bool                `json:"evaluation_first,omitempty"`
-	EvidenceSetID      *uuid.UUID          `json:"evidence_set_id,omitempty"`
-	Instructions       string              `json:"instructions,omitempty"`
-	Purpose            string              `json:"purpose,omitempty"`
-	ApproveArtifact    bool                `json:"approve_artifact,omitempty"`
-	PreviewThreadID    *uuid.UUID          `json:"preview_thread_id,omitempty"`
-	JourneyMode        string              `json:"journey_mode,omitempty"`
-	ClientID           uuid.UUID           `json:"client_id"`
-	Revision           int64               `json:"revision"`
-	Kind               string              `json:"kind"`
-	Content            string              `json:"content"`
-	Models             Models              `json:"models"`
-	ArtifactID         *uuid.UUID          `json:"artifact_id,omitempty"`
-	BaselineID         *uuid.UUID          `json:"baseline_id,omitempty"`
+	RegradeSourceResultRef *ResultRef       `json:"regrade_source_result_ref,omitempty"`
+	SourceEvidenceHash     string           `json:"source_evidence_hash,omitempty"`
+	CaseKeys               []string         `json:"case_keys,omitempty"`
+	RetrySourceResultRef   *ResultRef       `json:"retry_source_result_ref,omitempty"`
+	AdoptRules             []DocumentSource `json:"adopt_rules,omitempty"`
+	Inputs                 []inputs.Binding `json:"inputs,omitempty"`
+	estimateOnly           bool
+	RunQuoteID             *uuid.UUID          `json:"run_quote_id,omitempty"`
+	CycleID                *uuid.UUID          `json:"cycle_id,omitempty"`
+	DemoID                 string              `json:"demo_id,omitempty"`
+	Interaction            *interaction.Action `json:"interaction,omitempty"`
+	RetryOf                *uuid.UUID          `json:"retry_of,omitempty"`
+	ViewedRunID            *uuid.UUID          `json:"viewed_run_id,omitempty"`
+	ViewedCaseKey          string              `json:"viewed_case_key,omitempty"`
+	TestJourney            bool                `json:"test_journey,omitempty"`
+	AdditionalExamples     int                 `json:"additional_examples,omitempty"`
+	QuickCheck             bool                `json:"quick_check,omitempty"`
+	EvaluationFirst        bool                `json:"evaluation_first,omitempty"`
+	EvidenceSetID          *uuid.UUID          `json:"evidence_set_id,omitempty"`
+	Instructions           string              `json:"instructions,omitempty"`
+	Purpose                string              `json:"purpose,omitempty"`
+	ApproveArtifact        bool                `json:"approve_artifact,omitempty"`
+	PreviewThreadID        *uuid.UUID          `json:"preview_thread_id,omitempty"`
+	JourneyMode            string              `json:"journey_mode,omitempty"`
+	ClientID               uuid.UUID           `json:"client_id"`
+	Revision               int64               `json:"revision"`
+	Kind                   string              `json:"kind"`
+	Content                string              `json:"content"`
+	Models                 Models              `json:"models"`
+	ArtifactID             *uuid.UUID          `json:"artifact_id,omitempty"`
+	BaselineID             *uuid.UUID          `json:"baseline_id,omitempty"`
 }
+
+// ReferencedTest is unexecuted evidence context, never a policy source or a result.
+type ReferencedTest struct {
+	ArtifactID uuid.UUID       `json:"artifact_id"`
+	CaseKey    string          `json:"case_key"`
+	Case       json.RawMessage `json:"case"`
+}
+
 type Plan struct {
+	Provenance               *EvidenceProvenance  `json:"evidence_provenance,omitempty"`
+	Recovery                 *ResultRecovery      `json:"result_recovery,omitempty"`
+	ReferencedTest           *ReferencedTest      `json:"referenced_test,omitempty"`
 	InlineInput              *InlineInput         `json:"-"`
 	RequiredCapabilities     []string             `json:"-"`
 	Cycle                    *BuildCyclePlan      `json:"cycle,omitempty"`
 	AssistantRecovery        *AssistantRecovery   `json:"assistant_recovery,omitempty"`
 	Grading                  *GradingContract     `json:"grading,omitempty"`
 	TargetConfig             *TargetConfiguration `json:"target_config,omitempty"`
+	RegradeSource            *ResultRecovery      `json:"regrade_source,omitempty"`
 	RegradeOf                *uuid.UUID           `json:"regrade_of,omitempty"`
 	SavedResults             []CaseResult         `json:"saved_results,omitempty"`
 	Retry                    *RetryContext        `json:"retry,omitempty"`
@@ -96,6 +112,7 @@ func (s *Store) submissionReceipt(ctx context.Context, id uuid.UUID, sub Submiss
 }
 
 func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Submission, plan Plan, cfg Config) (Operation, error) {
+	freezeResultEvidence(&plan)
 	if sub.estimateOnly {
 		return Operation{Input: raw(plan), MaxCost: plan.MaxCost}, nil
 	}
@@ -136,6 +153,14 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		if v.Revision != sub.Revision {
 			return fault("revision_conflict", "Reload the latest conversation before sending.")
 		}
+		if err = validateSDKRegradeAdmission(ctx, tx, v, plan); err != nil {
+			return err
+		}
+		if sub.RetrySourceResultRef != nil || sub.CaseKeys != nil || plan.Recovery != nil {
+			if err = validateResultRecoveryAdmission(ctx, tx, v, sub, plan); err != nil {
+				return err
+			}
+		}
 		if sub.DemoID != "" {
 			offer := v.Document.ConversationState
 			if sub.Kind != "message" || sub.Content != sampleEmailAssistantChoice || sub.AdditionalExamples != 0 || sub.ArtifactID != nil || v.Document.Evaluation == nil || v.Document.Evaluation.Door != "build" || v.Document.Build == nil || v.Document.Build.Phase != "waiting" || offer == nil || offer.PendingDemo == nil || offer.PendingDemo.ID != sub.DemoID || plan.Cycle == nil || plan.Cycle.ID != v.Document.Build.CycleID {
@@ -147,7 +172,7 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 				return err
 			}
 		}
-		if sub.ApproveArtifact && plan.RegradeOf == nil {
+		if sub.ApproveArtifact && !plan.isRegrade() {
 			if sub.Kind != "check" && sub.Kind != "retest" {
 				return fault("invalid_message", "Only running checks can approve their expectations.")
 			}
@@ -232,6 +257,7 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		o = Operation{ID: uuid.New(), SessionID: id, Actor: actor, Kind: sub.Kind, State: Validating, Billing: Unreserved, Models: sub.Models, Input: raw(plan), MaxCost: plan.MaxCost, CreatedAt: timestamp(), Deadline: timestamp().Add(plan.operationTimeout()), Results: []CaseResult{}}
 		o.Source = plan.Source
 		o.Grading, o.TargetConfig = plan.Grading, plan.TargetConfig
+		populateResultEvidence(&o, plan)
 		o.RetryOfOperationID = sub.RetryOf
 		if plan.Cycle == nil && sub.RunQuoteID == nil && !v.Anonymous && !cfg.TestingLocally() && o.MaxCost > AutomaticApprovalCost {
 			o.State = AwaitingApproval

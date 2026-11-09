@@ -45,7 +45,7 @@ async function loadPublicShare(token: string): Promise<PublicShareResponse> {
   const api = createApiClient();
   try {
     return await api.get<PublicShareResponse>(
-      `/public/shares/${encodeURIComponent(token)}`,
+      `/public/shares/${encodeURIComponent(token)}`, { cache: "no-store" },
     );
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {

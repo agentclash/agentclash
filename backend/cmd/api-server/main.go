@@ -166,6 +166,9 @@ func run() int {
 		eventPublisher,
 		logger,
 	)
+	deliveryContext, stopDelivery := context.WithCancel(context.Background())
+	defer stopDelivery()
+	go hostedRunIngestionManager.RunDelivery(deliveryContext)
 	agentDeploymentReadManager := api.NewAgentDeploymentReadManager(repo)
 	agentHarnessManager := api.NewAgentHarnessManager(authorizer, repo, api.NewTemporalAgentHarnessExecutionWorkflowStarter(temporalClient))
 	githubIntegrationManager := api.NewGitHubIntegrationManager(authorizer, repo, api.GitHubIntegrationConfig{
@@ -299,13 +302,16 @@ func run() int {
 		logger.Error("invalid Vibe configuration", "error", err)
 		return 1
 	}
-	vibeService := &vibe.Service{Store: vibe.NewStore(db, vibeConfig), Config: vibeConfig, Gate: vibe.Gate{Redis: vibeRedis}, Compiler: api.VibePackCompiler{}}
+	readiness := &vibe.Readiness{DB: db, Redis: vibeRedis, Temporal: temporalClient}
+	cfg.DependencyReadiness = api.WithConnectorReadiness(readiness.DependencyChecks, repo)
+	cfg.ConnectorRepository = repo
+	vibeService := &vibe.Service{Readiness: readiness, Store: vibe.NewStore(db, vibeConfig), Config: vibeConfig, Gate: vibe.Gate{Redis: vibeRedis}, Compiler: api.VibePackCompiler{}}
 	vibeService.Store.Inputs.Blobs = artifactStore
 	if err := billingManager.WithVibeCredits(vibeService.Store, cfg.FrontendURL); err != nil {
 		logger.Error("invalid Vibe credit configuration", "error", err)
 		return 1
 	}
-	cfg.VibeHandler = (&api.VibeHandler{Enquiries: enquiries.FromEnv(db), Service: vibeService, Billing: billingManager, Auth: authenticator, CookieSecret: os.Getenv("VIBE_COOKIE_SECRET"), Secure: cfg.AppEnvironment != "development"}).Routes()
+	cfg.VibeHandler = (&api.VibeHandler{FrontendURL: cfg.FrontendURL, Enquiries: enquiries.FromEnv(db), Service: vibeService, Billing: billingManager, Auth: authenticator, CookieSecret: os.Getenv("VIBE_COOKIE_SECRET"), Secure: cfg.AppEnvironment != "development"}).Routes()
 	server := api.NewServer(
 		cfg,
 		logger,
