@@ -82,8 +82,12 @@ func TestSDKReportEnvelopeAndCaptureLimits(t *testing.T) {
 	}
 }
 func TestSDKSchemaPackagedBytes(t *testing.T) {
-	for name, got := range map[string][]byte{"eval-report": sdkReportSchema, "agent-result": sdkAgentSchema} {
-		want, err := os.ReadFile("../../../schemas/evaltest/" + name + ".schema.json")
+	for name, got := range map[string][]byte{"eval-report": sdkReportSchema, "agent-result": sdkAgentSchema, "refund-report-v2": sdkRefundReportSchema} {
+		path := "../../../schemas/evaltest/" + name + ".schema.json"
+		if name == "refund-report-v2" {
+			path = "../../../schemas/refund-report-v2/report.schema.json"
+		}
+		want, err := os.ReadFile(path)
 		if err != nil || string(want) != string(got) {
 			t.Fatal("packaged canonical schema drift", name, err)
 		}
