@@ -5,7 +5,6 @@ import { FlaskConical } from "lucide-react";
 
 import type {
   EvalSessionListItem,
-  EvalSessionStatus,
   ListEvalSessionsResponse,
 } from "@/lib/api/types";
 import { useApiQuery } from "@/lib/api/swr";
@@ -13,6 +12,7 @@ import { workspacePageSizes } from "@/lib/workspace-resource";
 import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
 import {
   formatEvalSessionMetricName,
+  isEvalSessionActive,
   normalizeEvalSessionWarnings,
   shortEvalSessionId,
 } from "@/lib/eval-sessions";
@@ -26,9 +26,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { evalSessionStatusVariant } from "./status-variant";
+import { evalSessionStatusVariant } from "@/lib/status-variant";
 
-const ACTIVE_STATUSES: EvalSessionStatus[] = ["queued", "running", "aggregating"];
 const PAGE_SIZE = workspacePageSizes.runs;
 const POLL_INTERVAL_MS = 5000;
 
@@ -62,7 +61,7 @@ export function EvalSessionList({ workspaceId }: { workspaceId: string }) {
     {
       refreshInterval: (response) =>
         response?.items.some((item) =>
-          ACTIVE_STATUSES.includes(item.eval_session.status),
+          isEvalSessionActive(item.eval_session.status),
         )
           ? POLL_INTERVAL_MS
           : 0,

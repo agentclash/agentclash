@@ -197,6 +197,10 @@ type Querier interface {
 	MarkBillingCheckoutIntentCompleted(ctx context.Context, arg MarkBillingCheckoutIntentCompletedParams) (int64, error)
 	MarkHostedRunExecutionAccepted(ctx context.Context, arg MarkHostedRunExecutionAcceptedParams) (HostedRunExecution, error)
 	MarkHostedRunExecutionFailed(ctx context.Context, arg MarkHostedRunExecutionFailedParams) (HostedRunExecution, error)
+	// The callback deadline ends the wait, not the remote run. The outcome stays
+	// unknown for reconciliation, and finished_at marks that the wait is over, so
+	// a late callback cannot change the status. Final statuses keep their value;
+	// timed_out is the final status that binaries before migration 00090 wrote.
 	MarkHostedRunExecutionTimedOut(ctx context.Context, arg MarkHostedRunExecutionTimedOutParams) (HostedRunExecution, error)
 	NextDatasetVersionNumber(ctx context.Context, arg NextDatasetVersionNumberParams) (int32, error)
 	PatchChallengePackDraft(ctx context.Context, arg PatchChallengePackDraftParams) (ChallengePackDraft, error)

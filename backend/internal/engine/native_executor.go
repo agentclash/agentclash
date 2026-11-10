@@ -322,6 +322,10 @@ type loopState struct {
 	// Race-context injection bookkeeping. See issue #400.
 	lastInjectionStep int
 	lastPeerStates    map[uuid.UUID]racecontext.StandingsState
+	// announcedPeers holds the peers whose final state an injected
+	// newswire has shown. A peer trigger never fires again for them, even
+	// if a stale snapshot shows the peer in another state for a while.
+	announcedPeers map[uuid.UUID]struct{}
 }
 
 // maybeInjectRaceStandings evaluates the race-context cadence predicates
@@ -390,6 +394,7 @@ func (e NativeExecutor) maybeInjectRaceStandings(ctx context.Context, executionC
 	})
 	state.lastInjectionStep = state.stepCount
 	state.lastPeerStates = currentPeerStates(snapshot, executionContext.RunAgent.ID)
+	markAnnouncedPeers(state)
 
 	injection := StandingsInjection{
 		StepIndex:         state.stepCount,
@@ -493,7 +498,9 @@ func raceContextModelLabel(executionContext runner.ExecutionContext) string {
 // / failed / timed_out) fire immediately; otherwise we fall back to the
 // cadence gap. On the very first eligible step (lastInjectionStep == 0)
 // the injection fires as cadence — the caller is responsible for gating
-// the minimum-step-before-first-injection rule upstream.
+// the minimum-step-before-first-injection rule upstream. A peer trigger
+// fires at most once per peer: after an injection shows a peer's final
+// state, later changes for that peer count only for the cadence.
 func evaluateRaceContextCadence(state *loopState, snapshot map[uuid.UUID]racecontext.StandingsEntry, selfID uuid.UUID, minGap int) (runevents.RaceStandingsTrigger, bool) {
 	current := currentPeerStates(snapshot, selfID)
 
@@ -501,6 +508,9 @@ func evaluateRaceContextCadence(state *loopState, snapshot map[uuid.UUID]racecon
 		for agentID, newState := range current {
 			prev := state.lastPeerStates[agentID]
 			if prev == newState {
+				continue
+			}
+			if _, announced := state.announcedPeers[agentID]; announced {
 				continue
 			}
 			switch newState {
@@ -521,6 +531,21 @@ func evaluateRaceContextCadence(state *loopState, snapshot map[uuid.UUID]racecon
 		return runevents.RaceStandingsTriggerCadence, true
 	}
 	return "", false
+}
+
+// markAnnouncedPeers records each peer that is in a final state after an
+// injection. The injected newswire showed that state, so the peer's
+// trigger has fired (or was not needed) and must not fire again.
+func markAnnouncedPeers(state *loopState) {
+	for agentID, peerState := range state.lastPeerStates {
+		if !peerState.Terminal() {
+			continue
+		}
+		if state.announcedPeers == nil {
+			state.announcedPeers = make(map[uuid.UUID]struct{})
+		}
+		state.announcedPeers[agentID] = struct{}{}
+	}
 }
 
 // currentPeerStates returns a map of each peer's (non-self) current

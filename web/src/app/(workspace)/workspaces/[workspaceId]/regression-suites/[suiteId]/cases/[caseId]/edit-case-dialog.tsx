@@ -25,6 +25,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { isTerminal, nextStatuses } from "@/lib/status-lifecycles";
 import {
   Select,
   SelectContent,
@@ -33,13 +34,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const STATUS_OPTIONS: { value: RegressionCaseStatus; label: string }[] = [
-  { value: "proposed", label: "Proposed" },
-  { value: "active", label: "Active" },
-  { value: "muted", label: "Muted" },
-  { value: "archived", label: "Archived" },
-  { value: "rejected", label: "Rejected" },
-];
+const STATUS_LABELS: Record<RegressionCaseStatus, string> = {
+  proposed: "Proposed",
+  active: "Active",
+  muted: "Muted",
+  archived: "Archived",
+  rejected: "Rejected",
+};
+
+/**
+ * The statuses the server accepts for a case: its current status and the
+ * legal next statuses (runtime/domain/regression.go).
+ */
+function regressionCaseStatusOptions(
+  current: RegressionCaseStatus,
+): RegressionCaseStatus[] {
+  return [current, ...nextStatuses("regression_case", current)];
+}
 
 const SEVERITY_OPTIONS: RegressionSeverity[] = ["info", "warning", "blocking"];
 
@@ -74,8 +85,8 @@ export function EditCaseDialog({
     }
   }, [open, regressionCase]);
 
-  const terminal =
-    regressionCase.status === "archived" || regressionCase.status === "rejected";
+  const terminal = isTerminal("regression_case", regressionCase.status);
+  const statusOptions = regressionCaseStatusOptions(regressionCase.status);
 
   async function handleSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -180,9 +191,9 @@ export function EditCaseDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {STATUS_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
+                  {statusOptions.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {STATUS_LABELS[value]}
                     </SelectItem>
                   ))}
                 </SelectContent>

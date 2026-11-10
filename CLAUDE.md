@@ -110,7 +110,9 @@ Error types matter: activities wrap errors with `temporal.ApplicationError` usin
 
 ### Run State Machine
 
-Defined in `backend/internal/domain/run.go`. Transitions are enforced in both Go code (`CanTransitionTo`) and SQL (`WHERE status = @from_status`). If an UPDATE returns 0 rows, the repository wraps it as `ErrInvalidTransition`.
+Defined in `runtime/domain/run.go`. Transitions are enforced in both Go code (`CanTransitionTo`) and SQL (`WHERE status = @from_status`). If an UPDATE returns 0 rows, the repository wraps it as `ErrInvalidTransition`.
+
+Every status lifecycle (explicit and implicit), its owner, and its known gaps are listed in `docs/state-machines.md`. `runtime/domain/lifecycle.go` publishes the explicit tables; `agentclash schema` serves them as `status_enums`, so clients never copy a status list.
 
 ### Manager/Service Pattern
 

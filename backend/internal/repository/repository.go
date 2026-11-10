@@ -3343,6 +3343,11 @@ type UpdateOrgMembershipInput struct {
 	InviteTokenExpiresAt *time.Time
 	ClearInviteToken     bool
 	EntitlementGate      *OrganizationEntitlementGate
+	// ExpectedStatus is the status that the caller read before it decided
+	// on this update. The update applies only while the row still has this
+	// status. If not, it returns TransitionConflictError. It is required
+	// when Status is set.
+	ExpectedStatus string
 }
 
 type WorkspaceMembershipFullRow struct {
@@ -3376,6 +3381,8 @@ type UpdateWorkspaceMembershipInput struct {
 	InviteToken          *string
 	InviteTokenExpiresAt *time.Time
 	ClearInviteToken     bool
+	// ExpectedStatus has the same meaning as in UpdateOrgMembershipInput.
+	ExpectedStatus string
 }
 
 type OnboardInput struct {
@@ -3935,6 +3942,15 @@ func (r *Repository) GetWorkspaceMembershipByInviteToken(ctx context.Context, in
 }
 
 func (r *Repository) UpdateWorkspaceMembership(ctx context.Context, membershipID uuid.UUID, input UpdateWorkspaceMembershipInput) (WorkspaceMembershipFullRow, error) {
+	if input.Status != nil {
+		if input.ExpectedStatus == "" {
+			return WorkspaceMembershipFullRow{}, errors.New("update workspace membership: expected status is required to change status")
+		}
+		if err := checkWorkspaceMembershipStatusChange(input.ExpectedStatus, *input.Status); err != nil {
+			return WorkspaceMembershipFullRow{}, err
+		}
+	}
+
 	setClauses := []string{}
 	args := []interface{}{}
 	argIdx := 1
@@ -3976,23 +3992,42 @@ func (r *Repository) UpdateWorkspaceMembership(ctx context.Context, membershipID
 		return r.GetWorkspaceMembershipByID(ctx, membershipID)
 	}
 
+	whereClauses := []string{fmt.Sprintf("id = $%d", argIdx)}
+	args = append(args, membershipID)
+	argIdx++
+	if input.ExpectedStatus != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("membership_status = $%d", argIdx))
+		args = append(args, input.ExpectedStatus)
+	}
+
 	query := fmt.Sprintf(`
 		UPDATE workspace_memberships SET %s
-		WHERE id = $%d
+		WHERE %s
 		RETURNING id, organization_id, workspace_id, user_id, role, membership_status,
 		          COALESCE(invite_token, ''), invite_token_expires_at, created_at, updated_at
-	`, strings.Join(setClauses, ", "), argIdx)
-	args = append(args, membershipID)
+	`, strings.Join(setClauses, ", "), strings.Join(whereClauses, " AND "))
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return WorkspaceMembershipFullRow{}, fmt.Errorf("begin workspace membership update transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	if input.Status != nil && *input.Status == string(WorkspaceMembershipStatusActive) {
+		if err := requireOrgMembershipForWorkspaceActivation(ctx, tx, membershipID, input.UserID); err != nil {
+			return WorkspaceMembershipFullRow{}, err
+		}
+	}
 
 	var m WorkspaceMembershipFullRow
 	var inviteTokenExpiresAt pgtype.Timestamptz
-	err := r.db.QueryRow(ctx, query, args...).Scan(
+	err = tx.QueryRow(ctx, query, args...).Scan(
 		&m.ID, &m.OrganizationID, &m.WorkspaceID, &m.UserID, &m.Role, &m.MembershipStatus,
 		&m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return WorkspaceMembershipFullRow{}, ErrMembershipNotFound
+			return WorkspaceMembershipFullRow{}, membershipUpdateMiss(ctx, tx, workspaceMembershipExistsQuery, "workspace membership", membershipID, input.ExpectedStatus)
 		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
@@ -4007,14 +4042,79 @@ func (r *Repository) UpdateWorkspaceMembership(ctx context.Context, membershipID
 	}
 	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 
+	// User details are not critical. The membership update still commits
+	// when they cannot be loaded.
 	var user User
-	if err = r.db.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, m.UserID).Scan(&user.Email, &user.DisplayName); err != nil {
-		return m, nil // membership updated; user details are non-critical
+	if err := tx.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, m.UserID).Scan(&user.Email, &user.DisplayName); err == nil {
+		m.Email = user.Email
+		m.DisplayName = user.DisplayName
 	}
-	m.Email = user.Email
-	m.DisplayName = user.DisplayName
 
+	if err := tx.Commit(ctx); err != nil {
+		return WorkspaceMembershipFullRow{}, fmt.Errorf("commit workspace membership update: %w", err)
+	}
 	return m, nil
+}
+
+const (
+	orgMembershipExistsQuery       = `SELECT EXISTS(SELECT 1 FROM organization_memberships WHERE id = $1)`
+	workspaceMembershipExistsQuery = `SELECT EXISTS(SELECT 1 FROM workspace_memberships WHERE id = $1)`
+)
+
+// membershipUpdateMiss explains why a membership UPDATE matched no row: the
+// row is gone, or its status is no longer the expected status.
+func membershipUpdateMiss(ctx context.Context, tx pgx.Tx, existsQuery, entity string, membershipID uuid.UUID, expectedStatus string) error {
+	if expectedStatus == "" {
+		return ErrMembershipNotFound
+	}
+	var exists bool
+	if err := tx.QueryRow(ctx, existsQuery, membershipID).Scan(&exists); err != nil {
+		return fmt.Errorf("check %s after guarded update: %w", entity, err)
+	}
+	if !exists {
+		return ErrMembershipNotFound
+	}
+	return TransitionConflictError{Entity: entity, ID: membershipID, Expected: expectedStatus}
+}
+
+// requireOrgMembershipForWorkspaceActivation checks the organization
+// membership before a workspace membership becomes active. Workspace access
+// checks look only at the workspace membership, so it must not become active
+// while the organization membership is suspended or archived.
+//
+// The share lock makes a concurrent suspend or archive of the organization
+// membership wait for this transaction. Its cascade then sees the active
+// workspace row and changes it.
+func requireOrgMembershipForWorkspaceActivation(ctx context.Context, tx pgx.Tx, membershipID uuid.UUID, newUserID *uuid.UUID) error {
+	var orgStatus string
+	err := tx.QueryRow(ctx, `
+		SELECT om.membership_status
+		FROM workspace_memberships wm
+		JOIN organization_memberships om
+		  ON om.organization_id = wm.organization_id
+		 AND om.user_id = COALESCE($2::uuid, wm.user_id)
+		WHERE wm.id = $1
+		FOR SHARE OF om
+	`, membershipID, newUserID).Scan(&orgStatus)
+	if errors.Is(err, pgx.ErrNoRows) {
+		var exists bool
+		if err := tx.QueryRow(ctx, workspaceMembershipExistsQuery, membershipID).Scan(&exists); err != nil {
+			return fmt.Errorf("check workspace membership before activation: %w", err)
+		}
+		if !exists {
+			return ErrMembershipNotFound
+		}
+		return ErrOrgMembershipRequired
+	}
+	if err != nil {
+		return fmt.Errorf("lock organization membership for workspace activation: %w", err)
+	}
+	switch OrgMembershipStatus(orgStatus) {
+	case OrgMembershipStatusActive, OrgMembershipStatusInvited:
+		return nil
+	default:
+		return ErrOrgMembershipRequired
+	}
 }
 
 func (r *Repository) CountActiveWorkspaceAdmins(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
@@ -4209,6 +4309,15 @@ func (r *Repository) GetOrgMembershipByInviteToken(ctx context.Context, inviteTo
 }
 
 func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.UUID, input UpdateOrgMembershipInput) (OrgMembershipFullRow, error) {
+	if input.Status != nil {
+		if input.ExpectedStatus == "" {
+			return OrgMembershipFullRow{}, errors.New("update org membership: expected status is required to change status")
+		}
+		if err := checkOrgMembershipStatusChange(input.ExpectedStatus, *input.Status); err != nil {
+			return OrgMembershipFullRow{}, err
+		}
+	}
+
 	setClauses := []string{}
 	args := []interface{}{}
 	argIdx := 1
@@ -4250,13 +4359,20 @@ func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.
 		return r.GetOrgMembershipByID(ctx, membershipID)
 	}
 
+	whereClauses := []string{fmt.Sprintf("id = $%d", argIdx)}
+	args = append(args, membershipID)
+	argIdx++
+	if input.ExpectedStatus != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("membership_status = $%d", argIdx))
+		args = append(args, input.ExpectedStatus)
+	}
+
 	query := fmt.Sprintf(`
 		UPDATE organization_memberships SET %s
-		WHERE id = $%d
+		WHERE %s
 		RETURNING id, organization_id, user_id, role, membership_status,
 		          COALESCE(invite_token, ''), invite_token_expires_at, created_at, updated_at
-	`, strings.Join(setClauses, ", "), argIdx)
-	args = append(args, membershipID)
+	`, strings.Join(setClauses, ", "), strings.Join(whereClauses, " AND "))
 
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -4285,7 +4401,7 @@ func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return OrgMembershipFullRow{}, ErrMembershipNotFound
+			return OrgMembershipFullRow{}, membershipUpdateMiss(ctx, tx, orgMembershipExistsQuery, "organization membership", membershipID, input.ExpectedStatus)
 		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -4302,19 +4418,47 @@ func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.
 		m.DisplayName = user.DisplayName
 	}
 
+	if input.Status != nil {
+		if err := cascadeOrgMembershipStatusToWorkspaces(ctx, tx, m.OrganizationID, m.UserID, OrgMembershipStatus(*input.Status)); err != nil {
+			return OrgMembershipFullRow{}, err
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return OrgMembershipFullRow{}, fmt.Errorf("commit org membership update: %w", err)
 	}
 	return m, nil
 }
 
-func (r *Repository) CascadeOrgMembershipStatusToWorkspaces(ctx context.Context, orgID, userID uuid.UUID, status string) error {
-	now := time.Now()
-	_, err := r.db.Exec(ctx, `
-		UPDATE workspace_memberships
-		SET membership_status = $3, archived_at = CASE WHEN $3 = 'archived' THEN $4 ELSE archived_at END
-		WHERE organization_id = $1 AND user_id = $2 AND membership_status NOT IN ('archived')
-	`, orgID, userID, status, now)
+// cascadeOrgMembershipStatusToWorkspaces applies
+// WorkspaceMembershipCascadeTarget to the workspace memberships that the user
+// has in the organization. It runs in the transaction that changed the
+// organization membership, so both changes commit together or not at all.
+func cascadeOrgMembershipStatusToWorkspaces(ctx context.Context, tx pgx.Tx, orgID, userID uuid.UUID, orgStatus OrgMembershipStatus) error {
+	var fromStatuses, toStatuses []string
+	for _, from := range workspaceMembershipStatuses {
+		if to, ok := WorkspaceMembershipCascadeTarget(orgStatus, from); ok {
+			fromStatuses = append(fromStatuses, string(from))
+			toStatuses = append(toStatuses, string(to))
+		}
+	}
+	if len(fromStatuses) == 0 {
+		return nil
+	}
+
+	// One statement maps each current status to its target, so a row that
+	// changes cannot match a second time.
+	_, err := tx.Exec(ctx, `
+		UPDATE workspace_memberships wm
+		SET membership_status = c.to_status,
+		    archived_at = CASE WHEN c.to_status = 'archived' THEN $5 ELSE wm.archived_at END,
+		    invite_token = CASE WHEN c.to_status = 'archived' THEN NULL ELSE wm.invite_token END,
+		    invite_token_expires_at = CASE WHEN c.to_status = 'archived' THEN NULL ELSE wm.invite_token_expires_at END
+		FROM unnest($3::text[], $4::text[]) AS c(from_status, to_status)
+		WHERE wm.organization_id = $1
+		  AND wm.user_id = $2
+		  AND wm.membership_status = c.from_status
+	`, orgID, userID, fromStatuses, toStatuses, time.Now())
 	if err != nil {
 		return fmt.Errorf("cascade org membership status to workspaces: %w", err)
 	}

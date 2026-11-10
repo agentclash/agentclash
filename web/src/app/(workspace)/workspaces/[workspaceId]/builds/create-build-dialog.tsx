@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import { useApiMutator } from "@/lib/api/swr";
@@ -31,10 +31,14 @@ export function CreateBuildDialog({ workspaceId }: CreateBuildDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Shared by the Create button and the Enter key. State alone cannot stop a
+  // second Enter that lands before the disabled button re-renders.
+  const inFlightRef = useRef(false);
 
   async function handleCreate() {
-    if (!name.trim()) return;
+    if (!name.trim() || inFlightRef.current) return;
 
+    inFlightRef.current = true;
     setSubmitting(true);
     try {
       const token = await getAccessToken();
@@ -58,6 +62,7 @@ export function CreateBuildDialog({ workspaceId }: CreateBuildDialogProps) {
         toast.error("Failed to create agent build");
       }
     } finally {
+      inFlightRef.current = false;
       setSubmitting(false);
     }
   }
@@ -89,7 +94,7 @@ export function CreateBuildDialog({ workspaceId }: CreateBuildDialogProps) {
               autoFocus
               className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50"
               onKeyDown={(e) => {
-                if (e.key === "Enter" && name.trim()) handleCreate();
+                if (e.key === "Enter") void handleCreate();
               }}
             />
           </div>

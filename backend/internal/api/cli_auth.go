@@ -143,12 +143,12 @@ func (m *CLIAuthManager) PollDeviceToken(ctx context.Context, deviceCode string)
 		return PollDeviceTokenResult{}, errExpiredToken
 	}
 
-	switch code.Status {
-	case "pending":
+	switch repository.DeviceAuthCodeStatus(code.Status) {
+	case repository.DeviceAuthCodeStatusPending:
 		return PollDeviceTokenResult{}, errAuthorizationPending
-	case "denied":
+	case repository.DeviceAuthCodeStatusDenied:
 		return PollDeviceTokenResult{}, errAccessDenied
-	case "approved":
+	case repository.DeviceAuthCodeStatusApproved:
 		rawToken, err := m.repo.ConsumeDeviceRawToken(ctx, code.ID)
 		if err != nil {
 			return PollDeviceTokenResult{}, fmt.Errorf("consuming token: %w", err)
@@ -157,6 +157,10 @@ func (m *CLIAuthManager) PollDeviceToken(ctx context.Context, deviceCode string)
 			return PollDeviceTokenResult{}, errExpiredToken
 		}
 		return PollDeviceTokenResult{Token: rawToken}, nil
+	case repository.DeviceAuthCodeStatusConsumed:
+		// The device code is single use. A poll after the token was handed
+		// out gets the same answer as before the consumed status existed.
+		return PollDeviceTokenResult{}, errExpiredToken
 	default:
 		return PollDeviceTokenResult{}, errExpiredToken
 	}

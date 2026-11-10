@@ -97,7 +97,7 @@ func (s *Store) SaveBrief(ctx context.Context, actor string, id uuid.UUID, revis
 			return fault("revision_conflict", "Reload the conversation before saving.")
 		}
 		var busy bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state IN ('QUEUED','RUNNING','AWAITING_APPROVAL','FINALIZING','CANCELLING'))`, id).Scan(&busy); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state=ANY($2))`, id, busyStates()).Scan(&busy); err != nil {
 			return err
 		}
 		if busy {

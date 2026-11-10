@@ -120,3 +120,24 @@ func TestCLIAuthManagerPollDeviceTokenReturnsAccessDeniedForDeniedCode(t *testin
 		t.Fatalf("PollDeviceToken() error = %v, want errAccessDenied", err)
 	}
 }
+
+func TestCLIAuthManagerPollDeviceTokenReturnsExpiredTokenForConsumedCode(t *testing.T) {
+	repo := &fakeCLIAuthRepository{
+		deviceByCode: repository.DeviceAuthCode{
+			ID:         uuid.New(),
+			DeviceCode: "dc_consumed",
+			UserCode:   "ABCD-EFGH",
+			Status:     string(repository.DeviceAuthCodeStatusConsumed),
+			ExpiresAt:  time.Now().Add(time.Hour),
+		},
+	}
+	manager := NewCLIAuthManager(repo, slog.Default(), "https://app.agentclash.dev")
+
+	result, err := manager.PollDeviceToken(context.Background(), "dc_consumed")
+	if !errors.Is(err, errExpiredToken) {
+		t.Fatalf("PollDeviceToken() error = %v, want errExpiredToken", err)
+	}
+	if result.Token != "" {
+		t.Fatalf("token = %q, want empty", result.Token)
+	}
+}

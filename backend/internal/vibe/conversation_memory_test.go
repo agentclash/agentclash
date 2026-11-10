@@ -315,3 +315,20 @@ func TestVibeConversationMemoryRetrievalAndRollback(t *testing.T) {
 		t.Fatal("admission mutated persisted history")
 	}
 }
+
+func TestVibeSourceConfirmationAnswersOnlyActiveQuestion(t *testing.T) {
+	for status, want := range map[string]string{"active": "answered", "answered": "answered", "dismissed": "dismissed", "superseded": "superseded"} {
+		t.Run(status, func(t *testing.T) {
+			state := newConversationState(uuid.New())
+			state.PendingQuestion = &interaction.Question{ID: uuid.NewString(), ScopeID: state.Brief.ScopeID, Revision: 1, OriginMessageID: uuid.NewString(), Purpose: "choose_source", Status: status, Text: "Use these messages?", Options: []interaction.Option{}, MaxSelections: 1}
+			p := Plan{Conversation: &ConversationContext{NextState: state, Confirmed: &SourceConfirmation{OperationID: uuid.New(), Question: "Use these messages?"}}}
+			_, c := reliableCompletion(Operation{ID: uuid.New()}, p, "I'll use those messages.", AuthoringCompletion{})
+			if got := c.ConversationState.PendingQuestion.Status; got != want {
+				t.Fatalf("confirmation changed a %s question to %s, want %s", status, got, want)
+			}
+			if state.PendingQuestion.Status != status {
+				t.Fatal("completion mutated the proposed state")
+			}
+		})
+	}
+}

@@ -52,11 +52,15 @@ WHERE run_agent_id = @run_agent_id AND status IN ('starting','unknown')
 RETURNING *;
 
 -- name: MarkHostedRunExecutionTimedOut :one
+-- The callback deadline ends the wait, not the remote run. The outcome stays
+-- unknown for reconciliation, and finished_at marks that the wait is over, so
+-- a late callback cannot change the status. Final statuses keep their value;
+-- timed_out is the final status that binaries before migration 00090 wrote.
 UPDATE hosted_run_executions
-SET status = CASE WHEN status IN ('completed','failed') THEN status ELSE 'unknown' END,
+SET status = 'unknown',
     error_message = @error_message,
     finished_at = COALESCE(finished_at, now())
-WHERE run_agent_id = @run_agent_id AND status NOT IN ('completed','failed')
+WHERE run_agent_id = @run_agent_id AND status NOT IN ('completed','failed','timed_out')
 RETURNING *;
 
 -- name: UpsertRunAgentReplaySummary :one
