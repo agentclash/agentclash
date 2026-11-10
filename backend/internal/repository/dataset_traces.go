@@ -278,6 +278,8 @@ func (r *Repository) PromoteDatasetTraceCandidate(ctx context.Context, params Pr
 	defer rollback(ctx, tx)
 	q := r.queries.WithTx(tx)
 
+	// Active is only the default (StatusExplicit is false): promoting a trace
+	// onto an archived or muted example keeps its status.
 	exampleRow, err := upsertDatasetExampleWithQueries(ctx, q, UpsertDatasetExampleParams{
 		DatasetID:      params.DatasetID,
 		ExternalID:     candidate.ExternalID,

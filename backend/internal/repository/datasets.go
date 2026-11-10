@@ -87,13 +87,17 @@ type PatchDatasetParams struct {
 }
 
 type UpsertDatasetExampleParams struct {
-	DatasetID      uuid.UUID
-	ExternalID     *string
-	Input          json.RawMessage
-	Expected       json.RawMessage
-	Metadata       json.RawMessage
-	Tags           []string
-	Status         domain.DatasetExampleStatus
+	DatasetID  uuid.UUID
+	ExternalID *string
+	Input      json.RawMessage
+	Expected   json.RawMessage
+	Metadata   json.RawMessage
+	Tags       []string
+	Status     domain.DatasetExampleStatus
+	// StatusExplicit is true when the caller asked for Status. When it is
+	// false, Status is only a default for a new example: an existing example
+	// with the same external id keeps an archived or muted status.
+	StatusExplicit bool
 	Source         domain.DatasetExampleSource
 	SourceRunID    *uuid.UUID
 	SourceTraceID  *string
@@ -279,7 +283,7 @@ func upsertDatasetExampleWithQueries(ctx context.Context, q *repositorysqlc.Quer
 		beforeJSON = datasetExampleRevisionJSON(*before)
 		row, err = q.UpdateDatasetExample(ctx, repositorysqlc.UpdateDatasetExampleParams{
 			ID: before.ID, Input: params.Input, Expected: nullableJSON(params.Expected), Metadata: datasetDefaultJSONObject(params.Metadata),
-			Tags: tags, Status: string(params.Status), Source: string(params.Source), SourceRunID: params.SourceRunID,
+			Tags: tags, StatusExplicit: params.StatusExplicit, Status: string(params.Status), Source: string(params.Source), SourceRunID: params.SourceRunID,
 			SourceTraceID: params.SourceTraceID, SourcePlatform: params.SourcePlatform, ArtifactID: params.ArtifactID,
 		})
 	} else {

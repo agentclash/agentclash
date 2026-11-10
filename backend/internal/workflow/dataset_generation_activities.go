@@ -363,6 +363,8 @@ func (a *DatasetGenerationActivities) ExecuteSyntheticDatasetGeneration(ctx cont
 			tags = append(tags, "agentic")
 		}
 		metadata := mustMarshalJSON(exampleMetadata)
+		// Active is only the default (StatusExplicit is false): regenerating
+		// an archived or muted example keeps its status.
 		if _, upsertErr := a.repo.UpsertDatasetExample(ctx, repository.UpsertDatasetExampleParams{
 			DatasetID:  executionContext.Dataset.ID,
 			ExternalID: &externalID,

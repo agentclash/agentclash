@@ -779,7 +779,9 @@ func (d *agentTryoutExecutionDispatcher) refresh(ctx context.Context, tryout rep
 		return repository.AgentTryout{}, err
 	}
 	status, redaction := agentTryoutStatusFromHarnessExecution(execution)
-	if agentTryoutTerminal(tryout.Status) && !agentTryoutTerminal(status) {
+	if !tryout.Status.AllowsWrite(status) {
+		// A terminal tryout keeps its status, also when the execution ends
+		// in another terminal status.
 		return tryout, nil
 	}
 	summary := agentTryoutExecutionSummary(execution)
@@ -787,23 +789,43 @@ func (d *agentTryoutExecutionDispatcher) refresh(ctx context.Context, tryout rep
 	if !agentTryoutRefreshChanged(tryout, status, summary, latency, redaction) {
 		return tryout, nil
 	}
-	return d.repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
+	updated, err := d.repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
 		ID:              tryout.ID,
 		Status:          status,
 		Summary:         summary,
 		LatencyMS:       latency,
 		RedactionStatus: redaction,
 	})
+	if agentTryoutWriteRefused(err) {
+		return d.repo.GetAgentTryoutByID(ctx, tryout.ID)
+	}
+	return updated, err
 }
 
+// failTryout marks a tryout failed, but only if it is still in the status the
+// caller saw. If another writer changed it first (for example, a workflow that
+// did start although the start call returned an error), the current tryout is
+// returned unchanged.
 func (d *agentTryoutExecutionDispatcher) failTryout(ctx context.Context, tryout repository.AgentTryout, code string, message string) (repository.AgentTryout, error) {
 	redaction := repository.AgentTryoutRedactionNotRequired
-	return d.repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
+	expected := tryout.Status
+	failed, err := d.repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
 		ID:              tryout.ID,
 		Status:          repository.AgentTryoutStatusFailed,
+		ExpectedStatus:  &expected,
 		Summary:         safeAgentTryoutFailureSummary(code, message),
 		RedactionStatus: &redaction,
 	})
+	if agentTryoutWriteRefused(err) {
+		return d.repo.GetAgentTryoutByID(ctx, tryout.ID)
+	}
+	return failed, err
+}
+
+// agentTryoutWriteRefused reports whether a tryout status write was refused
+// because the tryout is terminal or changed under the writer.
+func agentTryoutWriteRefused(err error) bool {
+	return errors.Is(err, repository.ErrInvalidTransition) || errors.Is(err, repository.ErrTransitionConflict)
 }
 
 func (d *agentTryoutExecutionDispatcher) executionConfig(template AgentTryoutTemplate) json.RawMessage {
@@ -1005,17 +1027,6 @@ func agentTryoutLatencyMS(execution repository.AgentHarnessExecution) *int64 {
 		value = 0
 	}
 	return &value
-}
-
-func agentTryoutTerminal(status repository.AgentTryoutStatus) bool {
-	switch status {
-	case repository.AgentTryoutStatusCompleted,
-		repository.AgentTryoutStatusFailed,
-		repository.AgentTryoutStatusCancelled:
-		return true
-	default:
-		return false
-	}
 }
 
 func agentTryoutRefreshChanged(tryout repository.AgentTryout, status repository.AgentTryoutStatus, summary json.RawMessage, latency *int64, redaction *repository.AgentTryoutRedactionStatus) bool {

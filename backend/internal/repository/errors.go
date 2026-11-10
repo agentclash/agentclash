@@ -19,6 +19,7 @@ var (
 	ErrPublicShareLinkNotFound               = errors.New("public share link not found")
 	ErrAgentTryoutNotFound                   = errors.New("agent tryout not found")
 	ErrAgentTryoutAlreadyClaimed             = errors.New("agent tryout is already claimed")
+	ErrAgentTryoutTurnNotFound               = errors.New("agent tryout turn not found")
 	ErrRunComparisonNotFound                 = errors.New("run comparison not found")
 	ErrInvalidRunComparisonParams            = errors.New("invalid run comparison params")
 	ErrAgentHarnessFailureAnnotationNotFound = errors.New("agent harness failure annotation not found")

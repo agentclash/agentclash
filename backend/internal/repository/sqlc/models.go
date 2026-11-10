@@ -117,6 +117,7 @@ type AgentTryoutTurn struct {
 	Status        string
 	CreatedAt     pgtype.Timestamptz
 	ProcessedAt   pgtype.Timestamptz
+	LeaseUntil    pgtype.Timestamptz
 }
 
 type BillingAccount struct {
