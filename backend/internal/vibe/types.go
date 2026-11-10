@@ -29,6 +29,14 @@ const (
 func (s Execution) Terminal() bool {
 	return s == Completed || s == Partial || s == Failed || s == Cancelled || s == Expired
 }
+
+// busyStates returns the states that make a project busy, for a text[]
+// parameter (state=ANY($n)). They are the non-terminal states a committed
+// operation can have. Created, Validating and Reserved exist only inside the
+// admission transaction, and nothing writes AwaitingInput.
+func busyStates() []string {
+	return []string{string(AwaitingApproval), string(Queued), string(Running), string(Finalizing), string(Cancelling)}
+}
 func CanTransition(from, to Execution) bool {
 	if from.Terminal() {
 		return false
