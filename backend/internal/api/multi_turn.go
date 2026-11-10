@@ -15,6 +15,10 @@ import (
 
 const timeRFC3339Nano = "2006-01-02T15:04:05.999999999Z07:00"
 
+// ErrRunAgentNotExecuting is returned when a human turn is submitted for a
+// run agent that is not in the executing state.
+var ErrRunAgentNotExecuting = errors.New("run agent is not executing")
+
 type MultiTurnService interface {
 	SubmitHumanTurn(ctx context.Context, caller Caller, workspaceID, runID, runAgentID uuid.UUID, message string) error
 	GetHumanTurnStatus(ctx context.Context, caller Caller, workspaceID, runID, runAgentID uuid.UUID) (*repository.HumanTurnStatus, error)
@@ -172,7 +176,7 @@ func (m *MultiTurnManager) SubmitHumanTurn(ctx context.Context, caller Caller, w
 		return repository.ErrRunAgentNotFound
 	}
 	if runAgent.Status != domain.RunAgentStatusExecuting {
-		return errors.New("run agent is not executing")
+		return ErrRunAgentNotExecuting
 	}
 	status, err := m.humanTurns.AwaitingTurn(ctx, runAgentID)
 	if err != nil {
@@ -289,12 +293,20 @@ func writeMultiTurnError(w http.ResponseWriter, logger *slog.Logger, r *http.Req
 		writeAuthzError(w, err)
 		return
 	}
-	if errors.Is(err, repository.ErrRunNotFound) || errors.Is(err, repository.ErrRunAgentNotFound) {
+	if errors.Is(err, repository.ErrRunNotFound) || errors.Is(err, repository.ErrRunAgentNotFound) || errors.Is(err, repository.ErrArenaTaskNotFound) {
 		writeError(w, http.StatusNotFound, "not_found", err.Error())
 		return
 	}
 	if errors.Is(err, repository.ErrHumanTurnNotAwaiting) {
 		writeError(w, http.StatusConflict, "not_awaiting_human", err.Error())
+		return
+	}
+	if errors.Is(err, ErrRunAgentNotExecuting) {
+		writeError(w, http.StatusConflict, "run_agent_not_executing", err.Error())
+		return
+	}
+	if errors.Is(err, repository.ErrArenaTaskNotPending) {
+		writeError(w, http.StatusConflict, "arena_task_not_pending", err.Error())
 		return
 	}
 	if errors.Is(err, repository.ErrInvalidArenaVoteWinner) {

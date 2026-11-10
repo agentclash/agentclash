@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -19,6 +20,7 @@ import (
 type DatasetGenerationRepository interface {
 	CreateDatasetGenerationJob(context.Context, repository.CreateDatasetGenerationJobParams) (repository.DatasetGenerationJob, error)
 	GetDatasetGenerationJobByID(context.Context, uuid.UUID) (repository.DatasetGenerationJob, error)
+	UpdateDatasetGenerationJobStatus(context.Context, repository.UpdateDatasetGenerationJobStatusParams) (repository.DatasetGenerationJob, error)
 	GetProviderAccountByID(context.Context, uuid.UUID) (repository.ProviderAccountRow, error)
 	ListDatasetExamplesByDatasetID(context.Context, repository.ListDatasetExamplesParams) ([]repository.DatasetExample, error)
 	ListDatasetGenerationRejectionsByJobID(context.Context, repository.ListDatasetGenerationRejectionsParams) ([]repository.DatasetGenerationRejection, error)
@@ -253,9 +255,34 @@ func (m *DatasetManager) StartDatasetGeneration(ctx context.Context, caller Call
 	}
 
 	if err := m.generationWorkflowStarter.StartSyntheticDatasetGenerationWorkflow(ctx, job.ID); err != nil {
-		return repository.DatasetGenerationJob{}, DatasetGenerationWorkflowStartError{Job: job, Cause: err}
+		// No workflow will ever pick this job up, so do not leave it queued.
+		failedJob, markErr := markDatasetGenerationJobStartFailed(ctx, genRepo, job.ID)
+		if markErr != nil {
+			return repository.DatasetGenerationJob{}, DatasetGenerationWorkflowStartError{
+				Job:   job,
+				Cause: errors.Join(err, fmt.Errorf("mark dataset generation job failed: %w", markErr)),
+			}
+		}
+		return repository.DatasetGenerationJob{}, DatasetGenerationWorkflowStartError{Job: failedJob, Cause: err}
 	}
 	return job, nil
+}
+
+const datasetGenerationStartFailedMessage = "dataset generation workflow could not be started"
+
+func markDatasetGenerationJobStartFailed(ctx context.Context, repo DatasetGenerationRepository, jobID uuid.UUID) (repository.DatasetGenerationJob, error) {
+	// The request context may already be cancelled, which is often why the
+	// start failed. Use a detached context so the job still gets marked.
+	markCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	failedAt := time.Now().UTC()
+	message := datasetGenerationStartFailedMessage
+	return repo.UpdateDatasetGenerationJobStatus(markCtx, repository.UpdateDatasetGenerationJobStatusParams{
+		ID:           jobID,
+		Status:       repository.DatasetGenerationStatusFailed,
+		ErrorMessage: &message,
+		FailedAt:     &failedAt,
+	})
 }
 
 func (m *DatasetManager) GetDatasetGenerationJob(ctx context.Context, caller Caller, input GetDatasetGenerationJobInput) (repository.DatasetGenerationJob, error) {
