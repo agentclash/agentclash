@@ -268,6 +268,7 @@ export type BuildQuote = { server_time?: string; max_calls: number; id: string; 
 export type RunQuote = { server_time?: string; id: string; max_cost_nano_usd: number; cases: number; calls: number; expires_at: string };
 
 export type VibeConfig = {
+ sdk_report_import_formats?: import("./vibe-reports").SDKImportFormat[];
  server_time?: string;
  material_build?: boolean;
  availability?: { guest: { available: boolean; reason_code?: string }; workspace: { available: boolean; reason_code?: string } };

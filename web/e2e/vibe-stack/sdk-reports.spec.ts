@@ -82,3 +82,24 @@ test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrad
  }
  expect(errors).toEqual([]);
 });
+
+test("refund report v2 imports explicitly and reopens exact original without hosted work",async({page})=>{
+ // Actual SCRIPTED Linux demo report; no customer agent or model is executed here.
+ const source=await readFile(new URL("../../../schemas/refund-report-v2/fixtures/openai-correct-v2.json",import.meta.url),"utf8");
+ await page.goto("/auth/login?returnTo=%2Fvibe-evals");await page.getByRole("button",{name:"Continue with AgentClash"}).click();
+ await page.getByRole("button",{name:/I have an agent/}).click();await page.getByRole("radio",{name:"Test pack",exact:true}).click();
+ const choose=page.waitForEvent("filechooser");await page.getByRole("button",{name:"Choose a file",exact:true}).click();await(await choose).setFiles({name:"refund-tests.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(blueprint))});
+ await expect(page.getByRole("tab",{name:"Tests",exact:true})).toBeVisible();const id=new URL(page.url()).searchParams.get("session")!;
+ const before=await evidence(page,id);expect(before.session.workspace_id).toBe(workspace);
+ await page.getByRole("tab",{name:"Results",exact:true}).click();await page.locator("summary").filter({hasText:/^Import SDK report$/}).click();
+ const format=page.getByLabel("SDK source format");await expect(format.locator('option[value="eval_report_v2"]')).toBeEnabled();await format.selectOption("eval_report_v2");
+ await page.getByRole("region",{name:"Import SDK report",exact:true}).locator('input[type="file"]').setInputFiles({name:"refund-original.json",mimeType:"application/json",buffer:Buffer.from(source)});
+ const preview=page.getByRole("region",{name:"Refund v2 safe preview"});await expect(preview).toContainText("Uploader-supplied");await expect(preview).toContainText('"cost_usd": null');await expect(preview).not.toContainText("Duplicate already refunded.");await expect(preview).not.toContainText('"arguments"');
+ const mapping=page.getByLabel("Test for DEMO-repeat-refund-01 — DEMO only: repeated duplicate refund");await expect(mapping).toHaveValue("");await expect(page.getByRole("button",{name:"Import historical report",exact:true})).toBeDisabled();await mapping.selectOption({index:1});
+ const imported=page.waitForResponse(r=>r.url().endsWith(`/sessions/${id}/reports`)&&r.request().method()==="POST");await page.getByRole("button",{name:"Import historical report",exact:true}).click();const response=await imported;expect(response.status(),await response.text()).toBe(201);const receipt=await response.json();expect(receipt.source_schema_version).toBe(2);expect(receipt.source_provenance.target_identity).toBe("agentclash_demo:invoke");
+ await expect(page.getByRole("article",{name:"Imported report detail"})).toBeVisible();expect(new URL(page.url()).searchParams.get("run")).toBe(`sdk_report:${receipt.id}`);
+ await page.reload();await expect(page.getByRole("article",{name:"Imported report detail"})).toContainText("Imported source v2");await expect(page.getByRole("button",{name:"Estimate hosted regrade",exact:true})).toBeDisabled();
+ await page.getByLabel("SDK detail source test").selectOption("DEMO-repeat-refund-01");await expect(page.getByRole("region",{name:"Imported test evidence"})).toContainText("Original verdict: PASS");await expect(page.getByRole("button",{name:"Create version with this expectation",exact:true})).toHaveCount(0);
+ const download=page.waitForEvent("download");await page.getByRole("button",{name:"Download exact original",exact:true}).click();expect(await readFile((await(await download).path())!,"utf8")).toBe(source);
+ const after=await evidence(page,id);expect(after.session.operations).toHaveLength(0);expect(after.calls).toHaveLength(before.calls.length);
+});
