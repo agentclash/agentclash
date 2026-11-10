@@ -3,6 +3,7 @@ package vibe
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"reflect"
 	"regexp"
 	"slices"
@@ -76,7 +77,7 @@ var refundTurnCheck = regexp.MustCompile(`^turn_([1-9]|10)_(outcome_truthful|sub
 func (c refundCase) complete() bool {
 	return (c.Status == "passed" || c.Status == "failed") && c.Invoked && c.Observations.Tools && c.Observations.Fixture
 }
-func refundInteger(v any) bool { n, ok := v.(float64); return ok && n >= 0 && n == float64(int64(n)) }
+func refundInteger(v any) bool { n, ok := v.(float64); return ok && n >= 0 && n == math.Trunc(n) }
 
 // Semantics follow the pinned MCP comparison contract and runner finalization.
 // Failure reasons remain opaque text; only their exact case/check references and
@@ -170,9 +171,6 @@ func validateRefundReport(source string) (refundReport, error) {
 				}
 			}
 			for id := range checks {
-				if strings.HasSuffix(id, "_subscription_preserved") && !strings.HasPrefix(id, "turn_") {
-					return r, invalidSDK()
-				}
 				if strings.HasPrefix(id, "turn_") && strings.HasSuffix(id, "_subscription_preserved") {
 					pair := strings.TrimSuffix(id, "subscription_preserved") + "outcome_truthful"
 					if _, ok := checks[pair]; !ok {
