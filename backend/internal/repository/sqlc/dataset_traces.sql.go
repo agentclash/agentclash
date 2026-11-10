@@ -263,47 +263,6 @@ func (q *Queries) ListDatasetTraceCandidates(ctx context.Context, arg ListDatase
 	return items, nil
 }
 
-const markDatasetTraceCandidatePromotedIfPending = `-- name: MarkDatasetTraceCandidatePromotedIfPending :one
-UPDATE dataset_trace_candidates
-SET status = 'promoted',
-    promoted_example_id = $1,
-    expected = COALESCE($2, expected),
-    updated_at = now()
-WHERE id = $3
-RETURNING id, dataset_id, import_id, source_platform, source_trace_id, source_run_id, source_run_agent_id, external_id, input, output, expected, metadata, tags, status, promoted_example_id, created_at, updated_at
-`
-
-type MarkDatasetTraceCandidatePromotedIfPendingParams struct {
-	PromotedExampleID *uuid.UUID
-	Expected          []byte
-	ID                uuid.UUID
-}
-
-func (q *Queries) MarkDatasetTraceCandidatePromotedIfPending(ctx context.Context, arg MarkDatasetTraceCandidatePromotedIfPendingParams) (DatasetTraceCandidate, error) {
-	row := q.db.QueryRow(ctx, markDatasetTraceCandidatePromotedIfPending, arg.PromotedExampleID, arg.Expected, arg.ID)
-	var i DatasetTraceCandidate
-	err := row.Scan(
-		&i.ID,
-		&i.DatasetID,
-		&i.ImportID,
-		&i.SourcePlatform,
-		&i.SourceTraceID,
-		&i.SourceRunID,
-		&i.SourceRunAgentID,
-		&i.ExternalID,
-		&i.Input,
-		&i.Output,
-		&i.Expected,
-		&i.Metadata,
-		&i.Tags,
-		&i.Status,
-		&i.PromotedExampleID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const updateDatasetTraceCandidatePromotion = `-- name: UpdateDatasetTraceCandidatePromotion :one
 UPDATE dataset_trace_candidates
 SET status = 'promoted',

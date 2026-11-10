@@ -1,6 +1,18 @@
 import {vibeFetch} from "./vibe";
 import type {CaseEvidenceBinding,EvidenceMetadata,Fingerprints,ProjectResultBinding,ResultRef} from "./vibe-result-evidence";
 import type {ExportItem} from "./vibe-export";
+import {ACTIVE_EVAL_SESSION_STATUSES} from "./eval-sessions";
+import {ACTIVE_RUN_STATUSES} from "./run-status";
+/**
+ * Whether a canonical result can still change, so a view should poll it.
+ * The status of a canonical result is the status of its run or eval session
+ * (backend/internal/vibe/canonical_results.go). Other result kinds never poll.
+ */
+export function isCanonicalResultActive(kind:ResultRef["kind"],status:string):boolean{
+ if(kind==="run")return (ACTIVE_RUN_STATUSES as string[]).includes(status);
+ if(kind==="eval_session")return (ACTIVE_EVAL_SESSION_STATUSES as string[]).includes(status);
+ return false;
+}
 export type CanonicalParticipant={run_id:string;run_agent_id:string;snapshot_id:string;deployment_id:string;adapter:string;status:string;label:string;challenge_input_set_id:string;cases:(CaseEvidenceBinding&{challenge_key:string;input_set_key:string;challenge_identity_id:string})[];fingerprints:Fingerprints;events:{id:string;source_event_id?:string;sequence:number;type:string;normalized_payload_sha256:string}[]};
 export type CanonicalResult={experiment?:{requested:number;completed:number;failed:number;pending:number;scored:number;aggregate?:{overall?:{n:number;mean:number;std_dev:number};participants?:{label:string;overall?:{n:number;mean:number;std_dev:number}}[]};warnings:string[]};binding:ProjectResultBinding;evidence_metadata:EvidenceMetadata;name:string;status:string;created_at:string;participants:CanonicalParticipant[];evidence_hash:string;omissions:string[]};
 export const canonicalBase=(session:string)=>`/sessions/${encodeURIComponent(session)}/canonical-results`;

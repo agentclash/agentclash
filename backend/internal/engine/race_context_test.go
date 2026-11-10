@@ -341,6 +341,71 @@ func TestMaybeInjectRaceStandingsTracksPeerStatesEvenWhenNotInjecting(t *testing
 	}
 }
 
+func TestEvaluateRaceContextCadenceSkipsAnnouncedPeer(t *testing.T) {
+	self := uuid.New()
+	peer := uuid.New()
+	snapshot := map[uuid.UUID]racecontext.StandingsEntry{
+		peer: {RunAgentID: peer, Step: 5, State: racecontext.StandingsStateSubmitted},
+	}
+	state := &loopState{
+		stepCount:         5,
+		lastInjectionStep: 4,
+		lastPeerStates:    map[uuid.UUID]racecontext.StandingsState{peer: racecontext.StandingsStateRunning},
+		announcedPeers:    map[uuid.UUID]struct{}{peer: {}},
+	}
+
+	if trigger, fire := evaluateRaceContextCadence(state, snapshot, self, 3); fire {
+		t.Fatalf("announced peer fired trigger %q again", trigger)
+	}
+}
+
+// A stale or reopened snapshot can show a finished peer as running and then
+// as submitted again. The peer_submitted trigger must fire only once.
+func TestMaybeInjectRaceStandingsFiresPeerTriggerOncePerPeer(t *testing.T) {
+	obs := &captureObserver{}
+	self := uuid.New()
+	peer := uuid.New()
+	store := &fakeStandingsStore{}
+	executor := NewNativeExecutor(nil, nil, obs).WithStandingsStore(store)
+
+	execCtx := runner.ExecutionContext{}
+	execCtx.Run.ID = uuid.New()
+	execCtx.Run.RaceContext = true
+	execCtx.RunAgent.ID = self
+	state := &loopState{}
+
+	peerStates := []racecontext.StandingsState{
+		racecontext.StandingsStateRunning,   // step 3: first injection, cadence
+		racecontext.StandingsStateSubmitted, // step 4: peer_submitted
+		racecontext.StandingsStateRunning,   // step 5: stale snapshot
+		racecontext.StandingsStateSubmitted, // step 6: must not fire again
+	}
+	for i, peerState := range peerStates {
+		state.stepCount = 3 + i
+		store.snapshot = map[uuid.UUID]racecontext.StandingsEntry{
+			self: {RunAgentID: self, Step: state.stepCount, State: racecontext.StandingsStateRunning},
+			peer: {RunAgentID: peer, Step: 5, State: peerState},
+		}
+		if err := executor.maybeInjectRaceStandings(context.Background(), execCtx, state); err != nil {
+			t.Fatalf("step %d: unexpected error: %v", state.stepCount, err)
+		}
+	}
+
+	var triggers []runevents.RaceStandingsTrigger
+	for _, injection := range obs.injections {
+		triggers = append(triggers, injection.TriggeredBy)
+	}
+	want := []runevents.RaceStandingsTrigger{runevents.RaceStandingsTriggerCadence, runevents.RaceStandingsTriggerPeerSubmitted}
+	if len(triggers) != len(want) {
+		t.Fatalf("triggers = %v, want %v", triggers, want)
+	}
+	for i := range want {
+		if triggers[i] != want[i] {
+			t.Fatalf("triggers = %v, want %v", triggers, want)
+		}
+	}
+}
+
 func TestMaybeInjectRaceStandingsSeedsMissingPeersAsNotStarted(t *testing.T) {
 	obs := &captureObserver{}
 	self := uuid.New()

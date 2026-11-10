@@ -8,19 +8,17 @@ import { cn } from "@/lib/utils";
 import { BuilderCenter } from "./editors/editor-registry";
 import { PackOutline } from "./outline/pack-outline";
 import { PreviewDrawer } from "./pieces/preview-drawer";
-import { usePackDraft } from "./use-pack-draft";
+import {
+  publishDisabled,
+  saveStatusLabel,
+  usePackDraft,
+} from "./use-pack-draft";
 
 export function BuilderShell() {
   const { state, publish } = usePackDraft();
   const invalid = state.compile != null && !state.compile.valid;
   const issueCount = state.compile?.errors?.length ?? 0;
-  const status = state.saving
-    ? "Saving…"
-    : state.compiling
-      ? "Updating preview…"
-      : state.savedAt
-        ? "Saved"
-        : "";
+  const status = saveStatusLabel(state);
 
   // The preview is an on-demand slide-over (the "N to fix" pill and the rail's
   // issue dots keep validation discoverable while it's closed).
@@ -34,7 +32,9 @@ export function BuilderShell() {
             {state.composition.pack.name || "Untitled pack"}
           </h1>
           <div className="mt-1 flex items-center gap-1.5 text-xs text-builder-fg-subtle">
-            {(state.saving || state.compiling) && <Loader2 className="size-3 animate-spin" />}
+            {(state.save.status === "saving" || state.compiling) && (
+              <Loader2 className="size-3 animate-spin" />
+            )}
             {status}
           </div>
         </div>
@@ -65,7 +65,7 @@ export function BuilderShell() {
           <Button
             size="sm"
             onClick={() => void publish()}
-            disabled={state.publishing || invalid}
+            disabled={publishDisabled(state)}
             title={invalid ? "Resolve the issues first" : undefined}
           >
             {state.publishing && <Loader2 className="size-4 animate-spin" />}

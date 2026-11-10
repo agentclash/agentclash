@@ -345,7 +345,7 @@ func checkCapacity(ctx context.Context, tx pgx.Tx, v Session, exclude ...uuid.UU
 	// A conversation has a single writer even where the actor allowance permits
 	// two independent conversations. Two tabs cannot race an artifact revision.
 	var busy bool
-	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND id<>$2 AND state IN ('QUEUED','RUNNING','FINALIZING','CANCELLING','AWAITING_APPROVAL'))", v.ID, ignored).Scan(&busy); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND id<>$2 AND state=ANY($3))", v.ID, ignored, busyStates()).Scan(&busy); err != nil {
 		return err
 	}
 	if busy {

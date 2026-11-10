@@ -47,11 +47,17 @@ func NewMultiTurnHumanTurnStore(pool *pgxpool.Pool) *MultiTurnHumanTurnStore {
 	}
 }
 
+// MarkAwaitingHuman opens the gate for a turn. If the runner re-enters the gate
+// for a turn the human has already answered, the submitted row is kept as is so
+// the next poll returns that message. Awaiting and expired rows are re-armed.
 func (s *MultiTurnHumanTurnStore) MarkAwaitingHuman(ctx context.Context, req HumanTurnWaitParams) error {
 	key := humanTurnKey(req.RunAgentID, req.TurnIndex)
 	if s.pool == nil {
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		if existing, ok := s.local[key]; ok && existing.status == "submitted" {
+			return nil
+		}
 		s.local[key] = humanTurnRow{
 			runAgentID: req.RunAgentID,
 			turnIndex:  req.TurnIndex,
@@ -71,6 +77,7 @@ ON CONFLICT (run_agent_id, turn_index) DO UPDATE SET
   message = NULL,
   submitted_at = NULL,
   updated_at = now()
+WHERE multi_turn_human_turns.status <> 'submitted'
 `, req.RunAgentID, req.TurnIndex, req.PhaseID, nullIfEmpty(req.PromptHint))
 	if err != nil {
 		return fmt.Errorf("mark awaiting human turn: %w", err)

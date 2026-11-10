@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
@@ -66,6 +66,17 @@ export function StartEvalDialog({
   const [activeRun, setActiveRun] = useState<Run | CreateRunResponse | null>(
     null,
   );
+  // Owns the in-flight start. Closing the dialog aborts it, so a run that
+  // ends later cannot redirect the user or write into a reopened dialog.
+  const startAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    return () => {
+      startAbortRef.current?.abort();
+      startAbortRef.current = null;
+    };
+  }, [open]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -151,6 +162,11 @@ export function StartEvalDialog({
       }
     }
 
+    startAbortRef.current?.abort();
+    const controller = new AbortController();
+    startAbortRef.current = controller;
+    const { signal } = controller;
+
     setSubmitting(true);
     try {
       const token = await getAccessToken();
@@ -163,13 +179,16 @@ export function StartEvalDialog({
         name: runName.trim() || undefined,
         mapping,
       });
+      signal.throwIfAborted();
 
       if (waitForCompletion) {
         setActiveRun(result.run);
         toast.success("Eval run queued — waiting for completion");
         const finished = await waitForRunCompletion(api, result.run.id, {
           onStatus: setActiveRun,
+          signal,
         });
+        signal.throwIfAborted();
         setActiveRun(finished);
         if (finished.status === "completed") {
           toast.success("Eval run completed");
@@ -185,9 +204,12 @@ export function StartEvalDialog({
       setOpen(false);
       router.push(`/workspaces/${workspaceId}/runs/${result.run.id}`);
     } catch (err) {
+      if (signal.aborted) return;
       toast.error(err instanceof ApiError ? err.message : "Failed to start eval");
     } finally {
-      setSubmitting(false);
+      if (startAbortRef.current === controller) startAbortRef.current = null;
+      // A newer start owns the submitting state.
+      if (!startAbortRef.current) setSubmitting(false);
     }
   }
 

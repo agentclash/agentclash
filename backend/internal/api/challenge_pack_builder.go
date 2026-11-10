@@ -417,29 +417,36 @@ func (m *ChallengePackBuilderManager) PublishDraft(ctx context.Context, caller C
 	}
 
 	// Reuse the raw-YAML publish path: it re-validates, stores the bundle
-	// artifact, and writes the immutable manifest in one transaction.
-	var resp PublishChallengePackResponse
+	// artifact, and writes the immutable manifest in one transaction. With a
+	// publication source, that transaction also marks the draft published and
+	// links it to the new version.
 	if sourcePublisher, ok := m.authoring.(interface {
 		PublishBundleFromDraft(context.Context, uuid.UUID, []byte, repository.PackPublicationSource) (PublishChallengePackResponse, error)
 	}); ok {
-		resp, err = sourcePublisher.PublishBundleFromDraft(productanalytics.WithPath(ctx, "draft"), workspaceID, bundleYAML, repository.PackPublicationSource{DraftID: draft.ID, Composition: draft.Composition})
-	} else {
-		resp, err = m.authoring.PublishBundle(productanalytics.WithPath(ctx, "draft"), workspaceID, bundleYAML)
+		return sourcePublisher.PublishBundleFromDraft(productanalytics.WithPath(ctx, "draft"), workspaceID, bundleYAML, repository.PackPublicationSource{DraftID: draft.ID, Composition: draft.Composition})
 	}
+
+	resp, err := m.authoring.PublishBundle(productanalytics.WithPath(ctx, "draft"), workspaceID, bundleYAML)
 	if err != nil {
 		return PublishChallengePackResponse{}, err
 	}
 
-	// Best-effort: mark the draft published and link it to the new version.
-	// The pack is already published; failing this bookkeeping must not fail
-	// the request.
+	// This publisher cannot update the draft in its transaction. The pack is
+	// already published, so a failed draft update must not fail the request,
+	// but it must not go unseen either.
 	publishedStatus := "published"
-	_, _ = m.repo.PatchChallengePackDraft(ctx, repository.PatchChallengePackDraftParams{
+	if _, patchErr := m.repo.PatchChallengePackDraft(ctx, repository.PatchChallengePackDraftParams{
 		ID:                     draftID,
 		Status:                 &publishedStatus,
 		LastPublishedVersionID: &resp.ChallengePackVersionID,
 		ChallengePackID:        &resp.ChallengePackID,
-	})
+	}); patchErr != nil {
+		slog.Default().Warn("mark challenge pack draft published failed",
+			"draft_id", draftID,
+			"challenge_pack_version_id", resp.ChallengePackVersionID,
+			"error", patchErr,
+		)
+	}
 
 	return resp, nil
 }

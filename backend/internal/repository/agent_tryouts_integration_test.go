@@ -355,6 +355,12 @@ func TestRepositoryAgentTryoutLifecycle(t *testing.T) {
 		t.Fatalf("second ClaimAgentTryout error = %v, want ErrAgentTryoutAlreadyClaimed", err)
 	}
 
+	if _, err := repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
+		ID:     created.ID,
+		Status: repository.AgentTryoutStatusRunning,
+	}); err != nil {
+		t.Fatalf("UpdateAgentTryoutStatus running returned error: %v", err)
+	}
 	latency := int64(1500)
 	actualCost := 0.03
 	redaction := repository.AgentTryoutRedactionPassed

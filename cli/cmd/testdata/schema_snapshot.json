@@ -4922,6 +4922,16 @@
         "evalset status",
         "evalset report"
       ]
+    },
+    {
+      "code": 1,
+      "name": "evalset_budget_exceeded",
+      "description": "evalset: the eval set stopped because it exceeded its budget.",
+      "commands": [
+        "evalset submit",
+        "evalset status",
+        "evalset report"
+      ]
     }
   ],
   "error_codes": [
@@ -4971,8 +4981,11 @@
     {
       "resource": "run",
       "values": [
-        "pending",
+        "draft",
+        "queued",
+        "provisioning",
         "running",
+        "scoring",
         "completed",
         "failed",
         "cancelled"
@@ -4981,13 +4994,77 @@
         "completed",
         "failed",
         "cancelled"
-      ]
+      ],
+      "transitions": {
+        "cancelled": [],
+        "completed": [],
+        "draft": [
+          "queued"
+        ],
+        "failed": [],
+        "provisioning": [
+          "running",
+          "failed",
+          "cancelled"
+        ],
+        "queued": [
+          "provisioning",
+          "failed",
+          "cancelled"
+        ],
+        "running": [
+          "scoring",
+          "failed",
+          "cancelled"
+        ],
+        "scoring": [
+          "completed",
+          "failed",
+          "cancelled"
+        ]
+      },
+      "note": "The CLI also stops follow loops for agent-harness executions and dataset generation jobs on these terminal statuses."
     },
     {
-      "resource": "eval_set",
+      "resource": "run_agent",
       "values": [
         "queued",
-        "expanding",
+        "ready",
+        "executing",
+        "evaluating",
+        "completed",
+        "failed"
+      ],
+      "terminal": [
+        "completed",
+        "failed"
+      ],
+      "transitions": {
+        "completed": [],
+        "evaluating": [
+          "completed",
+          "failed"
+        ],
+        "executing": [
+          "evaluating",
+          "failed"
+        ],
+        "failed": [],
+        "queued": [
+          "ready",
+          "failed"
+        ],
+        "ready": [
+          "executing",
+          "failed"
+        ]
+      },
+      "note": "A cancelled run leaves its agents in their last status, because run agents have no cancelled status. Follow the run status, not the agent statuses, to know when a run ends."
+    },
+    {
+      "resource": "eval_session",
+      "values": [
+        "queued",
         "running",
         "aggregating",
         "completed",
@@ -4998,7 +5075,121 @@
         "completed",
         "failed",
         "cancelled"
-      ]
+      ],
+      "transitions": {
+        "aggregating": [
+          "completed",
+          "failed",
+          "cancelled"
+        ],
+        "cancelled": [],
+        "completed": [],
+        "failed": [],
+        "queued": [
+          "running",
+          "cancelled"
+        ],
+        "running": [
+          "aggregating",
+          "failed",
+          "cancelled"
+        ]
+      }
+    },
+    {
+      "resource": "eval_set",
+      "values": [
+        "queued",
+        "expanding",
+        "running",
+        "aggregating",
+        "completed",
+        "failed",
+        "cancelled",
+        "budget_exceeded"
+      ],
+      "terminal": [
+        "completed",
+        "failed",
+        "cancelled",
+        "budget_exceeded"
+      ],
+      "transitions": {
+        "aggregating": [
+          "completed",
+          "failed",
+          "cancelled",
+          "budget_exceeded"
+        ],
+        "budget_exceeded": [],
+        "cancelled": [],
+        "completed": [],
+        "expanding": [
+          "running",
+          "failed",
+          "cancelled"
+        ],
+        "failed": [],
+        "queued": [
+          "expanding",
+          "failed",
+          "cancelled"
+        ],
+        "running": [
+          "aggregating",
+          "failed",
+          "cancelled",
+          "budget_exceeded"
+        ]
+      },
+      "note": "budget_exceeded is terminal: the set stopped before it finished, and the CLI exits with code 1."
+    },
+    {
+      "resource": "regression_suite",
+      "values": [
+        "active",
+        "archived"
+      ],
+      "terminal": [],
+      "transitions": {
+        "active": [
+          "archived"
+        ],
+        "archived": [
+          "active"
+        ]
+      }
+    },
+    {
+      "resource": "regression_case",
+      "values": [
+        "proposed",
+        "active",
+        "muted",
+        "archived",
+        "rejected"
+      ],
+      "terminal": [
+        "archived",
+        "rejected"
+      ],
+      "transitions": {
+        "active": [
+          "muted",
+          "archived"
+        ],
+        "archived": [],
+        "muted": [
+          "active",
+          "archived"
+        ],
+        "proposed": [
+          "active",
+          "archived",
+          "rejected"
+        ],
+        "rejected": []
+      }
     }
   ]
 }

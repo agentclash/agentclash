@@ -122,7 +122,7 @@ func (s *Store) deleteProject(ctx context.Context, actor string, id uuid.UUID, r
 		}
 		statements := []string{
 			`UPDATE vibe_cycle_quotes SET stopped_at=COALESCE(stopped_at,now()) WHERE session_id=$1`,
-			`UPDATE vibe_inputs SET status='deleted',pages='[]',warnings='[]',name='',error='',deleted_at=COALESCE(deleted_at,now()) WHERE session_id=$1`,
+			`UPDATE vibe_inputs SET status=CASE WHEN status='expired' THEN status ELSE 'deleted' END,pages='[]',warnings='[]',name='',error='',deleted_at=COALESCE(deleted_at,now()) WHERE session_id=$1`,
 			`UPDATE vibe_enquiries SET status='cancelled',content='{}' WHERE session_id=$1 AND status IN ('received','needs_review')`,
 			`UPDATE vibe_sessions SET deleted_at=now(),title='Deleted project',document='{}',revision=revision+1 WHERE id=$1`,
 		}

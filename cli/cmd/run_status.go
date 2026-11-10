@@ -1,15 +1,13 @@
 package cmd
 
-// Canonical run/job lifecycle statuses, aligned with the backend's run state
-// machine (backend/internal/domain/run.go). Every follow/poll loop in the CLI
-// must use isTerminalRunStatus rather than hand-rolling its own switch — the
-// divergent copies are exactly how `dataset generate --follow` looped forever
-// on a cancelled job. These constants are the single vocabulary the `schema`
-// status registry builds on in a later PR; keeping them here means that
-// registry references the same source the follow loops do.
+// Terminal run and job statuses. The server owns these values in the run
+// transition table (runtime/domain/run.go), which `agentclash schema`
+// publishes through domain.Lifecycles(). Every follow and poll loop for runs,
+// eval sessions, agent-harness executions, and dataset generation jobs must
+// use isTerminalRunStatus. Do not write a separate switch: the divergent
+// copies are how `dataset generate --follow` looped forever on a cancelled
+// job. Eval sets have one more terminal status; use evalsetStatusTerminal.
 const (
-	runStatusPending   = "pending"
-	runStatusRunning   = "running"
 	runStatusCompleted = "completed"
 	runStatusFailed    = "failed"
 	runStatusCancelled = "cancelled"

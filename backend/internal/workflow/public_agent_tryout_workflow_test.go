@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/domain"
@@ -18,15 +19,24 @@ import (
 // fakePublicTryoutRepo is a minimal PublicAgentTryoutRepository capturing
 // recorded timeline events for assertions.
 type fakePublicTryoutRepo struct {
-	events []repository.RecordAgentTryoutEventParams
+	events  []repository.RecordAgentTryoutEventParams
+	updates []repository.UpdateAgentTryoutStatusParams
+	// updateErr, when set, decides the result of each status write.
+	updateErr func(params repository.UpdateAgentTryoutStatusParams) error
 }
 
-func (f *fakePublicTryoutRepo) GetAgentTryoutByID(context.Context, uuid.UUID) (repository.AgentTryout, error) {
-	return repository.AgentTryout{}, nil
+func (f *fakePublicTryoutRepo) GetAgentTryoutByID(_ context.Context, id uuid.UUID) (repository.AgentTryout, error) {
+	return repository.AgentTryout{ID: id}, nil
 }
 
 func (f *fakePublicTryoutRepo) UpdateAgentTryoutStatus(_ context.Context, params repository.UpdateAgentTryoutStatusParams) (repository.AgentTryout, error) {
-	return repository.AgentTryout{ID: params.ID}, nil
+	f.updates = append(f.updates, params)
+	if f.updateErr != nil {
+		if err := f.updateErr(params); err != nil {
+			return repository.AgentTryout{}, err
+		}
+	}
+	return repository.AgentTryout{ID: params.ID, Status: params.Status}, nil
 }
 
 func (f *fakePublicTryoutRepo) RecordAgentTryoutEvent(_ context.Context, params repository.RecordAgentTryoutEventParams) (repository.AgentTryoutEvent, error) {
@@ -34,7 +44,7 @@ func (f *fakePublicTryoutRepo) RecordAgentTryoutEvent(_ context.Context, params 
 	return repository.AgentTryoutEvent{}, nil
 }
 
-func (f *fakePublicTryoutRepo) ClaimNextPendingAgentTryoutTurn(context.Context, uuid.UUID) (repository.AgentTryoutTurn, bool, error) {
+func (f *fakePublicTryoutRepo) ClaimNextPendingAgentTryoutTurn(context.Context, uuid.UUID, time.Duration) (repository.AgentTryoutTurn, bool, error) {
 	return repository.AgentTryoutTurn{}, false, nil
 }
 

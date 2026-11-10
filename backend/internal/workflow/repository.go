@@ -72,7 +72,7 @@ type PublicAgentTryoutRepository interface {
 	GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
 	UpdateAgentTryoutStatus(ctx context.Context, params repository.UpdateAgentTryoutStatusParams) (repository.AgentTryout, error)
 	RecordAgentTryoutEvent(ctx context.Context, params repository.RecordAgentTryoutEventParams) (repository.AgentTryoutEvent, error)
-	ClaimNextPendingAgentTryoutTurn(ctx context.Context, tryoutID uuid.UUID) (repository.AgentTryoutTurn, bool, error)
+	ClaimNextPendingAgentTryoutTurn(ctx context.Context, tryoutID uuid.UUID, lease time.Duration) (repository.AgentTryoutTurn, bool, error)
 	MarkAgentTryoutTurnProcessed(ctx context.Context, id int64) error
 }
 

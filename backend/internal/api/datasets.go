@@ -124,14 +124,17 @@ type PatchDatasetInput struct {
 }
 
 type UpsertDatasetExampleInput struct {
-	WorkspaceID    uuid.UUID
-	DatasetID      uuid.UUID
-	ExternalID     *string
-	Input          json.RawMessage
-	Expected       json.RawMessage
-	Metadata       json.RawMessage
-	Tags           []string
-	Status         domain.DatasetExampleStatus
+	WorkspaceID uuid.UUID
+	DatasetID   uuid.UUID
+	ExternalID  *string
+	Input       json.RawMessage
+	Expected    json.RawMessage
+	Metadata    json.RawMessage
+	Tags        []string
+	Status      domain.DatasetExampleStatus
+	// StatusExplicit is true when the request carried a status. Otherwise
+	// Status is the default and does not revive an archived or muted example.
+	StatusExplicit bool
 	Source         domain.DatasetExampleSource
 	SourceRunID    *uuid.UUID
 	SourceTraceID  *string
@@ -332,8 +335,8 @@ func (m *DatasetManager) AddDatasetExample(ctx context.Context, caller Caller, i
 	}
 	return m.repo.UpsertDatasetExample(ctx, repository.UpsertDatasetExampleParams{
 		DatasetID: input.DatasetID, ExternalID: input.ExternalID, Input: input.Input, Expected: input.Expected, Metadata: input.Metadata,
-		Tags: input.Tags, Status: input.Status, Source: input.Source, SourceRunID: input.SourceRunID, SourceTraceID: input.SourceTraceID,
-		SourcePlatform: input.SourcePlatform, ArtifactID: input.ArtifactID, Actor: caller.UserID,
+		Tags: input.Tags, Status: input.Status, StatusExplicit: input.StatusExplicit, Source: input.Source, SourceRunID: input.SourceRunID,
+		SourceTraceID: input.SourceTraceID, SourcePlatform: input.SourcePlatform, ArtifactID: input.ArtifactID, Actor: caller.UserID,
 	})
 }
 
@@ -513,6 +516,8 @@ func (m *DatasetManager) ImportDataset(ctx context.Context, caller Caller, input
 	imported := make([]repository.DatasetExample, 0, len(normalized.Examples))
 	source := domain.DatasetExampleSourceImport
 	for _, example := range normalized.Examples {
+		// Import rows carry no status, so active is only the default for new
+		// examples; an archived or muted example keeps its status.
 		upserted, err := m.repo.UpsertDatasetExample(ctx, repository.UpsertDatasetExampleParams{
 			DatasetID: input.DatasetID, ExternalID: example.ExternalID, Input: example.Input, Expected: example.Expected, Metadata: example.Metadata,
 			Tags: example.Tags, Status: domain.DatasetExampleStatusActive, Source: source, Actor: caller.UserID,
@@ -1124,7 +1129,8 @@ func (r datasetExampleRequest) toUpsertInput(workspaceID, datasetID uuid.UUID) U
 	}
 	return UpsertDatasetExampleInput{
 		WorkspaceID: workspaceID, DatasetID: datasetID, ExternalID: r.ExternalID, Input: r.Input, Expected: r.Expected, Metadata: r.Metadata,
-		Tags: r.Tags, Status: status, Source: source, SourceRunID: r.SourceRunID, SourceTraceID: r.SourceTraceID, SourcePlatform: r.SourcePlatform, ArtifactID: r.ArtifactID,
+		Tags: r.Tags, Status: status, StatusExplicit: r.Status != nil, Source: source, SourceRunID: r.SourceRunID, SourceTraceID: r.SourceTraceID,
+		SourcePlatform: r.SourcePlatform, ArtifactID: r.ArtifactID,
 	}
 }
 
