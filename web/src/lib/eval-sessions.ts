@@ -3,7 +3,17 @@ import type {
   EvalSessionDetail,
   EvalSessionMetricAggregate,
   EvalSessionPassMetricSeries,
+  EvalSessionStatus,
 } from "@/lib/api/types";
+import { nonTerminalStates } from "@/lib/status-lifecycles";
+
+/** Eval session statuses that have not ended (runtime/domain/eval_session.go). */
+export const ACTIVE_EVAL_SESSION_STATUSES: EvalSessionStatus[] =
+  nonTerminalStates("eval_session");
+
+export function isEvalSessionActive(status: EvalSessionStatus): boolean {
+  return ACTIVE_EVAL_SESSION_STATUSES.includes(status);
+}
 
 function stripRepeatedRunSuffix(value: string): string {
   return value.replace(/\s*\[\d+\/\d+\]\s*$/, "").trim();

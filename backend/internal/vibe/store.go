@@ -478,7 +478,7 @@ func (s *Store) edit(ctx context.Context, actor string, id uuid.UUID, revision i
 			return fault("revision_conflict", "This conversation changed in another tab. Reload to see the latest version.")
 		}
 		var busy bool
-		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state IN ('AWAITING_APPROVAL','QUEUED','RUNNING','CANCELLING','FINALIZING'))", id).Scan(&busy); err != nil {
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state=ANY($2))", id, busyStates()).Scan(&busy); err != nil {
 			return err
 		}
 		if busy {
@@ -568,7 +568,7 @@ func (s *Store) saveDraft(ctx context.Context, actor string, id uuid.UUID, revis
 			return fault("revision_conflict", "Reload the latest conversation before saving.")
 		}
 		var active bool
-		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state IN ('QUEUED','RUNNING','AWAITING_APPROVAL','FINALIZING','CANCELLING'))", id).Scan(&active); err != nil {
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state=ANY($2))", id, busyStates()).Scan(&active); err != nil {
 			return err
 		}
 		if active {

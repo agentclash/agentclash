@@ -23,6 +23,85 @@ func (s *recordingSender) SendMessage(_ context.Context, m email.Message) (strin
 	}
 	return "provider-receipt", nil
 }
+
+// hookSender runs one hook while its send is in flight, to model another
+// worker acting during a slow provider call.
+type hookSender struct {
+	id    string
+	fail  bool
+	hook  func()
+	calls int
+}
+
+func (s *hookSender) SendMessage(context.Context, email.Message) (string, error) {
+	s.calls++
+	if hook := s.hook; hook != nil {
+		s.hook = nil
+		hook()
+	}
+	if s.fail {
+		return "", errors.New("lost acknowledgement")
+	}
+	return s.id, nil
+}
+
+func TestEnquiryLeaseRaces(t *testing.T) {
+	type outcome struct {
+		status, providerID string
+		firstErr, otherErr bool
+	}
+	for name, tc := range map[string]struct {
+		// prepare runs inside the first worker's send, before the other worker.
+		prepare   string
+		transport string
+		otherFail bool
+		want      outcome
+	}{
+		// A new configuration must not take a send that still has its lease.
+		"config change during send": {transport: "changed-transport", want: outcome{status: "provider_accepted", providerID: "first-receipt"}},
+		// The lease ended and an old first attempt moves to review. Keep the ID.
+		"lease ends and row moves to review": {prepare: `UPDATE vibe_enquiries SET lease_until=now()-interval '1 second',first_attempt_at=now()-interval '21 hours' WHERE id=$1`, transport: "test-transport", want: outcome{status: "needs_review", providerID: "first-receipt", firstErr: true, otherErr: true}},
+		// The lease ended, another worker retried and failed. The first
+		// acceptance is still true, so it is recorded.
+		"lease ends and retry fails": {prepare: `UPDATE vibe_enquiries SET lease_until=now()-interval '1 second' WHERE id=$1`, transport: "test-transport", otherFail: true, want: outcome{status: "provider_accepted", providerID: "first-receipt", firstErr: true, otherErr: true}},
+		// The lease ended and another worker retried and was accepted first.
+		"lease ends and retry is accepted": {prepare: `UPDATE vibe_enquiries SET lease_until=now()-interval '1 second' WHERE id=$1`, transport: "test-transport", want: outcome{status: "provider_accepted", providerID: "other-receipt", firstErr: true}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			s, actor := contactStore(t)
+			receipt, err := s.CreateContact(ctx, actor, contactRequest())
+			if err != nil {
+				t.Fatal(err)
+			}
+			first := &hookSender{id: "first-receipt"}
+			other := &Store{DB: s.DB, Recipient: s.Recipient, Sender: &hookSender{id: "other-receipt", fail: tc.otherFail}, TransportID: tc.transport}
+			var otherErr error
+			first.hook = func() {
+				if tc.prepare != "" {
+					if _, err := s.DB.Exec(ctx, tc.prepare, receipt.ID); err != nil {
+						t.Error(err)
+					}
+				}
+				otherErr = other.deliverOne(ctx)
+			}
+			s.Sender = first
+			firstErr := s.deliverOne(ctx)
+			if first.calls != 1 {
+				t.Fatalf("first worker sent %d messages", first.calls)
+			}
+			var got outcome
+			if err = s.DB.QueryRow(ctx, `SELECT status,provider_id FROM vibe_enquiries WHERE id=$1`, receipt.ID).Scan(&got.status, &got.providerID); err != nil {
+				t.Fatal(err)
+			}
+			got.firstErr, got.otherErr = firstErr != nil, otherErr != nil
+			if got != tc.want {
+				t.Fatalf("got %+v (first: %v, other: %v), want %+v", got, firstErr, otherErr, tc.want)
+			}
+		})
+	}
+}
+
 func TestEnquiryValidation(t *testing.T) {
 	r := Request{ClientID: uuid.New(), Email: "person@example.test", Summary: "Build a useful agent"}
 	if err := Validate(r); err != nil {

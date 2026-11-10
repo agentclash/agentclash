@@ -186,7 +186,9 @@ func (s *Store) deliverOne(ctx context.Context) error {
 	}
 	// Resend remembers keys for 24h. Stop well inside that window when an
 	// acknowledgement is uncertain; never blindly send it again days later.
-	tag, err := s.DB.Exec(ctx, `UPDATE vibe_enquiries SET status='needs_review' WHERE status IN ('sending','received') AND (first_attempt_at<now()-interval '20 hours' OR transport_id<>$1)`, s.TransportID)
+	// A send with a live lease belongs to its worker; review it only after
+	// that lease ends.
+	tag, err := s.DB.Exec(ctx, `UPDATE vibe_enquiries SET status='needs_review' WHERE (status='received' OR (status='sending' AND lease_until<now())) AND (first_attempt_at<now()-interval '20 hours' OR transport_id<>$1)`, s.TransportID)
 	if err != nil {
 		return err
 	}
@@ -196,7 +198,9 @@ func (s *Store) deliverOne(ctx context.Context) error {
 	var id uuid.UUID
 	var content []byte
 	var lease time.Time
-	err = s.DB.QueryRow(ctx, `UPDATE vibe_enquiries SET status='sending',attempts=attempts+1,first_attempt_at=COALESCE(first_attempt_at,now()),lease_until=now()+interval '60 seconds' WHERE id=(SELECT e.id FROM vibe_enquiries e LEFT JOIN vibe_sessions s ON s.id=e.session_id WHERE (e.session_id IS NULL OR s.deleted_at IS NULL) AND (e.session_id IS NOT NULL OR e.content<>'{}'::jsonb) AND ((e.status='received' AND e.next_attempt_at<=now()) OR (e.status='sending' AND e.lease_until<now())) ORDER BY e.created_at FOR UPDATE OF e SKIP LOCKED LIMIT 1) RETURNING id,content,lease_until`).Scan(&id, &content, &lease)
+	// A lease can end after the review pass above. Claim only rows that pass
+	// would leave alone, so a changed transport or an old send is never retried.
+	err = s.DB.QueryRow(ctx, `UPDATE vibe_enquiries SET status='sending',attempts=attempts+1,first_attempt_at=COALESCE(first_attempt_at,now()),lease_until=now()+interval '60 seconds' WHERE id=(SELECT e.id FROM vibe_enquiries e LEFT JOIN vibe_sessions s ON s.id=e.session_id WHERE (e.session_id IS NULL OR s.deleted_at IS NULL) AND (e.session_id IS NOT NULL OR e.content<>'{}'::jsonb) AND e.transport_id=$1 AND (e.first_attempt_at IS NULL OR e.first_attempt_at>=now()-interval '20 hours') AND ((e.status='received' AND e.next_attempt_at<=now()) OR (e.status='sending' AND e.lease_until<now())) ORDER BY e.created_at FOR UPDATE OF e SKIP LOCKED LIMIT 1) RETURNING id,content,lease_until`, s.TransportID).Scan(&id, &content, &lease)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
@@ -232,6 +236,29 @@ func (s *Store) deliverOne(ctx context.Context) error {
 		}
 		return fmt.Errorf("enquiry %s acknowledgement unconfirmed", id)
 	}
-	_, err = s.DB.Exec(ctx, `UPDATE vibe_enquiries SET status='provider_accepted',provider_id=$3,content=CASE WHEN session_id IS NULL THEN '{}'::jsonb ELSE content END WHERE id=$1 AND status='sending' AND lease_until=$2`, id, lease, providerID)
-	return err
+	tag, err = s.DB.Exec(ctx, `UPDATE vibe_enquiries SET status='provider_accepted',provider_id=$3,content=CASE WHEN session_id IS NULL THEN '{}'::jsonb ELSE content END WHERE id=$1 AND status='sending' AND lease_until=$2`, id, lease, providerID)
+	if err != nil || tag.RowsAffected() == 1 {
+		return err
+	}
+	return s.recordLostAcceptance(ctx, id, providerID)
+}
+
+// recordLostAcceptance keeps a provider acceptance after this worker lost its
+// lease. The provider confirmed the message, so a row that is still waiting
+// for delivery becomes accepted. A row in operator review, or in another
+// final state, keeps its status. The row keeps the first provider ID it gets.
+// The lost race is always reported, with this ID if the row has another one.
+func (s *Store) recordLostAcceptance(ctx context.Context, id uuid.UUID, providerID string) error {
+	var status, recorded string
+	err := s.DB.QueryRow(ctx, `UPDATE vibe_enquiries SET status=CASE WHEN status IN ('sending','received') THEN 'provider_accepted' ELSE status END,provider_id=CASE WHEN provider_id='' THEN $2 ELSE provider_id END,content=CASE WHEN session_id IS NULL AND status IN ('sending','received') THEN '{}'::jsonb ELSE content END WHERE id=$1 RETURNING status,provider_id`, id, providerID).Scan(&status, &recorded)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("enquiry %s was accepted by the provider as %q after its row was removed", id, providerID)
+	}
+	if err != nil {
+		return err
+	}
+	if recorded != providerID {
+		return fmt.Errorf("enquiry %s lost its delivery lease; the provider accepted it as %q, but the row is %s with provider ID %q", id, providerID, status, recorded)
+	}
+	return fmt.Errorf("enquiry %s lost its delivery lease; the provider acceptance is recorded and the row is %s", id, status)
 }

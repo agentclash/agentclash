@@ -12,6 +12,7 @@ async function mount(tryout = result, status = 200) {
  const claims: RequestInit[] = [];
  vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
   if (url.endsWith("/users/me")) return Response.json({ organizations: [{ role: "org_member", workspaces: [{ id: "workspace", name: "My workspace", role: "workspace_member" }, { id: "viewer", name: "Read only", role: "workspace_viewer" }] }] });
+  if (url.endsWith("/agent-tryout-templates")) return Response.json({ items: [], creator_access_protocol: "cookie-v1" });
   claims.push(init);
   return Response.json(status === 200 ? { ...result, workspace_id: "workspace", claimed_by_user_id: "user", claimed_at: "2026-01-01T00:00:00Z" } : { error: { code: "forbidden", message: "Workspace access denied" } }, { status });
  });

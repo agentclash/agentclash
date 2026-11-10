@@ -85,6 +85,10 @@ type ListWorkspaceGitHubRepositoriesParams struct {
 	Query       string
 }
 
+// UpsertGitHubInstallation inserts or refreshes an installation row. A row
+// that is already 'deleted' keeps that status: GitHub gives a reinstall a new
+// installation id, so a later write for a deleted id can only come from a
+// redelivered or out-of-order webhook.
 func (r *Repository) UpsertGitHubInstallation(ctx context.Context, p UpsertGitHubInstallationParams) (GitHubInstallation, error) {
 	status := p.Status
 	if status == "" {
@@ -105,7 +109,10 @@ ON CONFLICT (organization_id, github_installation_id) DO UPDATE SET
     github_account_type = EXCLUDED.github_account_type,
     repository_selection = EXCLUDED.repository_selection,
     installed_by_user_id = COALESCE(EXCLUDED.installed_by_user_id, organization_github_installations.installed_by_user_id),
-    status = EXCLUDED.status
+    status = CASE
+        WHEN organization_github_installations.status = 'deleted' THEN 'deleted'
+        ELSE EXCLUDED.status
+    END
 RETURNING id, organization_id, github_installation_id, github_account_id,
     github_account_login, github_account_type, repository_selection,
     installed_by_user_id, status, created_at, updated_at`,
@@ -144,11 +151,14 @@ WHERE github_installation_id = $1`, githubInstallationID)
 	return scanGitHubInstallation(row)
 }
 
+// UpdateGitHubInstallationStatus sets the status of an installation. A deleted
+// installation stays deleted; see UpsertGitHubInstallation.
 func (r *Repository) UpdateGitHubInstallationStatus(ctx context.Context, githubInstallationID int64, status string) error {
 	_, err := r.db.Exec(ctx, `
 UPDATE organization_github_installations
 SET status = $2
-WHERE github_installation_id = $1`, githubInstallationID, status)
+WHERE github_installation_id = $1
+    AND status <> 'deleted'`, githubInstallationID, status)
 	return err
 }
 

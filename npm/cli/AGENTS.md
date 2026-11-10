@@ -33,7 +33,7 @@ agentclash link                          # pick/save a workspace
 # 3. Verify everything before doing work.
 agentclash doctor                        # add --json for machine-readable output
 
-# 4. Introspect the entire CLI — every command, flag, and stable exit code — as JSON.
+# 4. Introspect the entire CLI — every command, flag, stable exit code, and status lifecycle — as JSON.
 agentclash schema --json
 ```
 
@@ -94,6 +94,9 @@ product UI links. Other notable skills: `agentclash-cli-setup`,
   non-zero on warnings) and `schema --json` for introspection.
 - Exit codes are stable and documented; read them from `agentclash schema --json`
   (`.exit_codes`). Branch on the code, don't re-parse stderr.
+- Status lifecycles are published in `agentclash schema --json`
+  (`.status_enums`): the states, the terminal states that end a follow loop,
+  and the legal next states. Read them. Do not write your own status list.
 - Errors print a structured envelope in `--json` mode (`code`, `message`,
   `details`, `next_step`).
 

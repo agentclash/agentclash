@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 
-import type { RunAgent } from "@/lib/api/types";
+import type { RunAgent, RunStatus } from "@/lib/api/types";
 import type { ArenaLaneState } from "@/hooks/use-agent-arena";
 import { EMPTY_LANE } from "@/hooks/use-agent-arena";
 import type { CommentaryEntry } from "@/hooks/use-agent-commentary";
@@ -23,6 +23,8 @@ interface RaceModeArenaProps {
   showCommentary: boolean;
   commentaryEntries: CommentaryEntry[];
   isActive: boolean;
+  /** Status of the parent run. A terminal run stops every lane from animating. */
+  runStatus: RunStatus;
   /** Map of agent.id → terminal-only footer node (scorecard, etc.). */
   laneFooters?: Record<string, React.ReactNode>;
 }
@@ -36,6 +38,7 @@ export function RaceModeArena({
   showCommentary,
   commentaryEntries,
   isActive,
+  runStatus,
   laneFooters,
 }: RaceModeArenaProps) {
   // Compute once; track + every lane row render against the same numbers.
@@ -52,6 +55,7 @@ export function RaceModeArena({
         lanes={lanes}
         targetSteps={targetSteps}
         winnerAgentId={winnerAgentId}
+        runStatus={runStatus}
       />
 
       <div
@@ -68,6 +72,7 @@ export function RaceModeArena({
               targetSteps={targetSteps}
               workspaceId={workspaceId}
               runId={runId}
+              runStatus={runStatus}
               footer={laneFooters?.[agent.id] ?? null}
             />
           ))}

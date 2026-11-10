@@ -799,7 +799,9 @@ func (d *agentTryoutExecutionDispatcher) refresh(ctx context.Context, tryout rep
 		return repository.AgentTryout{}, err
 	}
 	status, redaction := agentTryoutStatusFromHarnessExecution(execution)
-	if agentTryoutTerminal(tryout.Status) && !agentTryoutTerminal(status) {
+	if !tryout.Status.AllowsWrite(status) {
+		// A terminal tryout keeps its status, also when the execution ends
+		// in another terminal status.
 		return tryout, nil
 	}
 	summary := agentTryoutExecutionSummary(execution)
@@ -807,23 +809,43 @@ func (d *agentTryoutExecutionDispatcher) refresh(ctx context.Context, tryout rep
 	if !agentTryoutRefreshChanged(tryout, status, summary, latency, redaction) {
 		return tryout, nil
 	}
-	return d.repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
+	updated, err := d.repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
 		ID:              tryout.ID,
 		Status:          status,
 		Summary:         summary,
 		LatencyMS:       latency,
 		RedactionStatus: redaction,
 	})
+	if agentTryoutWriteRefused(err) {
+		return d.repo.GetAgentTryoutByID(ctx, tryout.ID)
+	}
+	return updated, err
 }
 
+// failTryout marks a tryout failed, but only if it is still in the status the
+// caller saw. If another writer changed it first (for example, a workflow that
+// did start although the start call returned an error), the current tryout is
+// returned unchanged.
 func (d *agentTryoutExecutionDispatcher) failTryout(ctx context.Context, tryout repository.AgentTryout, code string, message string) (repository.AgentTryout, error) {
 	redaction := repository.AgentTryoutRedactionNotRequired
-	return d.repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
+	expected := tryout.Status
+	failed, err := d.repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
 		ID:              tryout.ID,
 		Status:          repository.AgentTryoutStatusFailed,
+		ExpectedStatus:  &expected,
 		Summary:         safeAgentTryoutFailureSummary(code, message),
 		RedactionStatus: &redaction,
 	})
+	if agentTryoutWriteRefused(err) {
+		return d.repo.GetAgentTryoutByID(ctx, tryout.ID)
+	}
+	return failed, err
+}
+
+// agentTryoutWriteRefused reports whether a tryout status write was refused
+// because the tryout is terminal or changed under the writer.
+func agentTryoutWriteRefused(err error) bool {
+	return errors.Is(err, repository.ErrInvalidTransition) || errors.Is(err, repository.ErrTransitionConflict)
 }
 
 func (d *agentTryoutExecutionDispatcher) executionConfig(template AgentTryoutTemplate) json.RawMessage {
@@ -1027,17 +1049,6 @@ func agentTryoutLatencyMS(execution repository.AgentHarnessExecution) *int64 {
 	return &value
 }
 
-func agentTryoutTerminal(status repository.AgentTryoutStatus) bool {
-	switch status {
-	case repository.AgentTryoutStatusCompleted,
-		repository.AgentTryoutStatusFailed,
-		repository.AgentTryoutStatusCancelled:
-		return true
-	default:
-		return false
-	}
-}
-
 func agentTryoutRefreshChanged(tryout repository.AgentTryout, status repository.AgentTryoutStatus, summary json.RawMessage, latency *int64, redaction *repository.AgentTryoutRedactionStatus) bool {
 	if tryout.Status != status {
 		return true
@@ -1096,7 +1107,7 @@ func (m *AgentTryoutManager) ClaimTryout(ctx context.Context, caller Caller, inp
 		if err := m.authorizeAnonymousTryout(ctx, tryout, true); err != nil {
 			return repository.AgentTryout{}, err
 		}
-		if !agentTryoutTerminal(tryout.Status) {
+		if !tryout.Status.Terminal() {
 			return repository.AgentTryout{}, repository.ErrAgentTryoutActive
 		}
 	}
@@ -1169,15 +1180,18 @@ func (m *AgentTryoutManager) lookupTemplate(slug string) (AgentTryoutTemplate, e
 	return template, nil
 }
 
+const tryoutCreatorAccessProtocol = "cookie-v1"
+
 type createAgentTryoutRequest struct {
-	TemplateSlug        string                     `json:"template_slug"`
-	Input               json.RawMessage            `json:"input"`
-	SelectedHarnessKind string                     `json:"selected_harness_kind,omitempty"`
-	SelectedModelPolicy json.RawMessage            `json:"selected_model_policy,omitempty"`
-	Judge               *AgentTryoutJudgeSelection `json:"judge,omitempty"`
-	AgentInstructions   string                     `json:"agent_instructions,omitempty"`
-	AgentToolSlugs      []string                   `json:"agent_tool_slugs,omitempty"`
-	AgentName           string                     `json:"agent_name,omitempty"`
+	CreatorAccessProtocol string                     `json:"creator_access_protocol,omitempty"`
+	TemplateSlug          string                     `json:"template_slug"`
+	Input                 json.RawMessage            `json:"input"`
+	SelectedHarnessKind   string                     `json:"selected_harness_kind,omitempty"`
+	SelectedModelPolicy   json.RawMessage            `json:"selected_model_policy,omitempty"`
+	Judge                 *AgentTryoutJudgeSelection `json:"judge,omitempty"`
+	AgentInstructions     string                     `json:"agent_instructions,omitempty"`
+	AgentToolSlugs        []string                   `json:"agent_tool_slugs,omitempty"`
+	AgentName             string                     `json:"agent_name,omitempty"`
 }
 
 type claimAgentTryoutRequest struct {
@@ -1185,7 +1199,8 @@ type claimAgentTryoutRequest struct {
 }
 
 type listAgentTryoutTemplatesResponse struct {
-	Items []AgentTryoutTemplate `json:"items"`
+	CreatorAccessProtocol string                `json:"creator_access_protocol"`
+	Items                 []AgentTryoutTemplate `json:"items"`
 }
 
 type listAgentTryoutsResponse struct {
@@ -1280,7 +1295,8 @@ func listAgentTryoutTemplatesHandler(logger *slog.Logger, service AgentTryoutSer
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 			return
 		}
-		writeJSON(w, http.StatusOK, listAgentTryoutTemplatesResponse{Items: items})
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusOK, listAgentTryoutTemplatesResponse{Items: items, CreatorAccessProtocol: tryoutCreatorAccessProtocol})
 	}
 }
 
@@ -1289,6 +1305,11 @@ func createAnonymousAgentTryoutHandler(logger *slog.Logger, service AgentTryoutS
 		var req createAgentTryoutRequest
 		if err := decodeAgentTryoutJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
+		if req.CreatorAccessProtocol != tryoutCreatorAccessProtocol {
+			w.Header().Set("Cache-Control", "no-store")
+			writeError(w, http.StatusConflict, "creator_access_protocol_required", "Reload or update this client before starting a tryout. Creator cookie support is required.")
 			return
 		}
 		proof, err := newTryoutProof()
@@ -1782,7 +1803,7 @@ func mapAgentTryoutResponse(tryout repository.AgentTryout) agentTryoutResponse {
 
 func mapPublicAgentTryoutResponse(tryout repository.AgentTryout) publicAgentTryoutResponse {
 	return publicAgentTryoutResponse{
-		SaveEligible:           agentTryoutTerminal(tryout.Status) && tryout.WorkspaceID == nil && tryout.AnonymousOwnerProofHash != nil && tryout.ExpiresAt != nil && tryout.ExpiresAt.After(time.Now()),
+		SaveEligible:           tryout.Status.Terminal() && tryout.WorkspaceID == nil && tryout.AnonymousOwnerProofHash != nil && tryout.ExpiresAt != nil && tryout.ExpiresAt.After(time.Now()),
 		Type:                   string(repository.PublicShareResourceAgentTryout),
 		ID:                     tryout.ID,
 		TemplateSlug:           tryout.TemplateSlug,

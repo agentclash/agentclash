@@ -558,15 +558,15 @@ func getCIRun(cmd *cobra.Command, rc *RunContext, runID string) (map[string]any,
 	return run, nil
 }
 
+// ciRunTerminalStatus classifies a candidate run status with the shared run
+// lifecycle: a run ends in completed, failed, or cancelled, and only
+// completed counts as success.
 func ciRunTerminalStatus(status string) (terminal bool, success bool) {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "completed", "succeeded", "success":
-		return true, true
-	case "failed", "error", "errored", "canceled", "cancelled", "aborted", "timed_out", "timeout", "expired":
-		return true, false
-	default:
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	if !isTerminalRunStatus(normalized) {
 		return false, false
 	}
+	return true, normalized == runStatusCompleted
 }
 
 func resolveCIRunCandidateAgent(cmd *cobra.Command, rc *RunContext, runID, deploymentID string) (runAgentWorkflowSummary, error) {

@@ -707,6 +707,11 @@ func (m *GitHubIntegrationManager) handleInstallationWebhook(ctx context.Context
 	if err != nil {
 		return nil
 	}
+	if existing.Status == "deleted" {
+		// Deleted is final. GitHub gives a reinstall a new installation id,
+		// so this is a redelivered or out-of-order event.
+		return nil
+	}
 	status := "active"
 	switch payload.Action {
 	case "deleted":

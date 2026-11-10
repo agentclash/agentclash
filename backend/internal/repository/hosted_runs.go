@@ -21,7 +21,7 @@ type HostedRunExecution struct {
 	RunAgentID       uuid.UUID
 	EndpointURL      string
 	TraceLevel       string
-	Status           string
+	Status           HostedRunExecutionStatus
 	ExternalRunID    *string
 	AcceptedResponse json.RawMessage
 	LastEventType    *string
@@ -61,17 +61,6 @@ type MarkHostedRunExecutionFailedParams struct {
 type MarkHostedRunExecutionTimedOutParams struct {
 	RunAgentID   uuid.UUID
 	ErrorMessage string
-}
-
-type ApplyHostedRunEventParams struct {
-	RunAgentID       uuid.UUID
-	Status           string
-	ExternalRunID    *string
-	LastEventType    string
-	LastEventPayload json.RawMessage
-	ResultPayload    json.RawMessage
-	ErrorMessage     *string
-	OccurredAt       time.Time
 }
 
 func (r *Repository) CreateHostedRunExecution(ctx context.Context, params CreateHostedRunExecutionParams) (HostedRunExecution, error) {
@@ -147,26 +136,6 @@ func (r *Repository) MarkHostedRunExecutionTimedOut(ctx context.Context, params 
 	return mapHostedRunExecution(row)
 }
 
-func (r *Repository) ApplyHostedRunEvent(ctx context.Context, params ApplyHostedRunEventParams) (HostedRunExecution, error) {
-	row, err := r.queries.ApplyHostedRunEvent(ctx, repositorysqlc.ApplyHostedRunEventParams{
-		RunAgentID:       params.RunAgentID,
-		Status:           params.Status,
-		ExternalRunID:    cloneStringPtr(params.ExternalRunID),
-		LastEventType:    stringPtr(params.LastEventType),
-		LastEventPayload: cloneJSON(params.LastEventPayload),
-		ResultPayload:    cloneJSON(params.ResultPayload),
-		ErrorMessage:     cloneStringPtr(params.ErrorMessage),
-		OccurredAt:       pgtype.Timestamptz{Time: params.OccurredAt.UTC(), Valid: true},
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return HostedRunExecution{}, ErrHostedRunExecutionNotFound
-		}
-		return HostedRunExecution{}, fmt.Errorf("apply hosted run event: %w", err)
-	}
-	return mapHostedRunExecution(row)
-}
-
 func mapHostedRunExecution(row repositorysqlc.HostedRunExecution) (HostedRunExecution, error) {
 	deadlineAt, err := requiredTime("hosted_run_executions.deadline_at", row.DeadlineAt)
 	if err != nil {
@@ -180,6 +149,10 @@ func mapHostedRunExecution(row repositorysqlc.HostedRunExecution) (HostedRunExec
 	if err != nil {
 		return HostedRunExecution{}, err
 	}
+	status, err := ParseHostedRunExecutionStatus(row.Status)
+	if err != nil {
+		return HostedRunExecution{}, err
+	}
 
 	return HostedRunExecution{
 		ID:               row.ID,
@@ -187,7 +160,7 @@ func mapHostedRunExecution(row repositorysqlc.HostedRunExecution) (HostedRunExec
 		RunAgentID:       row.RunAgentID,
 		EndpointURL:      row.EndpointUrl,
 		TraceLevel:       row.TraceLevel,
-		Status:           row.Status,
+		Status:           status,
 		ExternalRunID:    cloneStringPtr(row.ExternalRunID),
 		AcceptedResponse: cloneJSON(row.AcceptedResponse),
 		LastEventType:    cloneStringPtr(row.LastEventType),

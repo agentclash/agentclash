@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RunEvent } from "@/hooks/use-run-events";
+import type { RunStatus } from "@/lib/api/types";
 
 import { RunDetailClient } from "./run-detail-client";
 
@@ -81,7 +82,10 @@ function clickElement(element: Element) {
   );
 }
 
-function renderClient(options?: { workflowRunURL?: string }) {
+function renderClient(options?: {
+  workflowRunURL?: string;
+  runStatus?: RunStatus;
+}) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root: Root = createRoot(container);
@@ -96,7 +100,7 @@ function renderClient(options?: { workflowRunURL?: string }) {
           challenge_pack_version_id: "cpv-1",
           official_pack_mode: "full",
           name: "Live Arena Run",
-          status: "running",
+          status: options?.runStatus ?? "running",
           execution_mode: "comparison",
           mode: "text-sim",
           voice: {
@@ -255,6 +259,28 @@ describe("RunDetailClient", () => {
     expect(container.textContent).not.toContain(
       "Alpha reaches for search_query.",
     );
+
+    cleanup();
+  });
+
+  it("treats a cancelled run as finished even when its agent stays executing", async () => {
+    // Cancel leaves run agents in executing; the run status must win.
+    const { container, cleanup } = renderClient({ runStatus: "cancelled" });
+    await flushPromises();
+
+    const lastEventsCall = mockUseRunEvents.mock.calls.at(-1)?.[0] as {
+      enabled: boolean;
+    };
+    expect(lastEventsCall.enabled).toBe(false);
+
+    const statusBadge = Array.from(container.querySelectorAll("h1 ~ *")).find(
+      (element) => element.textContent === "cancelled",
+    );
+    expect(statusBadge).toBeTruthy();
+    expect(statusBadge!.querySelector(".animate-spin")).toBeNull();
+    expect(container.querySelector('[title="Streaming live events"]')).toBeNull();
+    // The lane does not render its live now-doing banner.
+    expect(container.textContent).not.toContain("Waiting for next action");
 
     cleanup();
   });

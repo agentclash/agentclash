@@ -18,7 +18,13 @@ func (r *Runner) completeReliableDocument(ctx context.Context, o Operation, p Pl
 	if len(completion) != 1 || p.Conversation.NextState == nil {
 		return fmt.Errorf("missing v12 conversation completion")
 	}
-	c := completion[0]
+	reply, c := reliableCompletion(o, p, reply, completion[0])
+	return r.Service.Store.CompleteDocument(ctx, o.ID, reply, artifact, requirements, c)
+}
+
+// reliableCompletion builds the next conversation state and reply. It does
+// not write them; completeReliableDocument does.
+func reliableCompletion(o Operation, p Plan, reply string, c AuthoringCompletion) (string, AuthoringCompletion) {
 	c.InlineInput = p.InlineInput
 	if p.interpreted() && p.Submission.Interaction != nil && p.Conversation.Confirmed == nil {
 		c.Interaction = p.Submission.Interaction
@@ -41,7 +47,9 @@ func (r *Runner) completeReliableDocument(ctx context.Context, o Operation, p Pl
 		// A review can ask a necessary question after routing prepared a suite.
 		s.PendingQuestion = &interaction.Question{ID: deterministicID(o.ID, "question").String(), ScopeID: s.Brief.ScopeID, Revision: 1, OriginMessageID: deterministicID(o.ID, "completion-message").String(), Purpose: "clarify_rule", Status: "active", Text: reply, Options: []interaction.Option{}, MaxSelections: 1}
 	}
-	if p.Conversation.Confirmed != nil && s.PendingQuestion != nil && s.PendingQuestion.Purpose == "choose_source" && c.SourceConfirmation == nil {
+	// Only an active question can be answered. A dismissed or superseded
+	// source choice keeps its status.
+	if p.Conversation.Confirmed != nil && s.PendingQuestion != nil && s.PendingQuestion.Purpose == "choose_source" && s.PendingQuestion.Status == "active" && c.SourceConfirmation == nil {
 		s.PendingQuestion.Status = "answered"
 	}
 	if p.precise() {
@@ -85,5 +93,5 @@ func (r *Runner) completeReliableDocument(ctx context.Context, o Operation, p Pl
 		}
 	}
 	c.ConversationState = s
-	return r.Service.Store.CompleteDocument(ctx, o.ID, reply, artifact, requirements, c)
+	return reply, c
 }

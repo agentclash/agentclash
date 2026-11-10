@@ -7,7 +7,9 @@ const panel = (page: Page) => page.getByRole("region", { name: "Save tryout" });
 async function create(page: Page) {
  await page.goto("/tryouts");
  const result = await page.evaluate(async api => {
-  const response = await fetch(`${api}/v1/agent-tryouts`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ template_slug: "meeting-minutes", input: { notes: "Synthetic signup continuation. No model execution." } }) });
+  const catalog = await fetch(`${api}/v1/agent-tryout-templates`, { credentials: "omit", cache: "no-store" }).then(response => response.json());
+  if (catalog.creator_access_protocol !== "cookie-v1") throw new Error("Fixture must announce cookie-v1");
+  const response = await fetch(`${api}/v1/agent-tryouts`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ creator_access_protocol: catalog.creator_access_protocol, template_slug: "meeting-minutes", input: { notes: "Synthetic signup continuation. No model execution." } }) });
   return { status: response.status, body: await response.json() };
  }, api);
  expect(result.status).toBe(201);

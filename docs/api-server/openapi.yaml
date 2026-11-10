@@ -1756,7 +1756,14 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenError"
         "409":
-          $ref: "#/components/responses/ConflictError"
+          description: >
+            The user is already an active or invited member
+            (`already_a_member`), or the membership status changed while
+            the invite was being written (`transition_conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
@@ -1768,6 +1775,13 @@ paths:
       description: >
         Org admins can change role or status. Invited users can accept
         (transition invited to active). Invite expires after 7 days.
+        Allowed status changes: invited to active or archived, active to
+        suspended or archived, suspended to active or archived. An archived
+        member can only come back through a new invite. Suspending or
+        archiving a member also closes their workspace memberships in the
+        organization in the same transaction: an active workspace
+        membership becomes suspended (or archived), and a pending workspace
+        invite becomes archived.
       security:
         - bearerJWT: []
       parameters:
@@ -1786,6 +1800,61 @@ paths:
               schema:
                 $ref: "#/components/schemas/OrgMembershipResponse"
         "400":
+          description: >
+            Invalid request. `validation_error` is also returned when status
+            is not one of active, suspended, or archived.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: >
+            The requested status change is not allowed from the current
+            status (`invalid_transition`), the membership status changed
+            while the update was being written (`transition_conflict`), or
+            the update would remove the last organization admin
+            (`last_org_admin`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "410":
+          $ref: "#/components/responses/GoneError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/invites/organization/{inviteToken}:
+    patch:
+      operationId: acceptOrgInvite
+      tags: [OrgMemberships]
+      summary: Accept an organization invite
+      description: >
+        Accepts the invite that the token identifies and makes the
+        membership active. The token is single use.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/InviteToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInviteRequest"
+      responses:
+        "200":
+          description: Invite accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgMembershipResponse"
+        "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
@@ -1794,7 +1863,13 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
         "409":
-          $ref: "#/components/responses/ConflictError"
+          description: >
+            The invite was accepted, archived, or changed by another request
+            (`transition_conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "410":
           $ref: "#/components/responses/GoneError"
         "415":
@@ -1931,7 +2006,14 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenError"
         "409":
-          $ref: "#/components/responses/ConflictError"
+          description: >
+            The user is already an active or invited member
+            (`already_a_member`), or the membership status changed while
+            the invite was being written (`transition_conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
@@ -1942,7 +2024,10 @@ paths:
       summary: Update a workspace membership
       description: >
         Workspace admins or org admins can change role or status. Invited
-        users can accept (transition invited to active).
+        users can accept (transition invited to active). The allowed status
+        changes are the same as for organization memberships. A workspace
+        membership cannot become active while the organization membership
+        of the user is suspended or archived.
       security:
         - bearerJWT: []
       parameters:
@@ -1961,7 +2046,16 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkspaceMembershipDetailResponse"
         "400":
-          $ref: "#/components/responses/ValidationError"
+          description: >
+            Invalid request. `validation_error` is also returned when status
+            is not one of active, suspended, or archived.
+            `org_membership_required` is returned when the membership would
+            become active but the organization membership is suspended,
+            archived, or missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -1969,7 +2063,69 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
         "409":
-          $ref: "#/components/responses/ConflictError"
+          description: >
+            The requested status change is not allowed from the current
+            status (`invalid_transition`), the membership status changed
+            while the update was being written (`transition_conflict`), or
+            the update would remove the last workspace admin
+            (`last_workspace_admin`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "410":
+          $ref: "#/components/responses/GoneError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/invites/workspace/{inviteToken}:
+    patch:
+      operationId: acceptWorkspaceInvite
+      tags: [WorkspaceMemberships]
+      summary: Accept a workspace invite
+      description: >
+        Accepts the invite that the token identifies and makes the
+        membership active. An invited organization membership is activated
+        first. The token is single use.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/InviteToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInviteRequest"
+      responses:
+        "200":
+          description: Invite accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMembershipDetailResponse"
+        "400":
+          description: >
+            Invalid request, or the organization membership of the user is
+            suspended or archived (`org_membership_required`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: >
+            The invite was accepted, archived, or changed by another request
+            (`transition_conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "410":
           $ref: "#/components/responses/GoneError"
         "415":
@@ -3714,7 +3870,9 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
         "409":
-          description: Run agent is not awaiting human input
+          description: >
+            Run agent is not awaiting human input (`not_awaiting_human`) or is
+            not executing (`run_agent_not_executing`)
           content:
             application/json:
               schema:
@@ -3844,6 +4002,16 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: Arena task is no longer pending (`arena_task_not_pending`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
 
   /v1/runs/{runID}/events/stream:
     get:
@@ -4347,6 +4515,11 @@ paths:
       operationId: importDataset
       tags: [Datasets]
       summary: Import dataset examples from an external format
+      description: >
+        New examples are active. An imported row that matches an existing
+        archived or muted example by external_id updates that example but
+        keeps its status. In replace mode, active examples that are missing
+        from the import are archived.
       security:
         - bearerJWT: []
       parameters:
@@ -6382,6 +6555,7 @@ paths:
   /v1/agent-tryout-templates:
     get:
       operationId: listAgentTryoutTemplates
+      description: Fresh no-store discovery. cookie-v1 announces creator-cookie support; older servers omit creator_access_protocol. Unknown values must fail closed.
       summary: List agent tryout templates
       tags: [AgentTryouts]
       security: []
@@ -6442,8 +6616,10 @@ paths:
       description: >-
         Issues a host-only HttpOnly creator cookie scoped to this result on the API
         origin. The secret is not returned as JSON. Browsers must include credentials
-        from an explicitly allowed same-site web origin. Older clients that do not
-        retain the cookie cannot reopen, change or claim newly created results.
+        from an explicitly allowed same-site web origin after fresh no-store catalog
+        discovery of cookie-v1. Missing or unsupported creator_access_protocol returns
+        409 creator_access_protocol_required before quota, storage or execution.
+        Reload or update the client; never retry with downgraded credentials.
       tags: [AgentTryouts]
       security: []
       requestBody:
@@ -6451,7 +6627,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateAgentTryoutRequest"
+              $ref: "#/components/schemas/CreateAnonymousAgentTryoutRequest"
       responses:
         "201":
           description: Anonymous tryout queued with template, tool, and evaluation snapshots
@@ -6461,6 +6637,12 @@ paths:
                 $ref: "#/components/schemas/PublicAgentTryoutResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "409":
+          description: Creator protocol missing or unsupported. Error code creator_access_protocol_required; reload or update client.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           $ref: "#/components/responses/NotFoundError"
 
@@ -7163,6 +7345,15 @@ components:
       schema:
         type: string
         format: uuid
+    InviteToken:
+      name: inviteToken
+      in: path
+      required: true
+      description: Invite token from the accept URL. It starts with `invite_`.
+      schema:
+        type: string
+        maxLength: 256
+        pattern: "^invite_[A-Za-z0-9_-]+$"
     ProfileID:
       name: profileID
       in: path
@@ -7578,6 +7769,10 @@ components:
         status:
           type: string
           enum: [active, archived, muted]
+          description: >
+            Defaults to active for a new example. If omitted and an example
+            with the same external_id is archived or muted, that example keeps
+            its status. Send a status to change it.
         source:
           type: string
           enum: [manual, import, trace, synthetic, promotion]
@@ -10059,6 +10254,16 @@ components:
           enum: [org_admin, org_member]
         status:
           type: string
+          enum: [active, suspended, archived]
+          description: Only the invite endpoint sets invited.
+
+    AcceptInviteRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active]
 
     OrgMembershipResponse:
       type: object
@@ -10127,6 +10332,8 @@ components:
           enum: [workspace_admin, workspace_member, workspace_viewer]
         status:
           type: string
+          enum: [active, suspended, archived]
+          description: Only the invite endpoint sets invited.
 
     WorkspaceMembershipDetailResponse:
       type: object
@@ -14962,10 +15169,25 @@ components:
       type: object
       required: [items]
       properties:
+        creator_access_protocol:
+          type: string
+          enum: [cookie-v1]
+          description: Present only on creator-proof-capable backends. Older servers omit this field.
         items:
           type: array
           items:
             $ref: "#/components/schemas/AgentTryoutTemplate"
+
+    CreateAnonymousAgentTryoutRequest:
+      allOf:
+        - $ref: "#/components/schemas/CreateAgentTryoutRequest"
+        - type: object
+          required: [creator_access_protocol]
+          properties:
+            creator_access_protocol:
+              type: string
+              enum: [cookie-v1]
+              description: Send only after fresh no-store discovery of cookie-v1, with cookie credentials enabled.
 
     CreateAgentTryoutRequest:
       type: object

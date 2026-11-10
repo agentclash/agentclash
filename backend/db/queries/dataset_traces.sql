@@ -76,12 +76,3 @@ SET status = 'promoted',
 WHERE id = @id
   AND status = 'pending'
 RETURNING *;
-
--- name: MarkDatasetTraceCandidatePromotedIfPending :one
-UPDATE dataset_trace_candidates
-SET status = 'promoted',
-    promoted_example_id = @promoted_example_id,
-    expected = COALESCE(@expected, expected),
-    updated_at = now()
-WHERE id = @id
-RETURNING *;

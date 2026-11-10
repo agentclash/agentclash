@@ -2777,6 +2777,17 @@ export interface AgentTryoutInputAttachment {
   size_bytes: number;
 }
 
+export interface ListAgentTryoutTemplatesResponse {
+  items: AgentTryoutTemplate[];
+  /** Absent only on older APIs; unknown values must fail closed at runtime. */
+  creator_access_protocol?: "cookie-v1";
+}
+
+/** Wire body required by creator-proof-capable anonymous APIs. Workspace creates keep their existing input. */
+export interface CreateAnonymousAgentTryoutInput extends CreateAgentTryoutInput {
+  creator_access_protocol: "cookie-v1";
+}
+
 export interface CreateAgentTryoutInput {
   template_slug: string;
   input: Record<string, unknown>;
