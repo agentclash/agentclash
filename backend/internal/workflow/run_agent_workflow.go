@@ -24,6 +24,12 @@ const (
 	hostedActivityPersistenceBuffer = 10 * time.Second
 )
 
+// hostedTimeoutHonorsCallbackVersionChangeID gates the read of the timeout
+// result. With version 1, a callback that committed before the deadline
+// timer decides the result of the run agent. DefaultVersion keeps the old
+// behavior: the timer always fails the run agent.
+const hostedTimeoutHonorsCallbackVersionChangeID = "hosted-timeout-honors-callback"
+
 func RunAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) error {
 	ctx = sdkworkflow.WithActivityOptions(ctx, defaultActivityOptions)
 
@@ -310,13 +316,23 @@ func waitForHostedRunTerminalEvent(ctx sdkworkflow.Context, input RunAgentWorkfl
 
 		if timedOut {
 			reason := fmt.Sprintf("hosted run timed out waiting for callback after %s", timeout)
-			if err := sdkworkflow.ExecuteActivity(ctx, markHostedRunTimedOutActivityName, MarkHostedRunTimedOutInput{
+			// Histories from before the change do not read the result.
+			honorCallback := sdkworkflow.GetVersion(ctx, hostedTimeoutHonorsCallbackVersionChangeID, sdkworkflow.DefaultVersion, 1) != sdkworkflow.DefaultVersion
+			future := sdkworkflow.ExecuteActivity(ctx, markHostedRunTimedOutActivityName, MarkHostedRunTimedOutInput{
 				RunAgentID:   input.RunAgentID,
 				ErrorMessage: reason,
-			}).Get(ctx, nil); err != nil {
+			})
+			if !honorCallback {
+				if err := future.Get(ctx, nil); err != nil {
+					return err
+				}
+				return errors.New(reason)
+			}
+			var marked MarkHostedRunTimedOutResult
+			if err := future.Get(ctx, &marked); err != nil {
 				return err
 			}
-			return errors.New(reason)
+			return hostedTimeoutOutcome(marked, reason)
 		}
 		if !gotEvent {
 			continue
@@ -345,6 +361,28 @@ func waitForHostedRunTerminalEvent(ctx sdkworkflow.Context, input RunAgentWorkfl
 		default:
 			return fmt.Errorf("unsupported hosted terminal event type %q", event.EventType)
 		}
+	}
+}
+
+// hostedTimeoutOutcome gives the result of the wait from the row after the
+// timeout write. The callback and the timeout write lock the same row, so
+// exactly one of them wins.
+//   - completed: the callback won with success. The callback stored the
+//     events and the output, so the run agent goes on to evaluation.
+//   - failed: the callback won with a failure. Give the stored message.
+//   - each other status, also "" from a worker before this change: the
+//     timeout won.
+func hostedTimeoutOutcome(marked MarkHostedRunTimedOutResult, timeoutReason string) error {
+	switch marked.Status {
+	case repository.HostedRunExecutionStatusCompleted:
+		return nil
+	case repository.HostedRunExecutionStatusFailed:
+		if marked.ErrorMessage != nil && *marked.ErrorMessage != "" {
+			return errors.New(*marked.ErrorMessage)
+		}
+		return errors.New("hosted run failed")
+	default:
+		return errors.New(timeoutReason)
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/hostedruns"
 	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/google/uuid"
+	"go.temporal.io/api/serviceerror"
 )
 
 func TestHostedRunIngestionManagerPersistsAndSignalsTerminalEvent(t *testing.T) {
@@ -346,11 +347,67 @@ func (f *fakeHostedRunExecutionRepository) RecordHostedRunEvent(_ context.Contex
 
 type fakeHostedRunWorkflowSignaler struct {
 	signalCount int
+	err         error
 }
 
 func (f *fakeHostedRunWorkflowSignaler) SignalRunAgentWorkflow(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ hostedruns.Event) error {
 	f.signalCount++
-	return nil
+	return f.err
+}
+
+func hostedTerminalCallbackFixture(t *testing.T) (uuid.UUID, string, hostedruns.Event, *fakeHostedRunExecutionRepository) {
+	t.Helper()
+	runID, runAgentID := uuid.New(), uuid.New()
+	externalRunID := "ext-closed"
+	status := hostedruns.FinalStatusCompleted
+	event := hostedruns.Event{RunAgentID: runAgentID, ExternalRunID: externalRunID, EventType: hostedruns.EventTypeRunFinished, OccurredAt: time.Now().UTC(), FinalStatus: &status, Output: []byte(`{"answer":"done"}`)}
+	token, err := hostedruns.NewCallbackTokenSigner("secret").Sign(runID, runAgentID)
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+	repo := &fakeHostedRunExecutionRepository{execution: repository.HostedRunExecution{RunID: runID, RunAgentID: runAgentID, ExternalRunID: &externalRunID, Status: "accepted"}}
+	return runID, token, event, repo
+}
+
+// A closed workflow cannot get the signal, and no workflow waits for it. The
+// notification is delivered, so it does not block the queue and later
+// callbacks do not fail.
+func TestHostedRunDeliveryMarksClosedWorkflowDelivered(t *testing.T) {
+	runID, token, event, repo := hostedTerminalCallbackFixture(t)
+	signaler := &fakeHostedRunWorkflowSignaler{err: serviceerror.NewNotFound("workflow execution already completed")}
+	manager := NewHostedRunIngestionManager(repo, "secret", signaler, nil, slog.Default())
+
+	if err := manager.IngestEvent(context.Background(), runID, token, event); err != nil {
+		t.Fatalf("IngestEvent returned error: %v", err)
+	}
+	if repo.pending != nil {
+		t.Fatal("notification for a closed workflow stays pending")
+	}
+	if err := manager.DeliverPending(context.Background()); err != nil || signaler.signalCount != 1 {
+		t.Fatalf("DeliverPending err=%v signals=%d, want nil and 1", err, signaler.signalCount)
+	}
+}
+
+// The callback is durable before the signal. A signal failure does not fail
+// the callback: the notification stays pending, and RunDelivery tries again.
+func TestHostedRunIngestionKeepsCallbackWhenSignalFails(t *testing.T) {
+	runID, token, event, repo := hostedTerminalCallbackFixture(t)
+	signaler := &fakeHostedRunWorkflowSignaler{err: errors.New("temporal unavailable")}
+	manager := NewHostedRunIngestionManager(repo, "secret", signaler, nil, slog.Default())
+
+	if err := manager.IngestEvent(context.Background(), runID, token, event); err != nil {
+		t.Fatalf("committed callback returned error: %v", err)
+	}
+	if repo.pending == nil {
+		t.Fatal("notification was dropped after a signal failure")
+	}
+	if err := manager.DeliverPending(context.Background()); err == nil {
+		t.Fatal("DeliverPending hid the signal failure")
+	}
+	signaler.err = nil
+	if err := manager.DeliverPending(context.Background()); err != nil || repo.pending != nil {
+		t.Fatalf("retry err=%v pending=%v", err, repo.pending != nil)
+	}
 }
 
 func stringPtr(value string) *string {

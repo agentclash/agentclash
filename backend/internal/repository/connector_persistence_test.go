@@ -27,6 +27,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/temporal"
@@ -95,15 +96,46 @@ func TestConnectorHostedEventsDeduplicatePersistently(t *testing.T) {
 
 type connectorTestSignaler struct {
 	fail  bool
+	err   error
 	calls int
 }
 
 func (s *connectorTestSignaler) SignalRunAgentWorkflow(context.Context, uuid.UUID, uuid.UUID, hostedruns.Event) error {
 	s.calls++
+	if s.err != nil {
+		return s.err
+	}
 	if s.fail {
 		return errors.New("notification unavailable")
 	}
 	return nil
+}
+
+// A closed workflow cannot get the signal. The notification is delivered, so
+// it does not stay at the head of the pending queue.
+func TestConnectorClosedWorkflowNotificationIsDelivered(t *testing.T) {
+	ctx := context.Background()
+	db := connectorTestDB(t)
+	f := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	if _, err := repo.CreateHostedRunExecution(ctx, repository.CreateHostedRunExecutionParams{RunID: f.runID, RunAgentID: f.primaryRunAgentID, EndpointURL: "https://example.com", TraceLevel: "black_box", DeadlineAt: time.Now().Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := repo.ClaimHostedRunDispatch(ctx, f.primaryRunAgentID); err != nil || !ok {
+		t.Fatalf("claim=%v %v", ok, err)
+	}
+	status := hostedruns.FinalStatusCompleted
+	event := hostedruns.Event{EventID: "closed-done", RunAgentID: f.primaryRunAgentID, ExternalRunID: "remote", EventType: hostedruns.EventTypeRunFinished, FinalStatus: &status, Output: json.RawMessage(`"done"`), OccurredAt: time.Now().UTC()}
+	token, _ := hostedruns.NewCallbackTokenSigner("test").Sign(f.runID, f.primaryRunAgentID)
+	signaler := &connectorTestSignaler{err: serviceerror.NewNotFound("workflow execution already completed")}
+	manager := api.NewHostedRunIngestionManager(repo, "test", signaler, nil, slog.Default())
+	if err := manager.IngestEvent(ctx, f.runID, token, event); err != nil {
+		t.Fatalf("callback for a closed workflow failed: %v", err)
+	}
+	pending, err := repo.PendingHostedNotifications(ctx)
+	if err != nil || len(pending) != 0 || signaler.calls != 1 {
+		t.Fatalf("pending=%d signals=%d err=%v, want 0 pending after one signal", len(pending), signaler.calls, err)
+	}
 }
 func TestConnectorCallbackBindsBeforeAcceptance(t *testing.T) {
 	ctx := context.Background()
@@ -229,7 +261,15 @@ func TestConnectorLateStartFailureCannotEraseTerminalCallback(t *testing.T) {
 	token, _ := hostedruns.NewCallbackTokenSigner("test").Sign(f.runID, f.primaryRunAgentID)
 	signaler := &connectorTestSignaler{fail: true}
 	manager := api.NewHostedRunIngestionManager(repo, "test", signaler, nil, slog.Default())
-	if err = manager.IngestEvent(ctx, f.runID, token, event); err == nil {
+	// The callback is durable before the signal, so a signal failure does
+	// not fail the callback. The notification stays pending.
+	if err = manager.IngestEvent(ctx, f.runID, token, event); err != nil {
+		t.Fatalf("committed callback returned the signal failure: %v", err)
+	}
+	if pending, err := repo.PendingHostedNotifications(ctx); err != nil || len(pending) != 1 {
+		t.Fatalf("pending notifications=%d err=%v, want 1", len(pending), err)
+	}
+	if err = manager.DeliverPending(ctx); err == nil {
 		t.Fatal("expected notification failure")
 	}
 	// A fresh manager retries only persisted notification after the callback has committed.
@@ -242,7 +282,9 @@ func TestConnectorLateStartFailureCannotEraseTerminalCallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows, _ := repo.ListRunEventsByRunAgentID(ctx, f.primaryRunAgentID)
-	if len(rows) != 1 || signaler.calls != 2 {
+	// Two failed signals (the callback and the first retry), then one
+	// delivered signal. The duplicate callback signals nothing.
+	if len(rows) != 1 || signaler.calls != 3 {
 		t.Fatalf("dedup/retry evidence=%d signals=%d", len(rows), signaler.calls)
 	}
 	got, err := repo.MarkHostedRunExecutionFailed(ctx, repository.MarkHostedRunExecutionFailedParams{RunAgentID: f.primaryRunAgentID, ErrorMessage: "late start error"})
