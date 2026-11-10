@@ -767,23 +767,7 @@ export function PublicTryoutsClient({
         ...(agentToolSlugs.length > 0 ? { agent_tool_slugs: agentToolSlugs } : {}),
         ...(agentName.trim() ? { agent_name: agentName.trim() } : {}),
       };
-      let nextTryout: AgentTryout;
-      try {
-        nextTryout = await createAnonymousAgentTryout(api, payload);
-      } catch (err) {
-        // Backends that predate judge selection reject unknown fields; fall
-        // back to a judgeless run instead of breaking the page.
-        if (
-          err instanceof ApiError &&
-          err.status === 400 &&
-          err.message.toLowerCase().includes("judge")
-        ) {
-          const withoutJudge = { ...payload, judge: undefined };
-          nextTryout = await createAnonymousAgentTryout(api, withoutJudge);
-        } else {
-          throw err;
-        }
-      }
+      const nextTryout = await createAnonymousAgentTryout(api, payload);
       setTryout(nextTryout);
       setEvents([]);
       captureWebEvent(WEB_EVENTS.TRYOUT_SESSION_STARTED, {
@@ -1530,7 +1514,7 @@ function TryoutSidebar({
 
       <div className="min-h-0 flex-1" />
 
-      <Link href={tryout.workspace_id ? `/workspaces/${tryout.workspace_id}` : "#save-tryout"} className="mt-5 inline-flex h-9 items-center justify-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90">{tryout.workspace_id ? "Open workspace" : tryoutIsActive(tryout.status) ? "Session status" : "Save result"}</Link>
+      <Link href={tryout.workspace_id ? `/workspaces/${tryout.workspace_id}` : "#save-tryout"} className="mt-5 inline-flex h-9 items-center justify-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90">{tryout.workspace_id ? "Open workspace" : tryoutIsActive(tryout.status) ? "Session status" : tryout.save_eligible === true ? "Save result" : "Result status"}</Link>
     </div>
   );
 }
@@ -1844,8 +1828,7 @@ function TryoutChatThread({
           ) : (
             <p className="text-center text-sm text-white/45">
               Session complete.{" "}
-              <Link href="#save-tryout" className="text-white underline-offset-4 hover:underline">Save this result</Link>{" "}
-              to keep its evidence in your workspace.
+              {tryout.save_eligible === true ? <><Link href="#save-tryout" className="text-white underline-offset-4 hover:underline">Save this result</Link>{" "}to keep its evidence in your workspace.</> : "This result cannot be saved from this browser."}
             </p>
           )}
           {error ? <p className="mt-2 text-xs text-white/50">{error}</p> : null}
@@ -2349,8 +2332,8 @@ function RerunStrip({
       </div>
       <p className="mt-4 border-t border-white/[0.07] pt-3 text-xs leading-5 text-white/35">
         The bar you wrote is reusable.{" "}
-        <Link href={tryout.workspace_id ? `/workspaces/${tryout.workspace_id}` : "#save-tryout"} className="text-white/60 underline-offset-4 hover:text-white hover:underline">{tryout.workspace_id ? "Open workspace" : tryoutIsActive(tryout.status) ? "Session status" : "Save this result"}</Link>{" "}
-        {tryout.workspace_id ? "to revisit its saved evidence." : "to keep its evidence in your workspace."}
+        <Link href={tryout.workspace_id ? `/workspaces/${tryout.workspace_id}` : "#save-tryout"} className="text-white/60 underline-offset-4 hover:text-white hover:underline">{tryout.workspace_id ? "Open workspace" : tryoutIsActive(tryout.status) ? "Session status" : tryout.save_eligible === true ? "Save this result" : "Result status"}</Link>{" "}
+        {tryout.workspace_id ? "to revisit its saved evidence." : tryout.save_eligible === true ? "to keep its evidence in your workspace." : "for this session."}
       </p>
     </div>
   );
@@ -3323,7 +3306,7 @@ function EvalRoiCalculator({
       </div>
       <p className="mt-3 text-xs text-white/35">
         Adjust the inputs to match your numbers.{" "}
-        <Link href={tryout.workspace_id ? `/workspaces/${tryout.workspace_id}` : "#save-tryout"} className="text-white/55 hover:underline">{tryout.workspace_id ? "Open workspace" : tryoutIsActive(tryout.status) ? "Session status" : "Save this result"}</Link>
+        <Link href={tryout.workspace_id ? `/workspaces/${tryout.workspace_id}` : "#save-tryout"} className="text-white/55 hover:underline">{tryout.workspace_id ? "Open workspace" : tryoutIsActive(tryout.status) ? "Session status" : tryout.save_eligible === true ? "Save this result" : "Result status"}</Link>
       </p>
     </div>
   );

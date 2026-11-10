@@ -63,7 +63,7 @@ export function SaveTryout({ tryout, loginHref, onSaved }: {
 
   return <section id="save-tryout" aria-label="Save tryout" data-save-state={saveState} data-tryout-id={tryout.id} data-workspace-id={tryout.workspace_id} className="shrink-0 border-b border-white/10 px-4 py-3 text-sm">
     {tryout.workspace_id ? <p role="status">Saved to <Link href={`/workspaces/${tryout.workspace_id}`} className="underline">{savedWorkspace?.name ?? "your workspace"}</Link>.</p>
-      : active ? <p role="status">Finish or end this session before saving. You can keep replying while it runs.</p>
+      : active ? <p role="status">This session is still running. You can keep replying or end the session.</p>
       : tryout.save_eligible !== true ? <p>This result cannot be saved from this browser. <Link href="/tryouts" className="underline">Start a new tryout</Link>.</p>
       : loading ? <p>Checking your account…</p>
       : !user ? <Link href={loginHref} className="underline">Sign in to save this result</Link>
