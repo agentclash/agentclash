@@ -543,7 +543,7 @@ func TestConnectorHostedWorkflowLostAcceptanceAtRequestBound(t *testing.T) {
 			activities := workflow.NewActivities(repo, workflow.FakeWorkHooks{HostedRunStarter: starter})
 			workflow.Register(env, activities)
 			var activityResult workflow.StartHostedRunResult
-			var atActivityCompletion string
+			var atActivityCompletion repository.HostedRunExecutionStatus
 			env.SetOnActivityCompletedListener(func(info *activity.Info, result converter.EncodedValue, err error) {
 				if info.ActivityType.Name != "workflow.start_hosted_run" || err != nil {
 					return
@@ -583,9 +583,9 @@ func TestConnectorHostedWorkflowLostAcceptanceAtRequestBound(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			wantStatus := "unknown"
+			wantStatus := repository.HostedRunExecutionStatusUnknown
 			if callback {
-				wantStatus = "completed"
+				wantStatus = repository.HostedRunExecutionStatusCompleted
 			}
 			if row.Status != wantStatus {
 				t.Fatalf("persisted execution status=%s, want %s", row.Status, wantStatus)
