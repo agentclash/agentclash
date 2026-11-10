@@ -1,25 +1,29 @@
 import type {
   AgentDeployment,
   ChallengePack,
+  EvalSetStatus,
   GetEvalSetResponse,
 } from "@/lib/api/types";
+import { TERMINAL_RUN_STATUSES } from "@/lib/run-status";
+import { nonTerminalStates } from "@/lib/status-lifecycles";
 
-export type EvalSetStatus =
-  | "queued"
-  | "expanding"
-  | "running"
-  | "aggregating"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "budget_exceeded";
+export const EVAL_SET_ACTIVE: EvalSetStatus[] = nonTerminalStates("eval_set");
 
-export const EVAL_SET_ACTIVE: EvalSetStatus[] = [
-  "queued",
-  "expanding",
-  "running",
-  "aggregating",
-];
+/**
+ * SWR key for the per-run live status map. Terminal sets keep a key so the
+ * matrix still shows final run states: failed and cancelled sets are never
+ * aggregated, so without the live map every cell falls back to "queued".
+ * The phase segment makes the move to a terminal status fetch once more.
+ */
+export function evalSetLiveKey(
+  evalSetId: string,
+  status: EvalSetStatus | undefined,
+  sessionIds: readonly string[],
+): readonly string[] | null {
+  if (!status || sessionIds.length === 0) return null;
+  const phase = EVAL_SET_ACTIVE.includes(status) ? "live" : "final";
+  return ["eval-set-live", evalSetId, phase, ...sessionIds];
+}
 
 export type MatrixCellState = "queued" | "running" | "scored" | "failed";
 
@@ -49,10 +53,9 @@ export interface MatrixGrid {
 
 export type LiveStatusMap = Record<string, { status: string; runId?: string }>;
 
+// Combination statuses are run statuses (runtime/domain/run.go).
 function terminal(status: string): boolean {
-  return ["completed", "failed", "cancelled", "canceled"].includes(
-    status.toLowerCase(),
-  );
+  return (TERMINAL_RUN_STATUSES as string[]).includes(status.toLowerCase());
 }
 
 function runningish(status: string): boolean {
@@ -79,7 +82,7 @@ function cellState(combos: MatrixComboRef[]): MatrixCellState {
     if (anyActive) return "running";
   }
   if (combos.every((c) => c.status.toLowerCase() === "completed")) return "scored";
-  if (combos.some((c) => ["failed", "cancelled", "canceled"].includes(c.status.toLowerCase()))) {
+  if (combos.some((c) => ["failed", "cancelled"].includes(c.status.toLowerCase()))) {
     if (combos.every((c) => terminal(c.status))) return "failed";
     return "running";
   }

@@ -63,4 +63,5 @@ var documentedExitCodes = []ExitCode{
 	// `evalset submit|status|report` — set terminal status for CI gates.
 	{Code: evalsetExitFailed, Name: "evalset_failed", Description: "evalset: the eval set finished in a failed state.", Commands: []string{"evalset submit", "evalset status", "evalset report"}},
 	{Code: evalsetExitCancelled, Name: "evalset_cancelled", Description: "evalset: the eval set was cancelled.", Commands: []string{"evalset submit", "evalset status", "evalset report"}},
+	{Code: evalsetExitBudgetExceeded, Name: "evalset_budget_exceeded", Description: "evalset: the eval set stopped because it exceeded its budget.", Commands: []string{"evalset submit", "evalset status", "evalset report"}},
 }

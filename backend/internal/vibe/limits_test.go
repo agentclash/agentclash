@@ -109,6 +109,19 @@ func TestStateMachine(t *testing.T) {
 		}
 	}
 }
+func TestBusyStatesKeepTheSharedSet(t *testing.T) {
+	// The same set that each busy-project query used as a literal list.
+	want := map[string]bool{"QUEUED": true, "RUNNING": true, "FINALIZING": true, "CANCELLING": true, "AWAITING_APPROVAL": true}
+	got := busyStates()
+	if len(got) != len(want) {
+		t.Fatal(got)
+	}
+	for _, state := range got {
+		if !want[state] || Execution(state).Terminal() {
+			t.Fatal(got)
+		}
+	}
+}
 func TestMissingPricingFailsClosed(t *testing.T) {
 	c := Config{}
 	if _, err := c.Profile("openai/gpt-4.1-mini"); err == nil {

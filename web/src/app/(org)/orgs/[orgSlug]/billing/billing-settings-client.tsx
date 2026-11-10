@@ -15,6 +15,9 @@ import type {
 } from "@/lib/api/types";
 import {
   billingStatusLabel,
+  CHECKOUT_POLL_INTERVAL_MS,
+  CHECKOUT_POLL_MAX_MS,
+  checkoutReturnState,
   formatBillingDate,
   formatBillingLimit,
   planLabel,
@@ -173,6 +176,7 @@ export function BillingSettingsClient() {
   const { data: plansData } = useApiQuery<BillingPlansResponse>("/v1/billing/plans");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [billingPeriod, setBillingPeriod] = useState<SelfServePeriod>("monthly");
+  const [checkoutPollTimedOut, setCheckoutPollTimedOut] = useState(false);
 
   const plans = useMemo(
     () => (plansData?.items ?? []).filter((plan) => plan.key !== "enterprise"),
@@ -182,17 +186,35 @@ export function BillingSettingsClient() {
   const hasDodoCustomer = Boolean(overview?.account?.dodo_customer_id);
   const checkoutReturned = searchParams.get("checkout") === "pending";
   const dodoReturnStatus = searchParams.get("status");
-  const checkoutPending =
-    checkoutReturned &&
-    overview?.latest_checkout_intent?.status !== "completed";
+  const checkoutState = checkoutReturnState(
+    checkoutReturned,
+    overview?.latest_checkout_intent?.status,
+    checkoutPollTimedOut,
+  );
+  const checkoutPending = checkoutState === "pending";
 
   useEffect(() => {
-    if (!checkoutReturned || !checkoutPending) return;
+    if (!checkoutPending) return;
     const interval = window.setInterval(() => {
       void mutate();
-    }, 4000);
+    }, CHECKOUT_POLL_INTERVAL_MS);
     return () => window.clearInterval(interval);
-  }, [checkoutPending, checkoutReturned, mutate]);
+  }, [checkoutPending, mutate]);
+
+  // An abandoned checkout never completes, so stop polling after a while.
+  useEffect(() => {
+    if (!checkoutPending) return;
+    const timeout = window.setTimeout(
+      () => setCheckoutPollTimedOut(true),
+      CHECKOUT_POLL_MAX_MS,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [checkoutPending]);
+
+  function refreshCheckout() {
+    setCheckoutPollTimedOut(false);
+    void mutate();
+  }
 
   async function createCheckout(plan: BillingPlan) {
     setBusyAction(plan.key);
@@ -300,14 +322,31 @@ export function BillingSettingsClient() {
             <RefreshCw className="mt-0.5 size-4 text-amber-300" />
             <div>
               <h2 className="text-sm font-semibold">
-                {checkoutPending ? "Checkout pending" : "Checkout synced"}
+                {checkoutState === "pending"
+                  ? "Checkout pending"
+                  : checkoutState === "stalled"
+                    ? "Checkout not confirmed yet"
+                    : "Checkout synced"}
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {checkoutPending
+                {checkoutState === "pending"
                   ? "Dodo sent you back here. Billing access updates as soon as the webhook is processed."
-                  : "Dodo billing is reflected on this organization."}
+                  : checkoutState === "stalled"
+                    ? "We have not received confirmation from Dodo. If you finished checkout, refresh in a moment. If you left checkout, your plan is unchanged."
+                    : "Dodo billing is reflected on this organization."}
                 {dodoReturnStatus ? ` Status: ${dodoReturnStatus}.` : ""}
               </p>
+              {checkoutState === "stalled" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={refreshCheckout}
+                >
+                  <RefreshCw className="size-4" />
+                  Refresh
+                </Button>
+              )}
             </div>
           </div>
         </section>

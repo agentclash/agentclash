@@ -95,6 +95,43 @@ func TestIntegrationVibeBuildStopPreventsContinuation(t *testing.T) {
 	requireFault(t, err, "invalid_state")
 }
 
+func TestIntegrationVibeBuildExpiryEndsPhase(t *testing.T) {
+	s, v := buildService(t)
+	ctx := context.Background()
+	o, _ := startBuild(t, s, v, "Build a returns assistant.")
+	var trialKey string
+	if err := s.Store.DB.QueryRow(ctx, "SELECT trial_key FROM vibe_sessions WHERE id=$1", v.ID).Scan(&trialKey); err != nil {
+		t.Fatal(err)
+	}
+	trial, err := s.Store.GuestTrial(ctx, trialKey)
+	if err != nil || !trial.BuildInProgress {
+		t.Fatalf("build was not in progress before expiry: %+v %v", trial, err)
+	}
+	if _, err = s.Store.DB.Exec(ctx, "UPDATE vibe_operations SET deadline=now()-interval '1 second' WHERE id=$1", o.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Store.expireOne(ctx, o.ID); err != nil {
+		t.Fatal(err)
+	}
+	v, err = s.Store.GetSession(ctx, v.Actor, v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Operations) != 1 || v.Operations[0].State != Expired {
+		t.Fatalf("operation did not expire: %+v", v.Operations)
+	}
+	if b := v.Document.Build; b == nil || b.Phase != "error" || b.Error == nil || b.Error.Code != "queue_expired" {
+		t.Fatalf("expiry left the build phase active: %+v", v.Document.Build)
+	}
+	if trial, err = s.Store.GuestTrial(ctx, trialKey); err != nil || trial.BuildInProgress {
+		t.Fatalf("expired build still blocks the guest trial: %+v %v", trial, err)
+	}
+	ResumeBuilds(ctx, s)
+	if v, err = s.Store.GetSession(ctx, v.Actor, v.ID); err != nil || len(v.Operations) != 1 {
+		t.Fatal("expired build continued", err)
+	}
+}
+
 func TestIntegrationBuildQuoteReservesFullReviewAndTruncationStops(t *testing.T) {
 	s, v := buildService(t)
 	s.Config.SuiteReviewVersion = LatestSuiteValidatorVersion

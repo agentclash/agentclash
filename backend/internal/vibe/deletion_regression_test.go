@@ -43,6 +43,31 @@ func TestIntegrationQuotePersistenceCannotResurrectDeletedContent(t *testing.T) 
 	}
 }
 
+func TestIntegrationProjectDeletionKeepsExpiredInputs(t *testing.T) {
+	service, v := buildService(t)
+	s := service.Store
+	ctx := context.Background()
+	t.Cleanup(func() { s.DB.Exec(context.Background(), `DELETE FROM vibe_inputs WHERE session_id=$1`, v.ID) })
+	inputs := map[string]uuid.UUID{"expired": uuid.New(), "ready": uuid.New()}
+	for status, id := range inputs {
+		if _, err := s.DB.Exec(ctx, `INSERT INTO vibe_inputs(id,session_id,client_id,request_hash,kind,name,object_key,source_hash,size_bytes,status,expires_at,deleted_at) VALUES($1,$2,$1,'test','text','Private notes','','test',10,$3,CASE WHEN $3='expired' THEN now()-interval '1 hour' END,CASE WHEN $3='expired' THEN now()-interval '1 hour' END)`, id, v.ID, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.DeleteProject(ctx, v.Actor, v.ID, v.Revision); err != nil {
+		t.Fatal(err)
+	}
+	for status, id := range map[string]uuid.UUID{"expired": inputs["expired"], "deleted": inputs["ready"]} {
+		var got, name string
+		if err := s.DB.QueryRow(ctx, `SELECT status,name FROM vibe_inputs WHERE id=$1`, id).Scan(&got, &name); err != nil {
+			t.Fatal(err)
+		}
+		if got != status || name != "" {
+			t.Fatalf("input %s: status %q name %q, want %q with no name", id, got, name, status)
+		}
+	}
+}
+
 func TestIntegrationQuotePersistenceRechecksOwnershipAndRevision(t *testing.T) {
 	s, v := buildService(t)
 	ctx := context.Background()

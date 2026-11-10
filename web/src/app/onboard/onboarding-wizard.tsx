@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
@@ -24,6 +24,9 @@ export function OnboardingWizard({ returnTo }: { returnTo?: string }) {
   const [orgName, setOrgName] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Shared by the Create button and the Enter key. State alone cannot stop a
+  // second Enter that lands before the disabled button re-renders.
+  const inFlightRef = useRef(false);
 
   function showWorkspaceStep() {
     trackSetupStepClick({
@@ -44,7 +47,8 @@ export function OnboardingWizard({ returnTo }: { returnTo?: string }) {
   }
 
   async function handleSubmit() {
-    if (!workspaceName.trim()) return;
+    if (!workspaceName.trim() || inFlightRef.current) return;
+    inFlightRef.current = true;
 
     trackSetupStepClick({
       step: "workspace",
@@ -75,6 +79,7 @@ export function OnboardingWizard({ returnTo }: { returnTo?: string }) {
         toast.error("Something went wrong. Please try again.");
       }
     } finally {
+      inFlightRef.current = false;
       setSubmitting(false);
     }
   }
@@ -167,7 +172,7 @@ export function OnboardingWizard({ returnTo }: { returnTo?: string }) {
               autoFocus
               className="mb-6 block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50"
               onKeyDown={(e) => {
-                if (e.key === "Enter" && workspaceName.trim()) handleSubmit();
+                if (e.key === "Enter") void handleSubmit();
               }}
             />
 

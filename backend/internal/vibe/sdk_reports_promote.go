@@ -48,7 +48,7 @@ func (s *Service) PromoteSDKExpectation(ctx context.Context, actor string, sessi
 			return fault("revision_conflict", "Reload before promoting this expectation.")
 		}
 		var busy bool
-		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state IN ('AWAITING_APPROVAL','QUEUED','RUNNING','CANCELLING','FINALIZING'))`, session).Scan(&busy); e != nil {
+		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state=ANY($2))`, session, busyStates()).Scan(&busy); e != nil {
 			return e
 		}
 		if busy {

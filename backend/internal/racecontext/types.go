@@ -41,6 +41,50 @@ const (
 	StandingsStateTimedOut   StandingsState = "timed_out"
 )
 
+// standingsTransitions names every legal state change. A write of the same
+// state is always allowed and is not listed. submitted, failed and timed_out
+// are final: a late event for an agent that has finished must not move it
+// back to running, because each move into a final state fires a peer trigger
+// in the other agents' prompts.
+var standingsTransitions = map[StandingsState]map[StandingsState]struct{}{
+	StandingsStateNotStarted: {
+		StandingsStateRunning:   {},
+		StandingsStateSubmitted: {},
+		StandingsStateFailed:    {},
+		StandingsStateTimedOut:  {},
+	},
+	StandingsStateRunning: {
+		StandingsStateSubmitted: {},
+		StandingsStateFailed:    {},
+		StandingsStateTimedOut:  {},
+	},
+	StandingsStateSubmitted: {},
+	StandingsStateFailed:    {},
+	StandingsStateTimedOut:  {},
+}
+
+// Valid reports whether s is a known standings state.
+func (s StandingsState) Valid() bool {
+	_, ok := standingsTransitions[s]
+	return ok
+}
+
+// CanTransitionTo reports whether a standings entry can move from s to next.
+func (s StandingsState) CanTransitionTo(next StandingsState) bool {
+	nextStates, ok := standingsTransitions[s]
+	if !ok {
+		return false
+	}
+	_, ok = nextStates[next]
+	return ok
+}
+
+// Terminal reports whether s is final.
+func (s StandingsState) Terminal() bool {
+	nextStates, ok := standingsTransitions[s]
+	return ok && len(nextStates) == 0
+}
+
 // HashKey returns the Redis hash key used by the pubsub-layer store.
 // Kept in this package so readers can name the key without importing Redis.
 func HashKey(runID uuid.UUID) string {

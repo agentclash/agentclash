@@ -169,7 +169,8 @@ func (s *Store) expire(ctx context.Context) error {
 }
 
 func (s *Store) expireOne(ctx context.Context, id uuid.UUID) error {
-	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	changed := false
+	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		o, err := lockOperation(ctx, tx, id, projectWrite)
 		if err != nil {
 			return err
@@ -203,6 +204,16 @@ func (s *Store) expireOne(ctx context.Context, id uuid.UUID) error {
 		if _, err = tx.Exec(ctx, "UPDATE vibe_operations SET completed_at=now(),error=$2 WHERE id=$1", id, raw(&Fault{Code: "queue_expired", Message: "This operation expired before execution."})); err != nil {
 			return err
 		}
-		return settle(ctx, tx, id)
+		if err = settle(ctx, tx, id); err != nil {
+			return err
+		}
+		changed = true
+		return nil
 	})
+	if err != nil || !changed {
+		return err
+	}
+	// As after Stop, end the Build step. Nothing else moves a Build phase
+	// for an operation that expired before it ran.
+	return s.syncBuildResult(ctx, id)
 }

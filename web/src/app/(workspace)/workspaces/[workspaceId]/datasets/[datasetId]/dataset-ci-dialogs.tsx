@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
@@ -425,6 +425,17 @@ export function DatasetTestDialog({
   );
   const [gateResponse, setGateResponse] =
     useState<EvaluateDatasetGateResponse | null>(null);
+  // Owns the in-flight test. Closing the dialog aborts it, so a run that ends
+  // later cannot write into a reopened dialog.
+  const testAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    return () => {
+      testAbortRef.current?.abort();
+      testAbortRef.current = null;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -517,6 +528,11 @@ export function DatasetTestDialog({
       }
     }
 
+    testAbortRef.current?.abort();
+    const controller = new AbortController();
+    testAbortRef.current = controller;
+    const { signal } = controller;
+
     setSubmitting(true);
     setGateResponse(null);
     try {
@@ -534,13 +550,18 @@ export function DatasetTestDialog({
           name: runName.trim() || undefined,
           mapping,
         });
+        signal.throwIfAborted();
         setActiveRun(evalResult.run);
         const finished = await waitForRunCompletion(api, evalResult.run.id, {
           onStatus: setActiveRun,
+          signal,
         });
+        signal.throwIfAborted();
         setActiveRun(finished);
         if (finished.status !== "completed") {
           toast.error(`Eval run ended with status ${finished.status}`);
+          // The flow is over. Keep the ended run visible and let the user retry.
+          setPhase("done");
           return;
         }
         runId = finished.id;
@@ -553,14 +574,17 @@ export function DatasetTestDialog({
         min_pass_rate: minPassRate ? Number(minPassRate) : undefined,
         max_regressions: maxRegressions ? Number(maxRegressions) : undefined,
       });
+      signal.throwIfAborted();
       setGateResponse(gateResult);
       setPhase("done");
       toast.success(gateResult.gate.pass ? "Dataset test passed" : "Dataset test failed");
       router.refresh();
     } catch (err) {
+      if (signal.aborted) return;
       toast.error(err instanceof ApiError ? err.message : "Dataset test failed");
       setPhase("config");
     } finally {
+      if (testAbortRef.current === controller) testAbortRef.current = null;
       setSubmitting(false);
     }
   }
