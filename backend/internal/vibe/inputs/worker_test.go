@@ -190,3 +190,28 @@ func TestPDFCompletionRequiresCurrentLeaseAndLiveProject(t *testing.T) {
 		})
 	}
 }
+func TestPDFInterruptedReadFailsWhileOtherWorkWaits(t *testing.T) {
+	s, session := workerFixture(t)
+	ctx := context.Background()
+	stale := uploaded(t, s, session, "stale")
+	if _, e := s.DB.Exec(ctx, `UPDATE vibe_inputs SET status='extracting',attempts=2,lease_until=now()-interval '1 second' WHERE id=$1`, stale); e != nil {
+		t.Fatal(e)
+	}
+	next := uploaded(t, s, session, "next")
+	s.Blobs = workerBlobs{open: func(context.Context, string) (io.ReadCloser, storage.ObjectMetadata, error) {
+		return io.NopCloser(bytes.NewReader([]byte("next"))), storage.ObjectMetadata{}, nil
+	}}
+	s.Parser = parserFunc(func(context.Context, []byte) (Extraction, error) {
+		return Extraction{Pages: []Page{{Number: 1, Text: "Useful notes"}}, Version: "fake"}, nil
+	})
+	// One claim cycle with other work waiting must also end the stale read.
+	if e := s.processWithTiming(ctx, workerTiming{time.Second, time.Second, time.Second, time.Second, time.Second}); e != nil {
+		t.Fatal(e)
+	}
+	for id, want := range map[uuid.UUID]string{stale: "failed", next: "ready"} {
+		r, e := s.Get(ctx, session, id)
+		if e != nil || r.Status != want {
+			t.Fatalf("input %s: status %q, want %q (%v)", id, r.Status, want, e)
+		}
+	}
+}
