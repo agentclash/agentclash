@@ -376,6 +376,9 @@ SET status = $1,
     failed_at = COALESCE($7, failed_at),
     updated_at = now()
 WHERE id = $8
+  -- A terminal job keeps its status. Same-state writes stay allowed so
+  -- retried activities remain idempotent.
+  AND (status NOT IN ('completed', 'failed') OR status = $1)
 RETURNING id, dataset_id, workspace_id, strategy, status, config, summary, target_count, generated_count, accepted_count, rejected_count, total_input_tokens, total_output_tokens, total_cost_usd, version_id, temporal_workflow_id, temporal_run_id, error_message, created_by, queued_at, started_at, finished_at, failed_at, created_at, updated_at
 `
 

@@ -2,6 +2,9 @@ package api
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"
@@ -191,6 +194,58 @@ func TestGitHubWebhookHandlerRejectsInvalidSignature(t *testing.T) {
 	if !errors.As(err, &validationErr) || validationErr.Code != "invalid_github_signature" {
 		t.Fatalf("validation error = %#v", validationErr)
 	}
+}
+
+func TestGitHubWebhookDoesNotReviveDeletedInstallation(t *testing.T) {
+	for _, action := range []string{"created", "unsuspend", "new_permissions_accepted", "suspend"} {
+		t.Run(action, func(t *testing.T) {
+			repo := &fakeGitHubIntegrationRepo{organizationID: uuid.New(), installationStatus: "deleted"}
+			manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, GitHubIntegrationConfig{
+				WebhookSecret: "webhook-secret",
+			})
+			body := []byte(`{"action":"` + action + `","installation":{"id":42,"account":{"id":7,"login":"octo","type":"Organization"},"repository_selection":"all"},"repositories":[{"id":9,"full_name":"octo/app","name":"app","owner":{"login":"octo"}}]}`)
+			headers := http.Header{}
+			headers.Set("X-Hub-Signature-256", signGitHubWebhookForTest("webhook-secret", body))
+			headers.Set("X-GitHub-Event", "installation")
+
+			if err := manager.HandleGitHubWebhook(context.Background(), headers, body); err != nil {
+				t.Fatalf("HandleGitHubWebhook returned error: %v", err)
+			}
+			if repo.upsertInstallation.GitHubInstallationID != 0 {
+				t.Fatalf("deleted installation was upserted: %#v", repo.upsertInstallation)
+			}
+			if len(repo.statusUpdates) != 0 {
+				t.Fatalf("deleted installation status was updated: %v", repo.statusUpdates)
+			}
+			if len(repo.upsertRepositories) != 0 {
+				t.Fatalf("repositories were synced for a deleted installation: %#v", repo.upsertRepositories)
+			}
+		})
+	}
+}
+
+func TestGitHubWebhookReactivatesSuspendedInstallation(t *testing.T) {
+	repo := &fakeGitHubIntegrationRepo{organizationID: uuid.New(), installationStatus: "suspended"}
+	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, GitHubIntegrationConfig{
+		WebhookSecret: "webhook-secret",
+	})
+	body := []byte(`{"action":"unsuspend","installation":{"id":42,"account":{"id":7,"login":"octo","type":"Organization"},"repository_selection":"all"}}`)
+	headers := http.Header{}
+	headers.Set("X-Hub-Signature-256", signGitHubWebhookForTest("webhook-secret", body))
+	headers.Set("X-GitHub-Event", "installation")
+
+	if err := manager.HandleGitHubWebhook(context.Background(), headers, body); err != nil {
+		t.Fatalf("HandleGitHubWebhook returned error: %v", err)
+	}
+	if repo.upsertInstallation.GitHubInstallationID != 42 || repo.upsertInstallation.Status != "active" {
+		t.Fatalf("upsert = %#v, want installation 42 active", repo.upsertInstallation)
+	}
+}
+
+func signGitHubWebhookForTest(secret string, body []byte) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 func TestGitHubIntegrationManagerListRepositoriesRequiresRunPermission(t *testing.T) {
@@ -505,6 +560,8 @@ type fakeGitHubIntegrationRepo struct {
 	upsertErr              error
 	ciProfiles             []repository.WorkspaceCIProfile
 	updateCIProfileErr     error
+	installationStatus     string
+	statusUpdates          []string
 }
 
 func (f *fakeGitHubIntegrationRepo) GetOrganizationIDByWorkspaceID(context.Context, uuid.UUID) (uuid.UUID, error) {
@@ -536,14 +593,19 @@ func (f *fakeGitHubIntegrationRepo) BindGitHubInstallationToWorkspace(_ context.
 }
 
 func (f *fakeGitHubIntegrationRepo) GetGitHubInstallationByGitHubID(context.Context, int64) (repository.GitHubInstallation, error) {
+	status := f.installationStatus
+	if status == "" {
+		status = "active"
+	}
 	return repository.GitHubInstallation{
 		ID:             uuid.New(),
 		OrganizationID: f.organizationID,
-		Status:         "active",
+		Status:         status,
 	}, nil
 }
 
-func (f *fakeGitHubIntegrationRepo) UpdateGitHubInstallationStatus(context.Context, int64, string) error {
+func (f *fakeGitHubIntegrationRepo) UpdateGitHubInstallationStatus(_ context.Context, _ int64, status string) error {
+	f.statusUpdates = append(f.statusUpdates, status)
 	return nil
 }
 
