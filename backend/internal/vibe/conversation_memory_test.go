@@ -315,3 +315,53 @@ func TestVibeConversationMemoryRetrievalAndRollback(t *testing.T) {
 		t.Fatal("admission mutated persisted history")
 	}
 }
+
+func TestVibeConversationRollbackSupersedesOnlyActiveQuestion(t *testing.T) {
+	for status, route := range map[string]func(*interaction.Question) (string, reliableRoute){
+		"answered": func(q *interaction.Question) (string, reliableRoute) {
+			answer := answerFor(q, "both", false)
+			answer.OptionIDs = []string{"option-3"}
+			return "both", reliableRoute{Intent: "chat", Reply: "Noted.", Memory: &memoryUpdate{Answer: answer}}
+		},
+		"dismissed": func(*interaction.Question) (string, reliableRoute) {
+			return "never mind that question", reliableRoute{Intent: "chat", Reply: "Okay.", Memory: &memoryUpdate{CancelQuestionQuote: "never mind that question"}}
+		},
+	} {
+		t.Run(status, func(t *testing.T) {
+			d, _ := memoryTurn(t, Document{}, "My agent converts PDF to Markdown.", questionRoute())
+			content, next := route(d.ConversationState.PendingQuestion)
+			d, _ = memoryTurn(t, d, content, next)
+			if d.ConversationState.PendingQuestion.Status != status {
+				t.Fatalf("setup: question is %q", d.ConversationState.PendingQuestion.Status)
+			}
+			// Simulate an old worker completing after the memory checkpoint.
+			d.Messages = append(d.Messages, Message{ID: uuid.New(), Role: "assistant", Origin: "message", Content: "What should the sales agent sell?"})
+			p, _ := memoryPlan(t, d, "Something else")
+			if got := p.Conversation.State.PendingQuestion.Status; got != status {
+				t.Fatalf("rollback changed a %s question to %s", status, got)
+			}
+			for _, a := range p.Conversation.State.Answers {
+				if !a.Obsolete {
+					t.Fatal("rollback kept an answer current")
+				}
+			}
+		})
+	}
+}
+
+func TestVibeSourceConfirmationAnswersOnlyActiveQuestion(t *testing.T) {
+	for status, want := range map[string]string{"active": "answered", "answered": "answered", "dismissed": "dismissed", "superseded": "superseded"} {
+		t.Run(status, func(t *testing.T) {
+			state := newConversationState(uuid.New())
+			state.PendingQuestion = &interaction.Question{ID: uuid.NewString(), ScopeID: state.Brief.ScopeID, Revision: 1, OriginMessageID: uuid.NewString(), Purpose: "choose_source", Status: status, Text: "Use these messages?", Options: []interaction.Option{}, MaxSelections: 1}
+			p := Plan{Conversation: &ConversationContext{NextState: state, Confirmed: &SourceConfirmation{OperationID: uuid.New(), Question: "Use these messages?"}}}
+			_, c := reliableCompletion(Operation{ID: uuid.New()}, p, "I'll use those messages.", AuthoringCompletion{})
+			if got := c.ConversationState.PendingQuestion.Status; got != want {
+				t.Fatalf("confirmation changed a %s question to %s, want %s", status, got, want)
+			}
+			if state.PendingQuestion.Status != status {
+				t.Fatal("completion mutated the proposed state")
+			}
+		})
+	}
+}
