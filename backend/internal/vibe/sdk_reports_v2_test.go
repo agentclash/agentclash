@@ -250,3 +250,31 @@ func TestSDKRefundV2RejectsStructuralAndCoverageDrift(t *testing.T) {
 		t.Fatal("v2 fixture observations became v1 complete tool capture")
 	}
 }
+
+func TestSDKRefundV2JSONBudgetPreservesAuthority(t *testing.T) {
+	for _, key := range []string{"__proto__", "prototype", "constructor", "$ref"} {
+		t.Run(key, func(t *testing.T) {
+			var d map[string]any
+			json.Unmarshal([]byte(refundFixture(t, "openai-correct-v2")), &d)
+			d["cases"].([]any)[0].(map[string]any)["evidence"].(map[string]any)["arbitrary"] = map[string]any{key: map[string]any{"raw": []any{nil, true, "inert"}}}
+			_, err := DecodeSDKReport(refundEnvelope(t, string(raw(d))))
+			if (err == nil) != (key == "$ref") {
+				t.Fatal("reserved key or inert evidence behavior changed", key, err)
+			}
+		})
+	}
+	var d map[string]any
+	json.Unmarshal([]byte(refundFixture(t, "openai-correct-v2")), &d)
+	var nested any = "inert"
+	for i := 0; i < 18; i++ {
+		nested = map[string]any{"nested": nested}
+	}
+	d["cases"].([]any)[0].(map[string]any)["evidence"].(map[string]any)["arbitrary"] = nested
+	if _, err := DecodeSDKReport(refundEnvelope(t, string(raw(d)))); err == nil {
+		t.Fatal("v2 MCP depth limit relaxed")
+	}
+	// Shared v1 data imports retain their prior inert-key behavior.
+	if _, err := DecodeSDKReport(sdkEnvelope(t, "agent_result", `{"input":"original","metadata":{"extra":{"constructor":{"$ref":"inert"}}}}`)); err != nil {
+		t.Fatal("v1 changed", err)
+	}
+}

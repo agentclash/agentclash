@@ -334,3 +334,23 @@ func refundProvenance(r refundReport) json.RawMessage {
 	}
 	return raw(map[string]any{"runner": r.Runner, "suite_id": r.SuiteID, "suite_digest": r.SuiteDigest, "target_identity": r.TargetIdentity, "target_revision": r.TargetRevision, "execution": r.Execution, "cases": cases})
 }
+
+// Preserve the MCP parseContract reserved-key rule for v2 only. Reference-like
+// keys remain inert JSON data; this does not change v1 or definition parsing.
+func refundJSONKeys(value any) bool {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, child := range v {
+			if key == "__proto__" || key == "prototype" || key == "constructor" || !refundJSONKeys(child) {
+				return false
+			}
+		}
+	case []any:
+		for _, child := range v {
+			if !refundJSONKeys(child) {
+				return false
+			}
+		}
+	}
+	return true
+}

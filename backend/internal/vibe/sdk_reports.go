@@ -128,6 +128,9 @@ func DecodeSDKReport(b []byte) (SDKReportImport, error) {
 	}
 	l = LimitsFor(false)
 	l.FileBytes = SDKReportSourceBytes
+	if in.SourceSchemaVersion == 2 {
+		l.Depth = 20
+	}
 	if validateJSON([]byte(in.SourceJSON), l, true) != nil {
 		return in, invalidSDK()
 	}
@@ -147,6 +150,9 @@ func DecodeSDKReport(b []byte) (SDKReportImport, error) {
 		return in, invalidSDK()
 	}
 	if in.SourceSchemaVersion == 2 {
+		if !refundJSONKeys(source) {
+			return in, invalidSDK()
+		}
 		if _, err := validateRefundReport(in.SourceJSON); err != nil {
 			return in, err
 		}
