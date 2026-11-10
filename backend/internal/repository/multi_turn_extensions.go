@@ -3,10 +3,12 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -127,15 +129,23 @@ func (r *Repository) SubmitArenaVote(ctx context.Context, params SubmitArenaVote
 	var workspaceID uuid.UUID
 	var leftRunAgentID uuid.UUID
 	var rightRunAgentID uuid.UUID
-	if err := tx.QueryRow(ctx, `
-SELECT workspace_id, left_run_agent_id, right_run_agent_id
+	var status string
+	err = tx.QueryRow(ctx, `
+SELECT workspace_id, left_run_agent_id, right_run_agent_id, status
 FROM workspace_arena_tasks
-WHERE id = $1 AND status = 'pending'
-`, params.TaskID).Scan(&workspaceID, &leftRunAgentID, &rightRunAgentID); err != nil {
+WHERE id = $1
+`, params.TaskID).Scan(&workspaceID, &leftRunAgentID, &rightRunAgentID, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrArenaTaskNotFound
+	}
+	if err != nil {
 		return err
 	}
 	if workspaceID != params.WorkspaceID {
-		return ErrRunNotFound
+		return ErrArenaTaskNotFound
+	}
+	if status != "pending" {
+		return ErrArenaTaskNotPending
 	}
 	if params.WinnerRunAgentID != leftRunAgentID && params.WinnerRunAgentID != rightRunAgentID {
 		return ErrInvalidArenaVoteWinner
@@ -152,9 +162,14 @@ ON CONFLICT (task_id, voter_user_id) DO UPDATE SET
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `UPDATE workspace_arena_tasks SET status = 'completed' WHERE id = $1`, params.TaskID)
+	// Guard on pending so a concurrent vote that completed the task first
+	// makes this one fail instead of writing a second vote.
+	tag, err := tx.Exec(ctx, `UPDATE workspace_arena_tasks SET status = 'completed' WHERE id = $1 AND status = 'pending'`, params.TaskID)
 	if err != nil {
 		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrArenaTaskNotPending
 	}
 	return tx.Commit(ctx)
 }

@@ -66,6 +66,8 @@ var (
 	ErrSecretsCipherUnset                    = errors.New("secrets cipher is not configured")
 	ErrInvalidSecretKey                      = errors.New("secret key must match [A-Za-z_][A-Za-z0-9_]* and be 1..128 characters")
 	ErrInvalidArenaVoteWinner                = errors.New("arena vote winner must be one of the task contestants")
+	ErrArenaTaskNotFound                     = errors.New("arena task not found")
+	ErrArenaTaskNotPending                   = errors.New("arena task is not pending")
 )
 
 type InvalidTransitionError struct {

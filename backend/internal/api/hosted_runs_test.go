@@ -311,11 +311,20 @@ func TestIngestHostedRunEventHandlerReturnsInternalErrorForRepositoryFailure(t *
 	}
 }
 
+// fakeHostedApply records the state change the fake applies for a callback.
+type fakeHostedApply struct {
+	RunAgentID    uuid.UUID
+	Status        string
+	ExternalRunID *string
+	ResultPayload json.RawMessage
+	ErrorMessage  *string
+}
+
 type fakeHostedRunExecutionRepository struct {
 	pending      *repository.HostedCallback
 	execution    repository.HostedRunExecution
 	getErr       error
-	applyParams  *repository.ApplyHostedRunEventParams
+	applyParams  *fakeHostedApply
 	applyErr     error
 	recordParams *repository.RecordHostedRunEventParams
 	recordErr    error
@@ -325,7 +334,7 @@ func (f *fakeHostedRunExecutionRepository) GetHostedRunExecutionByRunAgentID(_ c
 	return f.execution, f.getErr
 }
 
-func (f *fakeHostedRunExecutionRepository) ApplyHostedRunEvent(_ context.Context, params repository.ApplyHostedRunEventParams) (repository.HostedRunExecution, error) {
+func (f *fakeHostedRunExecutionRepository) applyHostedEvent(params fakeHostedApply) (repository.HostedRunExecution, error) {
 	f.applyParams = &params
 	return f.execution, f.applyErr
 }
@@ -350,7 +359,7 @@ func stringPtr(value string) *string {
 
 func (f *fakeHostedRunExecutionRepository) CommitHostedCallback(ctx context.Context, in repository.HostedCallback) (repository.RunAgentReplay, error) {
 	status, output, message := hostedExecutionStateForEvent(in.Event)
-	_, err := f.ApplyHostedRunEvent(ctx, repository.ApplyHostedRunEventParams{RunAgentID: in.Event.RunAgentID, Status: status, ExternalRunID: &in.Event.ExternalRunID, ResultPayload: output, ErrorMessage: message})
+	_, err := f.applyHostedEvent(fakeHostedApply{RunAgentID: in.Event.RunAgentID, Status: status, ExternalRunID: &in.Event.ExternalRunID, ResultPayload: output, ErrorMessage: message})
 	if err != nil {
 		return repository.RunAgentReplay{}, err
 	}
