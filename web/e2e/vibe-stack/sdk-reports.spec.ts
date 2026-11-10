@@ -85,7 +85,7 @@ test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrad
 
 test("refund report v2 imports explicitly and reopens exact original without hosted work",async({page})=>{
  // Actual SCRIPTED Linux demo report; no customer agent or model is executed here.
- const source=await readFile(new URL("../../../schemas/refund-report-v2/fixtures/openai-correct-v2.json",import.meta.url),"utf8");
+ const source=await readFile(__dirname+"/../../../schemas/refund-report-v2/fixtures/openai-correct-v2.json","utf8");
  await page.goto("/auth/login?returnTo=%2Fvibe-evals");await page.getByRole("button",{name:"Continue with AgentClash"}).click();
  await page.getByRole("button",{name:/I have an agent/}).click();await page.getByRole("radio",{name:"Test pack",exact:true}).click();
  const choose=page.waitForEvent("filechooser");await page.getByRole("button",{name:"Choose a file",exact:true}).click();await(await choose).setFiles({name:"refund-tests.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(blueprint))});

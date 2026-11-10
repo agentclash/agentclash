@@ -181,3 +181,72 @@ func TestSDKRefundV2ObservedChecksKeepOriginalCoordinates(t *testing.T) {
 		}
 	}
 }
+
+func TestSDKRefundV2RejectsStructuralAndCoverageDrift(t *testing.T) {
+	changes := map[string]func(map[string]any){
+		"unknown runner": func(d map[string]any) { d["runner"].(map[string]any)["hosted"] = true },
+		"unknown case": func(d map[string]any) {
+			d["cases"].([]any)[0].(map[string]any)["agent_result"] = map[string]any{"output": "invented"}
+		},
+		"unknown check": func(d map[string]any) {
+			d["cases"].([]any)[0].(map[string]any)["checks"].([]any)[0].(map[string]any)["metric_key"] = "invented"
+		},
+		"unknown observation": func(d map[string]any) {
+			d["cases"].([]any)[0].(map[string]any)["observations"].(map[string]any)["retrieval"] = true
+		},
+		"missing final check": func(d map[string]any) {
+			c := d["cases"].([]any)[0].(map[string]any)
+			c["checks"] = c["checks"].([]any)[:9]
+		},
+		"unpaired turns": func(d map[string]any) {
+			c := d["cases"].([]any)[0].(map[string]any)
+			checks := c["checks"].([]any)
+			c["checks"] = append(checks[:1], checks[2:]...)
+		},
+		"noncontiguous turns": func(d map[string]any) {
+			d["cases"].([]any)[0].(map[string]any)["checks"].([]any)[0].(map[string]any)["check_id"] = "turn_3_outcome_truthful"
+		},
+		"duplicate required": func(d map[string]any) {
+			e := d["execution"].(map[string]any)
+			e["required_case_ids"] = append(e["required_case_ids"].([]any), e["required_case_ids"].([]any)[0])
+		},
+		"coverage flag": func(d map[string]any) { d["execution"].(map[string]any)["required_cases_complete"] = false },
+		"missing observations": func(d map[string]any) {
+			d["cases"].([]any)[0].(map[string]any)["observations"].(map[string]any)["fixture_state"] = false
+		},
+		"observed cost": func(d map[string]any) {
+			d["cases"].([]any)[0].(map[string]any)["observations"].(map[string]any)["cost"] = true
+		},
+		"suite digest": func(d map[string]any) { d["suite_digest"] = "invalid" },
+		"timestamp":    func(d map[string]any) { d["generated_at"] = "tomorrow" },
+		"failed without failures": func(d map[string]any) {
+			d["cases"].([]any)[0].(map[string]any)["status"] = "failed"
+			d["summary"].(map[string]any)["passed"] = 0
+			d["summary"].(map[string]any)["failed"] = 1
+			d["exit_code"] = 1
+		},
+	}
+	for name, change := range changes {
+		t.Run(name, func(t *testing.T) {
+			var d map[string]any
+			json.Unmarshal([]byte(refundFixture(t, "openai-correct-v2")), &d)
+			change(d)
+			if _, err := DecodeSDKReport(refundEnvelope(t, string(raw(d)))); err == nil {
+				t.Fatal("accepted contract drift")
+			}
+		})
+	}
+	b, err := os.ReadFile("../../../schemas/evaltest/fixtures/all-pass.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = DecodeSDKReport(refundEnvelope(t, string(b))); err == nil {
+		t.Fatal("v1 mislabeled v2")
+	}
+	var e map[string]any
+	json.Unmarshal(refundEnvelope(t, refundFixture(t, "openai-correct-v2")), &e)
+	e["metadata"].(map[string]any)["capture_scope"].(map[string]any)["tools"] = map[string]any{"scope": "complete", "instrumentation": "instrumented"}
+	if _, err = DecodeSDKReport(raw(e)); err == nil {
+		t.Fatal("v2 fixture observations became v1 complete tool capture")
+	}
+}

@@ -23,7 +23,7 @@ export async function loadArtifactCaseMapping(sessionId: string, artifactId: str
 export const reportBase = (sessionId: string) => `/sessions/${encodeURIComponent(sessionId)}/reports`;
 export function unknownCapture(): CaptureScope { return { messages: { scope: "unknown", instrumentation: "unknown" }, tools: { scope: "unknown", instrumentation: "unknown" }, retrieval: { scope: "unknown", instrumentation: "unknown" } }; }
 export const unknownFingerprints = (): Fingerprints => ({ model: null, build: null, test: null, judge: null, config: null });
-// Preview only; the server applies the unchanged canonical schema. Do not infer
+// Preview only; the server applies the versioned canonical schema. Do not infer
 // a binding from a title, array position or matching input text.
 export function reportSourceCases(source: string, kind: SDKReportImport["source_kind"], version: 1 | 2 = 1): { id: string; label: string }[] {
   const value = JSON.parse(source);

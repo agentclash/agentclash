@@ -219,3 +219,35 @@ func TestVibeSDKRefundV2WrongWorkspaceAndQuota(t *testing.T) {
 		t.Fatal("quota mutated receipt", count, err)
 	}
 }
+
+func TestVibeSDKRefundV2DiagnosticStorage(t *testing.T) {
+	h, _, a := sdkHarness(t)
+	in := refundImport(t, a)
+	var d map[string]any
+	json.Unmarshal([]byte(in.SourceJSON), &d)
+	d["cases"] = []any{}
+	d["summary"] = map[string]any{"total": 0, "passed": 0, "failed": 0, "skipped": 0, "errored": 0, "incomplete": 0, "metric_failures": 0}
+	d["suite_id"] = nil
+	d["suite_digest"] = nil
+	d["target_identity"] = nil
+	d["target_revision"] = nil
+	ex := d["execution"].(map[string]any)
+	ex["required_cases_complete"] = false
+	ex["missing_required_case_ids"] = ex["required_case_ids"]
+	ex["pytest_exit_code"] = 5
+	d["exit_code"] = 2
+	in.SourceJSON = string(mustJSON(t, d))
+	in.Metadata.Cases = []vibe.SDKCaseBinding{}
+	r, err := h.svc.Store.ImportSDKReport(h.ctx, h.actor, h.session.ID, mustJSON(t, in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := h.svc.Store.SDKReport(h.ctx, h.actor, h.session.ID, r.ID)
+	if err != nil || again.SourceJSON != in.SourceJSON || again.SourceSchemaVersion != 2 || !strings.Contains(strings.Join(again.Diagnostics, " "), "UNKNOWN/incomplete") || !bytes.Contains(again.SourceProvenance, []byte(`"target_revision": null`)) && !bytes.Contains(again.SourceProvenance, []byte(`"target_revision":null`)) {
+		t.Fatal("diagnostic source lost", again, err)
+	}
+	prep, err := h.svc.Store.PrepareExport(h.ctx, h.actor, h.session.ID, vibe.ExportRequest{Scope: "selected", ArtifactID: a.ID, ResultRef: &r.Binding.ResultRef})
+	if err != nil || len(prep.SDKReports) != 1 || prep.SDKReports[0].SourceSchemaVersion != 2 {
+		t.Fatal("diagnostic export", prep, err)
+	}
+}
