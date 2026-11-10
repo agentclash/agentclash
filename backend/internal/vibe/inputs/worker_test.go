@@ -215,3 +215,32 @@ func TestPDFInterruptedReadFailsWhileOtherWorkWaits(t *testing.T) {
 		}
 	}
 }
+func TestInputDeleteKeepsExpiredStatus(t *testing.T) {
+	s, session := workerFixture(t)
+	ctx := context.Background()
+	actor := "anon:" + session.String()
+	expired := uploaded(t, s, session, "expired")
+	if _, e := s.DB.Exec(ctx, `UPDATE vibe_inputs SET expires_at=now()-interval '1 second' WHERE id=$1`, expired); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.Sweep(ctx); e != nil {
+		t.Fatal(e)
+	}
+	live := uploaded(t, s, session, "live")
+	for id, want := range map[uuid.UUID]string{expired: "expired", live: "deleted"} {
+		// A repeated delete is a same-status write and still succeeds.
+		for range 2 {
+			if e := s.Delete(ctx, session, id, actor); e != nil {
+				t.Fatal(e)
+			}
+		}
+		var status string
+		var deleted *time.Time
+		if e := s.DB.QueryRow(ctx, `SELECT status,deleted_at FROM vibe_inputs WHERE id=$1`, id).Scan(&status, &deleted); e != nil {
+			t.Fatal(e)
+		}
+		if status != want || deleted == nil {
+			t.Fatalf("input %s: status %q (deleted_at %v), want %q", id, status, deleted, want)
+		}
+	}
+}
