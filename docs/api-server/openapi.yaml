@@ -6382,6 +6382,7 @@ paths:
   /v1/agent-tryout-templates:
     get:
       operationId: listAgentTryoutTemplates
+      description: Fresh no-store discovery. cookie-v1 announces creator-cookie support; older servers omit creator_access_protocol. Unknown values must fail closed.
       summary: List agent tryout templates
       tags: [AgentTryouts]
       security: []
@@ -6442,8 +6443,10 @@ paths:
       description: >-
         Issues a host-only HttpOnly creator cookie scoped to this result on the API
         origin. The secret is not returned as JSON. Browsers must include credentials
-        from an explicitly allowed same-site web origin. Older clients that do not
-        retain the cookie cannot reopen, change or claim newly created results.
+        from an explicitly allowed same-site web origin after fresh no-store catalog
+        discovery of cookie-v1. Missing or unsupported creator_access_protocol returns
+        409 creator_access_protocol_required before quota, storage or execution.
+        Reload or update the client; never retry with downgraded credentials.
       tags: [AgentTryouts]
       security: []
       requestBody:
@@ -6451,7 +6454,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateAgentTryoutRequest"
+              $ref: "#/components/schemas/CreateAnonymousAgentTryoutRequest"
       responses:
         "201":
           description: Anonymous tryout queued with template, tool, and evaluation snapshots
@@ -6461,6 +6464,12 @@ paths:
                 $ref: "#/components/schemas/PublicAgentTryoutResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "409":
+          description: Creator protocol missing or unsupported. Error code creator_access_protocol_required; reload or update client.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           $ref: "#/components/responses/NotFoundError"
 
@@ -14962,10 +14971,25 @@ components:
       type: object
       required: [items]
       properties:
+        creator_access_protocol:
+          type: string
+          enum: [cookie-v1]
+          description: Present only on creator-proof-capable backends. Older servers omit this field.
         items:
           type: array
           items:
             $ref: "#/components/schemas/AgentTryoutTemplate"
+
+    CreateAnonymousAgentTryoutRequest:
+      allOf:
+        - $ref: "#/components/schemas/CreateAgentTryoutRequest"
+        - type: object
+          required: [creator_access_protocol]
+          properties:
+            creator_access_protocol:
+              type: string
+              enum: [cookie-v1]
+              description: Send only after fresh no-store discovery of cookie-v1, with cookie credentials enabled.
 
     CreateAgentTryoutRequest:
       type: object

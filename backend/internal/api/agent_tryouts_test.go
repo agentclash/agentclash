@@ -865,7 +865,7 @@ func TestCreateAnonymousAgentTryoutHandler(t *testing.T) {
 		},
 	}
 	handler := createAnonymousAgentTryoutHandler(slog.Default(), service)
-	req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", bytes.NewBufferString(`{"template_slug":"meeting-minutes","input":{"notes":"hello"}}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", bytes.NewBufferString(`{"creator_access_protocol":"cookie-v1","template_slug":"meeting-minutes","input":{"notes":"hello"}}`))
 	req.Header.Set("X-Forwarded-For", "203.0.113.10, 198.51.100.1")
 	rr := httptest.NewRecorder()
 
@@ -903,7 +903,7 @@ func TestListAgentTryoutTemplatesHandlerReturnsRuntimeMetadata(t *testing.T) {
 func TestCreateAnonymousAgentTryoutHandlerMapsUnavailableTemplate(t *testing.T) {
 	service := &fakeAgentTryoutService{createAnonymousErr: fmt.Errorf("%w: structured data validator runtime is not enabled yet", ErrAgentTryoutTemplateUnavailable)}
 	handler := createAnonymousAgentTryoutHandler(slog.Default(), service)
-	req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", bytes.NewBufferString(`{"template_slug":"structured-data","input":{"text":"name: Ada"}}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", bytes.NewBufferString(`{"creator_access_protocol":"cookie-v1","template_slug":"structured-data","input":{"text":"name: Ada"}}`))
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -963,7 +963,7 @@ func TestCreateAnonymousAgentTryoutHandlerMapsQuotaAndSpendErrors(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			service := &fakeAgentTryoutService{createAnonymousErr: tt.err}
 			handler := createAnonymousAgentTryoutHandler(slog.Default(), service)
-			req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", strings.NewReader(`{"template_slug":"meeting-minutes","input":{"notes":"quota"}}`))
+			req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", strings.NewReader(`{"creator_access_protocol":"cookie-v1","template_slug":"meeting-minutes","input":{"notes":"quota"}}`))
 			rr := httptest.NewRecorder()
 
 			handler.ServeHTTP(rr, req)

@@ -42,7 +42,7 @@ func TestTryoutCreatorCookieAndClaimBoundary(t *testing.T) {
 		router.ServeHTTP(rec, req)
 		return rec
 	}
-	create := request("POST", "/agent-tryouts", `{"template_slug":"meeting-minutes","input":{"notes":"synthetic fixture"}}`, nil)
+	create := request("POST", "/agent-tryouts", `{"creator_access_protocol":"cookie-v1","template_slug":"meeting-minutes","input":{"notes":"synthetic fixture"}}`, nil)
 	if create.Code != 201 {
 		t.Fatalf("create status=%d", create.Code)
 	}
