@@ -1,14 +1,28 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ACTIVE_EVAL_SESSION_STATUSES,
   deriveEvalSessionMode,
   deriveEvalSessionTitle,
   formatEvalSessionValue,
+  isEvalSessionActive,
   normalizeEvalSessionWarnings,
   passMetricAggregateForEffectiveK,
   sortedAggregateDimensions,
 } from "../eval-sessions";
 import type { EvalSessionDetail, EvalSessionPassMetricSeries } from "../api/types";
+
+describe("eval session status sets", () => {
+  it("treats the non-terminal statuses as active", () => {
+    expect(ACTIVE_EVAL_SESSION_STATUSES).toEqual([
+      "queued",
+      "running",
+      "aggregating",
+    ]);
+    expect(isEvalSessionActive("aggregating")).toBe(true);
+    expect(isEvalSessionActive("cancelled")).toBe(false);
+  });
+});
 
 describe("eval session helpers", () => {
   it("derives a title from the first child run name", () => {

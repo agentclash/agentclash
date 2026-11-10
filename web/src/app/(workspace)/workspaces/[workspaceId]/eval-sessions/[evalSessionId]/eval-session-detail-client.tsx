@@ -15,7 +15,6 @@ import type {
   EvalSessionDetail,
   EvalSessionMetricAggregate,
   EvalSessionParticipantAggregate,
-  EvalSessionStatus,
 } from "@/lib/api/types";
 import {
   deriveEvalSessionMode,
@@ -24,6 +23,7 @@ import {
   formatEvalSessionRange,
   formatEvalSessionRate,
   formatEvalSessionValue,
+  isEvalSessionActive,
   normalizeEvalSessionWarnings,
   passMetricAggregateForEffectiveK,
   sortedAggregateDimensions,
@@ -39,7 +39,6 @@ import {
 } from "@/components/ui/table";
 import { evalSessionStatusVariant, runStatusVariant } from "../../runs/status-variant";
 
-const ACTIVE_STATUSES: EvalSessionStatus[] = ["queued", "running", "aggregating"];
 const POLL_INTERVAL_MS = 5000;
 
 function Section({
@@ -185,7 +184,7 @@ export function EvalSessionDetailClient({
     }
   }, [detail.eval_session.id, getAccessToken]);
 
-  const isActive = ACTIVE_STATUSES.includes(detail.eval_session.status);
+  const isActive = isEvalSessionActive(detail.eval_session.status);
 
   useEffect(() => {
     if (!isActive) return;
