@@ -260,6 +260,98 @@ func TestConnectorLateStartFailureCannotEraseTerminalCallback(t *testing.T) {
 	}
 }
 
+// After the callback deadline or a run-agent failure, nothing waits for the
+// remote. A late callback is recorded as evidence, but it does not change the
+// execution status and it does not queue a workflow signal.
+func TestConnectorLateCallbackAfterWaitEndsKeepsStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		endWait    func(t *testing.T, ctx context.Context, db *pgxpool.Pool, repo *repository.Repository, runAgentID uuid.UUID)
+		wantStatus repository.HostedRunExecutionStatus
+	}{
+		{
+			name: "callback deadline recorded",
+			endWait: func(t *testing.T, ctx context.Context, _ *pgxpool.Pool, repo *repository.Repository, runAgentID uuid.UUID) {
+				got, err := repo.MarkHostedRunExecutionTimedOut(ctx, repository.MarkHostedRunExecutionTimedOutParams{RunAgentID: runAgentID, ErrorMessage: "deadline"})
+				if err != nil || got.Status != repository.HostedRunExecutionStatusUnknown || got.FinishedAt == nil {
+					t.Fatalf("timeout row=%+v err=%v", got, err)
+				}
+			},
+			wantStatus: repository.HostedRunExecutionStatusUnknown,
+		},
+		{
+			name: "run agent failed",
+			endWait: func(t *testing.T, ctx context.Context, db *pgxpool.Pool, _ *repository.Repository, runAgentID uuid.UUID) {
+				if _, err := db.Exec(ctx, `UPDATE run_agents SET status='failed',failure_reason='workflow failed',finished_at=now() WHERE id=$1`, runAgentID); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantStatus: repository.HostedRunExecutionStatusAccepted,
+		},
+		{
+			name: "legacy timed_out row",
+			endWait: func(t *testing.T, ctx context.Context, db *pgxpool.Pool, _ *repository.Repository, runAgentID uuid.UUID) {
+				if _, err := db.Exec(ctx, `UPDATE hosted_run_executions SET status='timed_out',finished_at=now() WHERE run_agent_id=$1`, runAgentID); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantStatus: repository.HostedRunExecutionStatusTimedOut,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			db := connectorTestDB(t)
+			f := seedFixture(t, ctx, db)
+			repo := repository.New(db)
+			if _, err := repo.CreateHostedRunExecution(ctx, repository.CreateHostedRunExecutionParams{RunID: f.runID, RunAgentID: f.primaryRunAgentID, EndpointURL: "https://example.com", TraceLevel: "black_box", DeadlineAt: time.Now().Add(time.Minute)}); err != nil {
+				t.Fatal(err)
+			}
+			if ok, err := repo.ClaimHostedRunDispatch(ctx, f.primaryRunAgentID); err != nil || !ok {
+				t.Fatalf("claim=%v %v", ok, err)
+			}
+			if _, err := repo.MarkHostedRunExecutionAccepted(ctx, repository.MarkHostedRunExecutionAcceptedParams{RunAgentID: f.primaryRunAgentID, ExternalRunID: "remote", AcceptedResponse: json.RawMessage(`{"accepted":true}`)}); err != nil {
+				t.Fatal(err)
+			}
+			tc.endWait(t, ctx, db, repo, f.primaryRunAgentID)
+			before, err := repo.GetHostedRunExecutionByRunAgentID(ctx, f.primaryRunAgentID)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			status := hostedruns.FinalStatusCompleted
+			event := hostedruns.Event{EventID: "late-done", RunAgentID: f.primaryRunAgentID, ExternalRunID: "remote", EventType: hostedruns.EventTypeRunFinished, FinalStatus: &status, Output: json.RawMessage(`{"answer":"late"}`), OccurredAt: time.Now().UTC()}
+			token, _ := hostedruns.NewCallbackTokenSigner("test").Sign(f.runID, f.primaryRunAgentID)
+			signaler := &connectorTestSignaler{}
+			manager := api.NewHostedRunIngestionManager(repo, "test", signaler, nil, slog.Default())
+			if err = manager.IngestEvent(ctx, f.runID, token, event); err != nil {
+				t.Fatalf("late callback was not recorded: %v", err)
+			}
+
+			got, err := repo.GetHostedRunExecutionByRunAgentID(ctx, f.primaryRunAgentID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Status != tc.wantStatus {
+				t.Fatalf("late callback changed status to %s, want %s", got.Status, tc.wantStatus)
+			}
+			if string(got.ResultPayload) != string(before.ResultPayload) || (got.FinishedAt == nil) != (before.FinishedAt == nil) {
+				t.Fatalf("late callback changed lifecycle fields: before=%+v after=%+v", before, got)
+			}
+			if signaler.calls != 0 {
+				t.Fatalf("late callback signalled a finished workflow %d times", signaler.calls)
+			}
+			pending, err := repo.PendingHostedNotifications(ctx)
+			if err != nil || len(pending) != 0 {
+				t.Fatalf("late callback queued notifications=%d err=%v", len(pending), err)
+			}
+			rows, err := repo.ListRunEventsByRunAgentID(ctx, f.primaryRunAgentID)
+			if err != nil || len(rows) != 1 {
+				t.Fatalf("late callback evidence rows=%d err=%v", len(rows), err)
+			}
+		})
+	}
+}
+
 type connectorFixtureResolver struct{}
 
 func (connectorFixtureResolver) LookupNetIP(context.Context, string, string) ([]netip.Addr, error) {
