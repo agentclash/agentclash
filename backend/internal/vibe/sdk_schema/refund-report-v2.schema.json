@@ -1,0 +1,412 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentclash.dev/schemas/refund-report-v2/report.schema.json",
+  "title": "Refund session report v2",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "report_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "runner": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "const": "agentclash-evals"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "language": {
+          "const": "python"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "language"
+      ],
+      "additionalProperties": false
+    },
+    "suite_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "suite_digest": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_identity": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target_revision": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "execution": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "const": "local_pytest"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "timeout",
+            "config_error",
+            "internal_error"
+          ]
+        },
+        "pytest_exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "required_case_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+          },
+          "maxItems": 20
+        },
+        "missing_required_case_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+          },
+          "maxItems": 20
+        },
+        "required_cases_complete": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "mode",
+        "status",
+        "pytest_exit_code",
+        "duration_ms",
+        "required_case_ids",
+        "missing_required_case_ids",
+        "required_cases_complete"
+      ],
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "errored": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "incomplete": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "metric_failures": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "total",
+        "passed",
+        "failed",
+        "skipped",
+        "errored",
+        "incomplete",
+        "metric_failures"
+      ],
+      "additionalProperties": false
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "case": {
+            "type": "object",
+            "properties": {
+              "case_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "nodeid": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 1000
+              },
+              "split": {
+                "enum": [
+                  "development",
+                  "heldout",
+                  null
+                ]
+              }
+            },
+            "required": [
+              "case_id",
+              "name",
+              "nodeid",
+              "split"
+            ],
+            "additionalProperties": false
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "failed",
+              "error",
+              "skipped",
+              "incomplete"
+            ]
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "check_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$"
+                },
+                "passed": {
+                  "type": "boolean"
+                },
+                "expected": {},
+                "actual": {},
+                "evidence": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "check_id",
+                "passed",
+                "expected",
+                "actual",
+                "evidence"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 100
+          },
+          "target_invoked": {
+            "type": "boolean"
+          },
+          "target_latency_ms": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scoring_latency_ms": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cost_usd": {
+            "type": "null"
+          },
+          "observations": {
+            "type": "object",
+            "properties": {
+              "tool_calls": {
+                "type": "boolean"
+              },
+              "fixture_state": {
+                "type": "boolean"
+              },
+              "cost": {
+                "const": false
+              }
+            },
+            "required": [
+              "tool_calls",
+              "fixture_state",
+              "cost"
+            ],
+            "additionalProperties": false
+          },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 8000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "case",
+          "status",
+          "checks",
+          "target_invoked",
+          "target_latency_ms",
+          "scoring_latency_ms",
+          "cost_usd",
+          "observations",
+          "evidence",
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 1000
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 200
+          },
+          "check_id": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 200
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 8000
+          }
+        },
+        "required": [
+          "case_id",
+          "check_id",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 1000
+    },
+    "exit_code": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4
+    }
+  },
+  "required": [
+    "schema_version",
+    "report_id",
+    "run_id",
+    "generated_at",
+    "runner",
+    "suite_id",
+    "suite_digest",
+    "target_identity",
+    "target_revision",
+    "execution",
+    "summary",
+    "cases",
+    "failures",
+    "exit_code"
+  ],
+  "additionalProperties": false
+}

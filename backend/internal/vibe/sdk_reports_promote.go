@@ -58,6 +58,9 @@ func (s *Service) PromoteSDKExpectation(ctx context.Context, actor string, sessi
 		if e != nil {
 			return e
 		}
+		if r.SourceSchemaVersion != 1 {
+			return fault("unsupported_capability", "Refund report v2 has no supported expectation promotion. Original evidence is unchanged.")
+		}
 		if r.ContentHash != in.SourceEvidenceHash {
 			return fault("evidence_changed", "Review the original imported report again.")
 		}

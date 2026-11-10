@@ -64,11 +64,11 @@ export function SDKReportDetail({ report, sessionId, actorScope, workspaceId, ac
   }
   return <article aria-label="Imported report detail" className="space-y-4">
     <h3>{report.external_report_id}</h3>
-    <p>Imported source · {report.source_kind === "agent_result" ? "No grade supplied" : "Original SDK judgments"} · {report.size_bytes} bytes</p>
+    <p>Imported source v{report.source_schema_version ?? 1} · {report.source_kind === "agent_result" ? "No grade supplied" : "Original SDK judgments"} · {report.size_bytes} bytes</p>
     <p>Importing does not verify execution, change expectations, or replace a hosted result. Capture and application settings are uploader claims.</p>
     {report.diagnostics?.map(text => <p key={text}>{text}</p>)}
     {report.summary !== undefined && <details><summary>Original summary · unverified imported claims</summary><pre className="whitespace-pre-wrap break-words">{JSON.stringify(report.summary, null, 2)}</pre></details>}
-    <details><summary>Identity, fingerprints and capture claims</summary><pre className="whitespace-pre-wrap break-words">{JSON.stringify({ binding: report.binding, content_sha256: report.content_sha256, evidence: report.evidence_metadata, cases: report.cases }, null, 2)}</pre></details>
+    <details><summary>Identity, fingerprints and capture claims</summary><pre className="whitespace-pre-wrap break-words">{JSON.stringify({ binding: report.binding, content_sha256: report.content_sha256, evidence: report.evidence_metadata, source_provenance: report.source_provenance, cases: report.cases }, null, 2)}</pre></details>
     <div className="flex flex-wrap gap-2">
       <VibeButton disabled={busy} onClick={() => action(async (auth, current) => { const bytes = await original(auth); if (current()) downloadBytes(`sdk-report-${report.id}.json`, bytes, "application/json"); })}>Download exact original</VibeButton>
       <VibeButton disabled={busy} onClick={() => action(async (auth, current) => { const bytes = await original(auth); if (current()) setRawSource(JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes))); })}>Read original metrics and evidence</VibeButton>
@@ -91,7 +91,7 @@ export function SDKReportDetail({ report, sessionId, actorScope, workspaceId, ac
         {reviewRequest && !reviewRejected && <p>Retry recovers this same review receipt.</p>}
         {reviewRequest && reviewRejected && <div><p>The review was rejected. Your text is retained; reload the evidence and edit before submitting again.</p><VibeButton disabled={busy} onClick={() => { setReviewRequest(undefined); setReviewRejected(false); setEvidence(undefined); setError(""); setAttempt(n => n + 1); }}>Edit rejected grade review</VibeButton></div>}
       </form>}
-      {access.canWrite && evidence.expected && <section aria-label="Review imported expectation" className="space-y-2">
+      {access.canWrite && report.source_schema_version !== 2 && evidence.expected && <section aria-label="Review imported expectation" className="space-y-2">
         <h4>Review imported expectation</h4><pre className="whitespace-pre-wrap break-words">{evidence.expected}</pre>
         <p>Adopt this exact expectation into a new test version. The existing version, source report and grades remain unchanged.</p>
         <label><input type="checkbox" disabled={busy || !!promotion} checked={reviewed} onChange={e => setReviewed(e.target.checked)} />I reviewed this expectation for the selected test.</label>
@@ -105,14 +105,15 @@ export function SDKReportDetail({ report, sessionId, actorScope, workspaceId, ac
     </section>}
     <section aria-label="Hosted SDK regrade" className="space-y-2"><h4>Regrade retained replies</h4>
       <p>Run the pinned tests against retained final replies using hosted grading. This creates a separate result and uses inference credits. It does not rerun the application or verify its execution. Message, tool and retrieval traces are not replayed.</p>
+      {report.source_schema_version === 2 && <p>Refund report v2 does not support hosted regrading or expectation promotion. Download the exact original to inspect its fixture checks.</p>}
       {!inferenceAvailable && <p>Hosted grading is currently unavailable. Importing and reading reports remain available.</p>}
-      <VibeButton disabled={busy || !access.canWrite || !inferenceAvailable || !models || revision === undefined || report.cases.length === 0 || !!regrade} onClick={() => action(async (auth, current) => {
+      <VibeButton disabled={busy || report.source_schema_version === 2 || !access.canWrite || !inferenceAvailable || !models || revision === undefined || report.cases.length === 0 || !!regrade} onClick={() => action(async (auth, current) => {
         const request: RegradeRequest = { client_id: crypto.randomUUID(), revision: revision!, kind: "retest", purpose: "regrade", artifact_id: report.binding.artifact_id, models: models!, regrade_source_result_ref: report.binding.result_ref, source_evidence_hash: report.content_sha256 };
         const quote = await vibeFetch<RunQuote>(`/sessions/${sessionId}/run-quote`, auth, { method: "POST", body: JSON.stringify(request) });
         if (current()) setRegrade({ request: { ...request, run_quote_id: quote.id }, quote });
       })}>Estimate hosted regrade</VibeButton>
       {regrade && <div><p>{testCount(regrade.quote.cases)} · up to {regrade.quote.calls} grading calls · maximum ${(regrade.quote.max_cost_nano_usd / 1e9).toFixed(4)}. Quote expires {new Date(regrade.quote.expires_at).toLocaleTimeString()}.</p>
-        <VibeButton disabled={busy || !access.canWrite || !inferenceAvailable} onClick={() => action(async (auth, current) => {
+        <VibeButton disabled={busy || report.source_schema_version === 2 || !access.canWrite || !inferenceAvailable} onClick={() => action(async (auth, current) => {
           const operation = await vibeFetch<Operation>(`/sessions/${sessionId}/messages`, auth, { method: "POST", body: JSON.stringify(regrade.request) });
           if (current()) { setRegrade(undefined); setNotice("Separate hosted regrade submitted. Original grades are unchanged."); onRegraded?.(operation); }
         })}>Confirm separate hosted regrade</VibeButton>

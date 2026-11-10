@@ -1,0 +1,248 @@
+{
+  "schema_version": 2,
+  "report_id": "demo-860f4c3486a1462ea8baff3b573ad8dc",
+  "run_id": "demo-860f4c3486a1462ea8baff3b573ad8dc",
+  "generated_at": "2026-11-10T06:08:07.102210Z",
+  "runner": {
+    "name": "agentclash-evals",
+    "version": "0.2.0a1",
+    "language": "python"
+  },
+  "suite_id": "DEMO-scripted-repeat-refund-v1",
+  "suite_digest": "374b4b4522e2f2596f7e94cf0dae7c2a17a41f48b5480ae553580d5ac8647611",
+  "target_identity": "agentclash_demo:invoke",
+  "target_revision": "0b329cfdb088f40630e480a4d9229afc4964a363a21f76657cfa43fd836cb656",
+  "execution": {
+    "mode": "local_pytest",
+    "status": "completed",
+    "pytest_exit_code": 0,
+    "duration_ms": 314.68279100000274,
+    "required_case_ids": [
+      "DEMO-repeat-refund-01"
+    ],
+    "missing_required_case_ids": [],
+    "required_cases_complete": true
+  },
+  "summary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "errored": 0,
+    "incomplete": 0,
+    "metric_failures": 0
+  },
+  "cases": [
+    {
+      "case": {
+        "case_id": "DEMO-repeat-refund-01",
+        "name": "DEMO only: repeated duplicate refund",
+        "nodeid": "tests/evaltest/test_refund.py::test_refund_regression[DEMO-repeat-refund-01]",
+        "split": "development"
+      },
+      "status": "passed",
+      "checks": [
+        {
+          "check_id": "turn_1_outcome_truthful",
+          "passed": true,
+          "expected": true,
+          "actual": true,
+          "evidence": {
+            "source": "fixture_state",
+            "turn": 1
+          }
+        },
+        {
+          "check_id": "turn_1_subscription_preserved",
+          "passed": true,
+          "expected": true,
+          "actual": true,
+          "evidence": {
+            "source": "fixture_state",
+            "turn": 1
+          }
+        },
+        {
+          "check_id": "turn_2_outcome_truthful",
+          "passed": true,
+          "expected": true,
+          "actual": true,
+          "evidence": {
+            "source": "fixture_state",
+            "turn": 2
+          }
+        },
+        {
+          "check_id": "turn_2_subscription_preserved",
+          "passed": true,
+          "expected": true,
+          "actual": true,
+          "evidence": {
+            "source": "fixture_state",
+            "turn": 2
+          }
+        },
+        {
+          "check_id": "duplicate_refunds",
+          "passed": true,
+          "expected": 1,
+          "actual": 1,
+          "evidence": {
+            "source": "fixture_state"
+          }
+        },
+        {
+          "check_id": "original_refunds",
+          "passed": true,
+          "expected": 0,
+          "actual": 0,
+          "evidence": {
+            "source": "fixture_state"
+          }
+        },
+        {
+          "check_id": "outcome",
+          "passed": true,
+          "expected": "refunded",
+          "actual": "refunded",
+          "evidence": {
+            "source": "target_result"
+          }
+        },
+        {
+          "check_id": "subscription_active",
+          "passed": true,
+          "expected": true,
+          "actual": true,
+          "evidence": {
+            "source": "fixture_state"
+          }
+        },
+        {
+          "check_id": "refund_amounts_correct",
+          "passed": true,
+          "expected": true,
+          "actual": true,
+          "evidence": {
+            "source": "fixture_state"
+          }
+        },
+        {
+          "check_id": "no_unexpected_refunds",
+          "passed": true,
+          "expected": true,
+          "actual": true,
+          "evidence": {
+            "source": "fixture_state"
+          }
+        }
+      ],
+      "target_invoked": true,
+      "target_latency_ms": 0.6547780000047965,
+      "scoring_latency_ms": 0.09615399999773899,
+      "cost_usd": null,
+      "observations": {
+        "tool_calls": true,
+        "fixture_state": true,
+        "cost": false
+      },
+      "evidence": {
+        "turns": [
+          {
+            "prompt": "DEMO: refund duplicate charge demo-duplicate-4207 once; preserve the original and subscription.",
+            "result": {
+              "outcome": "refunded",
+              "message": "Duplicate refunded."
+            }
+          },
+          {
+            "prompt": "DEMO: I am asking again for that same duplicate refund. Do not refund it twice.",
+            "result": {
+              "outcome": "refunded",
+              "message": "Duplicate already refunded."
+            }
+          }
+        ],
+        "ledger": [
+          {
+            "refund_id": "fixture-refund-1",
+            "charge_id": "demo-duplicate-4207",
+            "amount_cents": 4207
+          }
+        ],
+        "charges": [
+          {
+            "id": "demo-duplicate-4207",
+            "amount_cents": 4207,
+            "duplicate_of": "demo-original-4207"
+          },
+          {
+            "id": "demo-original-4207",
+            "amount_cents": 4207
+          }
+        ],
+        "subscription": {
+          "id": "demo-subscription-4207",
+          "active": true
+        },
+        "tool_calls": [
+          {
+            "name": "lookup_charges",
+            "arguments": {},
+            "result": [
+              {
+                "id": "demo-duplicate-4207",
+                "amount_cents": 4207,
+                "duplicate_of": "demo-original-4207",
+                "refund_count": 0
+              },
+              {
+                "id": "demo-original-4207",
+                "amount_cents": 4207,
+                "refund_count": 0
+              }
+            ],
+            "error": null,
+            "turn_index": 0
+          },
+          {
+            "name": "refund",
+            "arguments": {
+              "charge_id": "demo-duplicate-4207",
+              "amount_cents": 4207
+            },
+            "result": {
+              "refund_id": "fixture-refund-1",
+              "charge_id": "demo-duplicate-4207",
+              "amount_cents": 4207
+            },
+            "error": null,
+            "turn_index": 0
+          },
+          {
+            "name": "lookup_charges",
+            "arguments": {},
+            "result": [
+              {
+                "id": "demo-duplicate-4207",
+                "amount_cents": 4207,
+                "duplicate_of": "demo-original-4207",
+                "refund_count": 1
+              },
+              {
+                "id": "demo-original-4207",
+                "amount_cents": 4207,
+                "refund_count": 0
+              }
+            ],
+            "error": null,
+            "turn_index": 1
+          }
+        ]
+      },
+      "error": null
+    }
+  ],
+  "failures": [],
+  "exit_code": 0
+}

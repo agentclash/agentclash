@@ -63,6 +63,9 @@ func SDKReportCase(r SDKReport, sourceID, caseKey string) (CaseResult, error) {
 	if selected == nil {
 		return CaseResult{}, fault("not_found", "Source case is unavailable.")
 	}
+	if r.SourceSchemaVersion == 2 {
+		return refundCaseView(r, *selected)
+	}
 	cases, err := sdkSourceCases(r)
 	if err != nil {
 		return CaseResult{}, err

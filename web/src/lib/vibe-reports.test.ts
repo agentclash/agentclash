@@ -39,3 +39,12 @@ it("never treats matching uploaded fingerprint claims as a controlled comparison
  const base={evidence_metadata:{origin:"imported",fingerprints:{model:"m",build:"b",test:"t",judge:"j",config:"c"}},result_scope:{artifact_id:"a",case_keys:["one"]}} as unknown as import("./vibe").Operation;
  expect(compareResultEvidence(base,base).controlled).toBe(false);
 });
+
+it("requires explicit v2 discovery and previews only allowlisted uncertain evidence",async()=>{
+ const {supportsRefundV2,refundReportPreview}=await import("./vibe-reports");
+ expect(supportsRefundV2({})).toBe(false);expect(supportsRefundV2({sdk_report_import_formats:[{envelope_version:1,source_kind:"agent_result",source_schema_version:2}]})).toBe(false);
+ expect(supportsRefundV2({sdk_report_import_formats:[{envelope_version:1,source_kind:"eval_report",source_schema_version:2}]})).toBe(true);
+ const source=JSON.stringify({schema_version:2,report_id:"<script>alert(1)</script>",suite_id:null,target_revision:null,cases:[{case:{case_id:"case",name:"<img src=x onerror=alert(1)>"},status:"incomplete",target_invoked:false,checks:[{check_id:"outcome",passed:false,evidence:{secret:"PRIVATE"}}],evidence:{prompt:"PRIVATE",tool_calls:[{arguments:"PRIVATE"}]}}]});
+ const preview=refundReportPreview(source);expect(preview.cost_usd).toBeNull();expect(preview.target_revision).toBeNull();expect(preview.cases[0].target_invoked).toBe(false);expect(JSON.stringify(preview)).not.toContain("PRIVATE");
+ expect(()=>reportSourceCases(source,"eval_report",1)).toThrow("explicit source format");expect(reportSourceCases(source,"eval_report",2)[0].id).toBe("case");
+});

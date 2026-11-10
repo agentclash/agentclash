@@ -124,9 +124,103 @@ paths:
                       email: { type: string, description: Team address when notification delivery is configured; empty otherwise. }
                       available: { type: boolean, description: Enquiry notification delivery is configured. }
                       direct: { type: boolean, description: Project-less enquiries can be sent to POST /v1/vibe/enquiries. Older APIs omit this flag; clients must treat omission as false. }
+                  sdk_report_import_formats:
+                    type: array
+                    description: Explicit supported import tuples. Omission on older servers means v1 only; never probe by uploading or relabel v2 as v1.
+                    items: { $ref: '#/components/schemas/VibeSDKImportFormat' }
                   capabilities:
                     type: array
                     items: { $ref: '#/components/schemas/VibeCapability' }
+  /v1/vibe/sessions/{sessionId}/reports:
+    parameters:
+      - { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: importVibeSDKReport
+      summary: Explicitly retain an original SDK report in the saved workspace project
+      description: >
+        Authenticated project owner with current workspace write access only. No evaluator is run.
+        Original UTF-8 bytes and SHA256 are retained immutably. Exact request retries return the same
+        receipt and timestamp; the same report identity with different source or metadata returns 409.
+        Exact case bindings, artifact and published version claims are checked before insertion.
+        Imported grades, fixture observations, capture and revisions are uploader claims.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VibeSDKReportImport' }
+      responses:
+        '201':
+          description: Immutable original receipt, including on exact retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VibeSDKReport' }
+        '400': { description: "Invalid format, inconsistent source, unsupported metadata or quota" }
+        '401': { description: Authentication required }
+        '404': { description: "Project, workspace membership or exact binding unavailable" }
+        '409': { description: Same report identity has different bytes or metadata }
+    get:
+      operationId: listVibeSDKReports
+      summary: Read imported report receipts for the authorized saved project
+      responses:
+        '200':
+          description: Retained receipts without original full traces
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/VibeSDKReport' }
+        '404': { description: Project or membership unavailable }
+  /v1/vibe/sessions/{sessionId}/reports/{reportId}:
+    parameters:
+      - { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: reportId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getVibeSDKReport
+      summary: Reopen an imported report receipt and its exact provenance
+      responses:
+        '200':
+          description: Authorized imported report receipt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VibeSDKReport' }
+        '404': { description: Report or membership unavailable }
+  /v1/vibe/sessions/{sessionId}/reports/{reportId}/original:
+    parameters:
+      - { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: reportId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getVibeSDKReportOriginal
+      summary: Download exact original bytes, including retained raw evidence
+      parameters:
+        - { name: hash, in: query, schema: { type: string }, description: Expected original SHA256 }
+      responses:
+        '200':
+          description: Exact unmodified source_json UTF-8 bytes with private no-store caching
+          headers:
+            X-Content-SHA256: { schema: { type: string }, description: "Original content digest, not execution attestation" }
+          content:
+            application/json:
+              schema: {}
+        '404': { description: Report or membership unavailable }
+        '409': { description: Expected evidence hash differs }
+  /v1/vibe/sessions/{sessionId}/reports/{reportId}/case:
+    parameters:
+      - { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: reportId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getVibeSDKReportCase
+      summary: Read a version-aware imported case view without rewriting original grades
+      parameters:
+        - { name: source_case_id, in: query, schema: { type: string } }
+        - { name: key, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Exact selected case; v2 incomplete/skipped/error verdicts remain UNKNOWN and have no AgentResult-v1 final reply
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { description: Ambiguous case selection }
+        '404': { description: Source case or membership unavailable }
   /v1/vibe/enquiries:
     post:
       operationId: createContactEnquiry
@@ -7465,6 +7559,112 @@ components:
         id: { type: string, format: uuid }
         status: { type: string, enum: [received, sending, provider_accepted, needs_review, cancelled] }
         created_at: { type: string, format: date-time }
+    VibeSDKImportFormat:
+      type: object
+      additionalProperties: false
+      required: [envelope_version, source_kind, source_schema_version]
+      properties:
+        envelope_version: { type: integer, const: 1 }
+        source_kind: { type: string, enum: [eval_report, agent_result] }
+        source_schema_version: { type: integer, enum: [1, 2] }
+      oneOf:
+        - required: [source_kind, source_schema_version]
+          properties: { source_kind: { const: eval_report }, source_schema_version: { enum: [1, 2] } }
+        - required: [source_kind, source_schema_version]
+          properties: { source_kind: { const: agent_result }, source_schema_version: { const: 1 } }
+    VibeSDKReportImport:
+      type: object
+      additionalProperties: false
+      required: [envelope_version, source_kind, source_schema_version, source_json, metadata]
+      description: >
+        Existing envelope 1. Supported sources are eval_report/1, agent_result/1, and explicit
+        refund session eval_report/2. Source is at most 1 MiB with bounded JSON and at most 200
+        exactly mapped cases. V2 follows schemas/refund-report-v2/report.schema.json plus semantic
+        consistency checks. Unknown costs remain null; unsupported fields and mislabeled versions reject.
+      properties:
+        envelope_version: { type: integer, const: 1 }
+        source_kind: { type: string, enum: [eval_report, agent_result] }
+        source_schema_version: { type: integer, enum: [1, 2] }
+        source_json: { type: string, description: Complete original UTF-8 source text retained unchanged }
+        external_report_id: { type: string, maxLength: 256 }
+        metadata:
+          type: object
+          additionalProperties: false
+          required: [artifact_id, application_revision, fingerprints, capture_scope, cases]
+          properties:
+            artifact_id: { type: string, format: uuid }
+            challenge_pack_version_id: { type: string, format: uuid }
+            application_revision: { type: [string, 'null'], maxLength: 1024 }
+            fingerprints:
+              type: object
+              additionalProperties: false
+              required: [model, build, test, judge, config]
+              properties:
+                model: { type: [string, 'null'], maxLength: 1024 }
+                build: { type: [string, 'null'], maxLength: 1024 }
+                test: { type: [string, 'null'], maxLength: 1024 }
+                judge: { type: [string, 'null'], maxLength: 1024 }
+                config: { type: [string, 'null'], maxLength: 1024 }
+            capture_scope: { $ref: '#/components/schemas/VibeSDKCaptureScope' }
+            cases:
+              type: array
+              maxItems: 200
+              items: { $ref: '#/components/schemas/VibeSDKCaseBinding' }
+      oneOf:
+        - required: [source_kind, source_schema_version]
+          properties: { source_kind: { const: eval_report }, source_schema_version: { enum: [1, 2] } }
+        - required: [source_kind, source_schema_version]
+          properties: { source_kind: { const: agent_result }, source_schema_version: { const: 1 } }
+    VibeSDKCaptureDimension:
+      type: object
+      additionalProperties: false
+      required: [scope, instrumentation]
+      properties:
+        scope: { type: string, enum: [unknown, partial, complete] }
+        instrumentation: { type: string, enum: [unknown, not_instrumented, instrumented] }
+    VibeSDKCaptureScope:
+      type: object
+      additionalProperties: false
+      required: [messages, tools, retrieval]
+      description: Explicit uploader claim. V2 has no v1 message/tool/retrieval arrays and cannot claim complete capture through this contract.
+      properties:
+        messages: { $ref: '#/components/schemas/VibeSDKCaptureDimension' }
+        tools: { $ref: '#/components/schemas/VibeSDKCaptureDimension' }
+        retrieval: { $ref: '#/components/schemas/VibeSDKCaptureDimension' }
+    VibeSDKCaseBinding:
+      type: object
+      additionalProperties: false
+      required: [source_case_id, case_key]
+      properties:
+        source_case_id: { type: string, maxLength: 256 }
+        case_key: { type: string, maxLength: 128 }
+        input_set_key: { type: string, maxLength: 128 }
+        challenge_key: { type: string, maxLength: 128 }
+        published_case_id: { type: string, format: uuid }
+        capture_scope: { $ref: '#/components/schemas/VibeSDKCaptureScope' }
+    VibeSDKReport:
+      type: object
+      required: [id, binding, evidence_metadata, source_kind, source_schema_version, external_report_id, content_sha256, size_bytes, created_at, cases]
+      description: >
+        Immutable retained source receipt. Source provenance is a bounded view of v2 suite, target,
+        revision, execution coverage and case/check observations. These are uploader claims and do
+        not establish equivalence with hosted execution. Unknown costs stay null. Conflicting declared
+        revision/test fingerprint claims are reported in diagnostics without overwriting either claim.
+        V2 hosted regrade and expectation promotion return unsupported_capability before admission.
+      properties:
+        id: { type: string, format: uuid }
+        binding: { type: object }
+        evidence_metadata: { type: object }
+        source_kind: { type: string, enum: [eval_report, agent_result] }
+        source_schema_version: { type: integer, enum: [1, 2] }
+        external_report_id: { type: string }
+        content_sha256: { type: string }
+        size_bytes: { type: integer }
+        created_at: { type: string, format: date-time }
+        cases: { type: array, items: { $ref: '#/components/schemas/VibeSDKCaseBinding' } }
+        summary: { type: object }
+        source_provenance: { type: object }
+        diagnostics: { type: array, items: { type: string } }
     VibeModels:
       type: object
       required: [assistant, target, evaluator]

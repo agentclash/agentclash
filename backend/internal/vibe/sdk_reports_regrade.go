@@ -18,6 +18,9 @@ func (s *Service) prepareSDKRegrade(ctx context.Context, actor string, v Session
 	if err != nil {
 		return Operation{}, err
 	}
+	if report.SourceSchemaVersion != 1 {
+		return Operation{}, fault("unsupported_capability", "Refund report v2 has no supported hosted reply regrade. Original evidence is unchanged.")
+	}
 	if report.ContentHash != sub.SourceEvidenceHash || report.Binding.ArtifactID != *sub.ArtifactID {
 		return Operation{}, fault("evidence_changed", "Choose the exact imported report and tested version.")
 	}
@@ -97,6 +100,9 @@ func validateSDKRegradeAdmission(ctx context.Context, tx pgx.Tx, v Session, p Pl
 	r, err := sdkReportTx(ctx, tx, v.ID, p.RegradeSource.Source.ID)
 	if err != nil {
 		return err
+	}
+	if r.SourceSchemaVersion != 1 {
+		return fault("unsupported_capability", "Refund report v2 cannot be admitted for hosted regrading.")
 	}
 	if r.ContentHash != p.RegradeSource.EvidenceHash || r.Binding.ArtifactID != p.RegradeSource.ArtifactID || p.Artifact == nil || p.Artifact.ID != r.Binding.ArtifactID {
 		return fault("evidence_changed", "The selected SDK regrade source is unavailable.")
