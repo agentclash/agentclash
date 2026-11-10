@@ -66,7 +66,6 @@ type OrgMembershipRepository interface {
 	GetOrgMembershipByInviteToken(ctx context.Context, inviteToken string) (repository.OrgMembershipFullRow, error)
 	UpdateOrgMembership(ctx context.Context, membershipID uuid.UUID, input repository.UpdateOrgMembershipInput) (repository.OrgMembershipFullRow, error)
 	CountActiveOrgAdmins(ctx context.Context, orgID uuid.UUID) (int64, error)
-	CascadeOrgMembershipStatusToWorkspaces(ctx context.Context, orgID, userID uuid.UUID, status string) error
 }
 
 const inviteExpiryDays = 7
@@ -274,7 +273,9 @@ func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller C
 	}
 
 	// The repository applies the update only while the membership still has
-	// the status that the checks above used.
+	// the status that the checks above used. When the new status is
+	// suspended or archived, it also changes the workspace memberships of the
+	// user in the same transaction.
 	updateInput := repository.UpdateOrgMembershipInput{
 		Role:            input.Role,
 		Status:          input.Status,
@@ -291,14 +292,6 @@ func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller C
 	result, err := m.repo.UpdateOrgMembership(ctx, membershipID, updateInput)
 	if err != nil {
 		return OrgMembershipResult{}, err
-	}
-
-	// When archiving or suspending an org member, also revoke their workspace
-	// access in this org so they can't reach workspace-scoped endpoints.
-	if input.Status != nil && (*input.Status == "archived" || *input.Status == "suspended") {
-		if err := m.repo.CascadeOrgMembershipStatusToWorkspaces(ctx, membership.OrganizationID, membership.UserID, *input.Status); err != nil {
-			return OrgMembershipResult{}, err
-		}
 	}
 
 	return m.orgMembershipRowToResult(result, isAdmin), nil

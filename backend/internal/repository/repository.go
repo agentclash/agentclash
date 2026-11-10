@@ -4372,19 +4372,47 @@ func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.
 		m.DisplayName = user.DisplayName
 	}
 
+	if input.Status != nil {
+		if err := cascadeOrgMembershipStatusToWorkspaces(ctx, tx, m.OrganizationID, m.UserID, OrgMembershipStatus(*input.Status)); err != nil {
+			return OrgMembershipFullRow{}, err
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return OrgMembershipFullRow{}, fmt.Errorf("commit org membership update: %w", err)
 	}
 	return m, nil
 }
 
-func (r *Repository) CascadeOrgMembershipStatusToWorkspaces(ctx context.Context, orgID, userID uuid.UUID, status string) error {
-	now := time.Now()
-	_, err := r.db.Exec(ctx, `
-		UPDATE workspace_memberships
-		SET membership_status = $3, archived_at = CASE WHEN $3 = 'archived' THEN $4 ELSE archived_at END
-		WHERE organization_id = $1 AND user_id = $2 AND membership_status NOT IN ('archived')
-	`, orgID, userID, status, now)
+// cascadeOrgMembershipStatusToWorkspaces applies
+// WorkspaceMembershipCascadeTarget to the workspace memberships that the user
+// has in the organization. It runs in the transaction that changed the
+// organization membership, so both changes commit together or not at all.
+func cascadeOrgMembershipStatusToWorkspaces(ctx context.Context, tx pgx.Tx, orgID, userID uuid.UUID, orgStatus OrgMembershipStatus) error {
+	var fromStatuses, toStatuses []string
+	for _, from := range workspaceMembershipStatuses {
+		if to, ok := WorkspaceMembershipCascadeTarget(orgStatus, from); ok {
+			fromStatuses = append(fromStatuses, string(from))
+			toStatuses = append(toStatuses, string(to))
+		}
+	}
+	if len(fromStatuses) == 0 {
+		return nil
+	}
+
+	// One statement maps each current status to its target, so a row that
+	// changes cannot match a second time.
+	_, err := tx.Exec(ctx, `
+		UPDATE workspace_memberships wm
+		SET membership_status = c.to_status,
+		    archived_at = CASE WHEN c.to_status = 'archived' THEN $5 ELSE wm.archived_at END,
+		    invite_token = CASE WHEN c.to_status = 'archived' THEN NULL ELSE wm.invite_token END,
+		    invite_token_expires_at = CASE WHEN c.to_status = 'archived' THEN NULL ELSE wm.invite_token_expires_at END
+		FROM unnest($3::text[], $4::text[]) AS c(from_status, to_status)
+		WHERE wm.organization_id = $1
+		  AND wm.user_id = $2
+		  AND wm.membership_status = c.from_status
+	`, orgID, userID, fromStatuses, toStatuses, time.Now())
 	if err != nil {
 		return fmt.Errorf("cascade org membership status to workspaces: %w", err)
 	}

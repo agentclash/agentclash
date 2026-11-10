@@ -74,7 +74,8 @@ const (
 	WorkspaceMembershipStatusArchived  WorkspaceMembershipStatus = "archived"
 )
 
-// workspaceMembershipStatuses lists the workspace membership statuses.
+// workspaceMembershipStatuses is the fixed order used to build cascade
+// updates.
 var workspaceMembershipStatuses = []WorkspaceMembershipStatus{
 	WorkspaceMembershipStatusInvited,
 	WorkspaceMembershipStatusActive,
@@ -124,6 +125,34 @@ func (s WorkspaceMembershipStatus) CanTransitionTo(next WorkspaceMembershipStatu
 	}
 	_, ok = nextStatuses[next]
 	return ok
+}
+
+// WorkspaceMembershipCascadeTarget returns the status that a workspace
+// membership must take when the organization membership of the same user
+// changes to org. The bool is false when the workspace membership does not
+// change.
+//
+// Workspace access checks look only at the workspace membership, so an
+// active workspace membership must not stay active when the organization
+// membership is suspended or archived. A pending workspace invite is
+// archived, because invited cannot move to suspended. To restore access, an
+// admin invites the user again after the organization membership is active.
+func WorkspaceMembershipCascadeTarget(org OrgMembershipStatus, current WorkspaceMembershipStatus) (WorkspaceMembershipStatus, bool) {
+	switch org {
+	case OrgMembershipStatusArchived:
+		if current == WorkspaceMembershipStatusArchived {
+			return "", false
+		}
+		return WorkspaceMembershipStatusArchived, true
+	case OrgMembershipStatusSuspended:
+		switch current {
+		case WorkspaceMembershipStatusActive:
+			return WorkspaceMembershipStatusSuspended, true
+		case WorkspaceMembershipStatusInvited:
+			return WorkspaceMembershipStatusArchived, true
+		}
+	}
+	return "", false
 }
 
 // checkOrgMembershipStatusChange validates a requested status change. A

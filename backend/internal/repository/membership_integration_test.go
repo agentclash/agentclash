@@ -155,6 +155,111 @@ func TestRepositoryUpdateOrgMembershipGuardEdges(t *testing.T) {
 	}
 }
 
+func TestRepositoryOrgMembershipSuspendCascadesToWorkspaces(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	orgMembershipID := insertOrgMembership(t, ctx, db, fixture.organizationID, fixture.userID, "active")
+
+	activeWS := insertWorkspaceMembership(t, ctx, db, fixture.organizationID, fixture.workspaceID, fixture.userID, "active")
+	invitedWS := insertWorkspaceMembership(t, ctx, db, fixture.organizationID, insertWorkspace(t, ctx, db, fixture.organizationID, "invited-ws"), fixture.userID, "invited")
+	archivedWS := insertWorkspaceMembership(t, ctx, db, fixture.organizationID, insertWorkspace(t, ctx, db, fixture.organizationID, "archived-ws"), fixture.userID, "archived")
+
+	if _, err := repo.UpdateOrgMembership(ctx, orgMembershipID, repository.UpdateOrgMembershipInput{
+		Status:         statusPtr("suspended"),
+		ExpectedStatus: "active",
+	}); err != nil {
+		t.Fatalf("suspend org membership: %v", err)
+	}
+
+	if state := readMembershipState(t, ctx, db, "workspace_memberships", activeWS); state.Status != "suspended" || state.Archived {
+		t.Fatalf("active workspace membership = %+v, want suspended", state)
+	}
+	if state := readMembershipState(t, ctx, db, "workspace_memberships", invitedWS); state.Status != "archived" || !state.Archived || state.InviteToken != nil {
+		t.Fatalf("invited workspace membership = %+v, want archived without invite token", state)
+	}
+	if state := readMembershipState(t, ctx, db, "workspace_memberships", archivedWS); state.Status != "archived" {
+		t.Fatalf("archived workspace membership = %+v, want archived", state)
+	}
+
+	activeMemberships, err := repo.GetActiveWorkspaceMembershipsByUserID(ctx, fixture.userID)
+	if err != nil {
+		t.Fatalf("GetActiveWorkspaceMembershipsByUserID: %v", err)
+	}
+	if len(activeMemberships) != 0 {
+		t.Fatalf("active workspace memberships = %v, want none", activeMemberships)
+	}
+}
+
+func TestRepositoryOrgMembershipArchiveCascadesToWorkspaces(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	orgMembershipID := insertOrgMembership(t, ctx, db, fixture.organizationID, fixture.userID, "suspended")
+
+	workspaceIDs := map[string]uuid.UUID{}
+	for _, status := range []string{"active", "invited", "suspended"} {
+		workspaceID := insertWorkspace(t, ctx, db, fixture.organizationID, status+"-ws")
+		workspaceIDs[status] = insertWorkspaceMembership(t, ctx, db, fixture.organizationID, workspaceID, fixture.userID, status)
+	}
+
+	if _, err := repo.UpdateOrgMembership(ctx, orgMembershipID, repository.UpdateOrgMembershipInput{
+		Status:         statusPtr("archived"),
+		ExpectedStatus: "suspended",
+	}); err != nil {
+		t.Fatalf("archive org membership: %v", err)
+	}
+
+	for status, id := range workspaceIDs {
+		state := readMembershipState(t, ctx, db, "workspace_memberships", id)
+		if state.Status != "archived" || !state.Archived || state.InviteToken != nil {
+			t.Fatalf("workspace membership that was %s = %+v, want archived", status, state)
+		}
+	}
+}
+
+func TestRepositoryOrgMembershipCascadeFailureRollsBackOrgUpdate(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	orgMembershipID := insertOrgMembership(t, ctx, db, fixture.organizationID, fixture.userID, "active")
+	workspaceMembershipID := insertWorkspaceMembership(t, ctx, db, fixture.organizationID, fixture.workspaceID, fixture.userID, "active")
+
+	if _, err := db.Exec(ctx, `
+		CREATE FUNCTION test_fail_workspace_membership_update() RETURNS trigger
+		LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced cascade failure'; END $$
+	`); err != nil {
+		t.Fatalf("create failing trigger function: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Exec(context.Background(), `DROP FUNCTION IF EXISTS test_fail_workspace_membership_update() CASCADE`)
+	})
+	if _, err := db.Exec(ctx, `
+		CREATE TRIGGER test_fail_workspace_membership_update
+		BEFORE UPDATE ON workspace_memberships
+		FOR EACH ROW EXECUTE FUNCTION test_fail_workspace_membership_update()
+	`); err != nil {
+		t.Fatalf("create failing trigger: %v", err)
+	}
+
+	if _, err := repo.UpdateOrgMembership(ctx, orgMembershipID, repository.UpdateOrgMembershipInput{
+		Status:         statusPtr("suspended"),
+		ExpectedStatus: "active",
+	}); err == nil {
+		t.Fatal("suspend must fail when the cascade fails")
+	}
+
+	if state := readMembershipState(t, ctx, db, "organization_memberships", orgMembershipID); state.Status != "active" {
+		t.Fatalf("organization membership = %+v, want active after rollback", state)
+	}
+	if state := readMembershipState(t, ctx, db, "workspace_memberships", workspaceMembershipID); state.Status != "active" {
+		t.Fatalf("workspace membership = %+v, want active after rollback", state)
+	}
+}
+
 func TestRepositoryUpdateWorkspaceMembershipStaleStatusConflicts(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
