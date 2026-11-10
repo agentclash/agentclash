@@ -295,7 +295,7 @@ func (s *Store) ApplyInteraction(ctx context.Context, actor string, id uuid.UUID
 			return staleInteraction()
 		}
 		var busy bool
-		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state IN ('AWAITING_APPROVAL','QUEUED','RUNNING','CANCELLING','FINALIZING'))", id).Scan(&busy); err != nil {
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state=ANY($2))", id, busyStates()).Scan(&busy); err != nil {
 			return err
 		}
 		if busy {

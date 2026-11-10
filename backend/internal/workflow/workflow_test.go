@@ -2155,8 +2155,15 @@ func (r *fakeRunRepository) MarkHostedRunExecutionTimedOut(_ context.Context, pa
 	if !ok {
 		return repository.HostedRunExecution{}, repository.ErrHostedRunExecutionNotFound
 	}
-	execution.Status = "timed_out"
+	// Mirrors the SQL: the deadline leaves the remote outcome unknown and
+	// does not change a final status.
+	if execution.Status.Terminal() {
+		return execution, nil
+	}
+	finishedAt := time.Now().UTC()
+	execution.Status = repository.HostedRunExecutionStatusUnknown
 	execution.ErrorMessage = stringPtr(params.ErrorMessage)
+	execution.FinishedAt = &finishedAt
 	r.hostedExecutions[params.RunAgentID] = execution
 	return execution, nil
 }

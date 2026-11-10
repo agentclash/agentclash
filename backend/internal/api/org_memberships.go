@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -65,7 +66,6 @@ type OrgMembershipRepository interface {
 	GetOrgMembershipByInviteToken(ctx context.Context, inviteToken string) (repository.OrgMembershipFullRow, error)
 	UpdateOrgMembership(ctx context.Context, membershipID uuid.UUID, input repository.UpdateOrgMembershipInput) (repository.OrgMembershipFullRow, error)
 	CountActiveOrgAdmins(ctx context.Context, orgID uuid.UUID) (int64, error)
-	CascadeOrgMembershipStatusToWorkspaces(ctx context.Context, orgID, userID uuid.UUID, status string) error
 }
 
 const inviteExpiryDays = 7
@@ -168,6 +168,7 @@ func (m *OrgMembershipManager) InviteOrgMember(ctx context.Context, caller Calle
 		result, err := m.repo.UpdateOrgMembership(ctx, existing.ID, repository.UpdateOrgMembershipInput{
 			Role:                 &input.Role,
 			Status:               strPtr("invited"),
+			ExpectedStatus:       existing.MembershipStatus,
 			InviteToken:          &inviteToken,
 			InviteTokenExpiresAt: &inviteTokenExpiresAt,
 			EntitlementGate:      entitlementGate,
@@ -244,7 +245,7 @@ func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller C
 	// Validate status transitions.
 	var entitlementGate *repository.OrganizationEntitlementGate
 	if input.Status != nil {
-		if err := validateOrgMembershipTransition(membership.MembershipStatus, *input.Status); err != nil {
+		if err := validateOrgMembershipStatusChange(membership.MembershipStatus, *input.Status); err != nil {
 			return OrgMembershipResult{}, err
 		}
 		if *input.Status == "active" && membership.MembershipStatus != "active" && m.entitlementGate != nil {
@@ -271,9 +272,14 @@ func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller C
 		}
 	}
 
+	// The repository applies the update only while the membership still has
+	// the status that the checks above used. When the new status is
+	// suspended or archived, it also changes the workspace memberships of the
+	// user in the same transaction.
 	updateInput := repository.UpdateOrgMembershipInput{
 		Role:            input.Role,
 		Status:          input.Status,
+		ExpectedStatus:  membership.MembershipStatus,
 		EntitlementGate: entitlementGate,
 	}
 	if isInviteLinkHolder {
@@ -286,14 +292,6 @@ func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller C
 	result, err := m.repo.UpdateOrgMembership(ctx, membershipID, updateInput)
 	if err != nil {
 		return OrgMembershipResult{}, err
-	}
-
-	// When archiving or suspending an org member, also revoke their workspace
-	// access in this org so they can't reach workspace-scoped endpoints.
-	if input.Status != nil && (*input.Status == "archived" || *input.Status == "suspended") {
-		if err := m.repo.CascadeOrgMembershipStatusToWorkspaces(ctx, membership.OrganizationID, membership.UserID, *input.Status); err != nil {
-			return OrgMembershipResult{}, err
-		}
 	}
 
 	return m.orgMembershipRowToResult(result, isAdmin), nil
@@ -326,6 +324,7 @@ func (m *OrgMembershipManager) AcceptOrgInvite(ctx context.Context, caller Calle
 	status := "active"
 	updateInput := repository.UpdateOrgMembershipInput{
 		Status:           &status,
+		ExpectedStatus:   membership.MembershipStatus,
 		ClearInviteToken: true,
 		EntitlementGate:  entitlementGate,
 	}
@@ -456,21 +455,19 @@ func isRemovingAdmin(membership repository.OrgMembershipFullRow, input UpdateOrg
 	return false
 }
 
-func validateOrgMembershipTransition(from, to string) error {
-	valid := map[string][]string{
-		"invited":   {"active", "archived"},
-		"active":    {"suspended", "archived"},
-		"suspended": {"active", "archived"},
+// validateOrgMembershipStatusChange checks a status change requested with
+// PATCH. PATCH cannot set invited. Only the invite endpoint sets it, because
+// it also issues a new invite token.
+func validateOrgMembershipStatusChange(from, to string) error {
+	next, err := repository.ParseOrgMembershipStatus(to)
+	if err != nil || next == repository.OrgMembershipStatusInvited {
+		return fmt.Errorf("%w: %q cannot be set with this request", repository.ErrInvalidMembershipStatus, to)
 	}
-	for _, allowed := range valid[from] {
-		if to == allowed {
-			return nil
-		}
+	if !repository.OrgMembershipStatus(from).CanTransitionTo(next) {
+		return repository.InvalidTransitionError{Entity: "organization membership", From: from, To: to}
 	}
-	return ErrInvalidTransition
+	return nil
 }
-
-var ErrInvalidTransition = errors.New("invalid status transition")
 
 func (m *OrgMembershipManager) orgMembershipRowToResult(row repository.OrgMembershipFullRow, includeInviteLink bool) OrgMembershipResult {
 	result := OrgMembershipResult{
@@ -712,8 +709,12 @@ func handleMembershipError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusBadRequest, "org_membership_required", "user must be a member of the organization first")
 	case errors.Is(err, repository.ErrInviteExpired):
 		writeError(w, http.StatusGone, "invite_expired", "invitation has expired")
-	case errors.Is(err, ErrInvalidTransition):
-		writeError(w, http.StatusBadRequest, "invalid_transition", "invalid membership status transition")
+	case errors.Is(err, repository.ErrInvalidMembershipStatus):
+		writeError(w, http.StatusBadRequest, "validation_error", "status must be active, suspended, or archived")
+	case errors.Is(err, repository.ErrInvalidTransition):
+		writeError(w, http.StatusConflict, "invalid_transition", "invalid membership status transition")
+	case errors.Is(err, repository.ErrTransitionConflict):
+		writeError(w, http.StatusConflict, "transition_conflict", "membership status changed before the update could be applied")
 	default:
 		logger.Error("membership operation failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")

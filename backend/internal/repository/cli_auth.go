@@ -244,12 +244,24 @@ func (r *Repository) DenyDeviceAuthCode(ctx context.Context, userCode string) er
 	return ErrDeviceCodeNotFound
 }
 
+// ConsumeDeviceRawToken hands out the raw token of an approved code once and
+// marks the code consumed. It returns "" when the code is not approved, its
+// token was already handed out, or the code has expired. A consumed code is
+// terminal, so the stale-code sweeper does not revoke its token.
 func (r *Repository) ConsumeDeviceRawToken(ctx context.Context, id uuid.UUID) (string, error) {
 	var rawToken *string
 	err := r.db.QueryRow(ctx, `
 		UPDATE device_auth_codes d
-		SET raw_token = NULL
-		FROM (SELECT id, raw_token FROM device_auth_codes WHERE id = $1 AND raw_token IS NOT NULL FOR UPDATE) old
+		SET status = 'consumed', raw_token = NULL
+		FROM (
+			SELECT id, raw_token
+			FROM device_auth_codes
+			WHERE id = $1
+			  AND status = 'approved'
+			  AND raw_token IS NOT NULL
+			  AND expires_at > now()
+			FOR UPDATE
+		) old
 		WHERE d.id = old.id
 		RETURNING old.raw_token
 	`, id).Scan(&rawToken)
@@ -292,10 +304,14 @@ func (r *Repository) ExpireStaleDeviceAuthCodes(ctx context.Context) error {
 	}
 	defer rollback(ctx, tx)
 
+	// Only codes whose token was never handed out expire. An approved code
+	// without a raw token was consumed by an API server that did not yet
+	// write the consumed status, so it is treated as consumed.
 	if _, err := tx.Exec(ctx, `
 		UPDATE device_auth_codes
 		SET status = 'expired', raw_token = NULL
-		WHERE expires_at <= now() AND status IN ('pending', 'approved')
+		WHERE expires_at <= now()
+		  AND (status = 'pending' OR (status = 'approved' AND raw_token IS NOT NULL))
 	`); err != nil {
 		return fmt.Errorf("expire stale device auth codes: %w", err)
 	}

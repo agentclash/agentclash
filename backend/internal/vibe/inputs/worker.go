@@ -97,6 +97,11 @@ func (s *Repository) run(ctx context.Context, logger *slog.Logger, timing worker
 func (s *Repository) processWithTiming(parent context.Context, timing workerTiming) error {
 	ctx, cancel := context.WithTimeout(parent, timing.Job)
 	defer cancel()
+	// End reads that used all their attempts on every cycle. If this ran only
+	// when no work was waiting, steady uploads would keep them "Reading PDF".
+	if _, err := s.DB.Exec(ctx, `UPDATE vibe_inputs SET status='failed',error='Reading was interrupted. Upload the file again or paste its text.' WHERE status='extracting' AND lease_until<now() AND attempts>=2`); err != nil {
+		return err
+	}
 	var id, session uuid.UUID
 	var key string
 	var lease time.Time
@@ -104,8 +109,7 @@ func (s *Repository) processWithTiming(parent context.Context, timing workerTimi
  WHERE id=(SELECT id FROM vibe_inputs WHERE (status='uploaded' OR (status='extracting' AND lease_until<now())) AND attempts<2 AND (expires_at IS NULL OR expires_at>now()) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1)
  RETURNING id,session_id,object_key,lease_until`).Scan(&id, &session, &key, &lease)
 	if errors.Is(err, pgx.ErrNoRows) {
-		_, err = s.DB.Exec(ctx, `UPDATE vibe_inputs SET status='failed',error='Reading was interrupted. Upload the file again or paste its text.' WHERE status='extracting' AND lease_until<now() AND attempts>=2`)
-		return err
+		return nil
 	}
 	if err != nil {
 		return err

@@ -203,7 +203,9 @@ func (s *Repository) Delete(ctx context.Context, session, id uuid.UUID, actor st
 	if _, err = access.Lookup(ctx, tx, actor, session, true, true); err != nil {
 		return err
 	}
-	tag, err := tx.Exec(ctx, `UPDATE vibe_inputs SET status='deleted',pages='[]',warnings='[]',error='',deleted_at=COALESCE(deleted_at,now()) WHERE session_id=$1 AND id=$2`, session, id)
+	// Expired and deleted are both final. Deleting an expired input succeeds
+	// and keeps its status, as it keeps its first deleted_at.
+	tag, err := tx.Exec(ctx, `UPDATE vibe_inputs SET status=CASE WHEN status='expired' THEN status ELSE 'deleted' END,pages='[]',warnings='[]',error='',deleted_at=COALESCE(deleted_at,now()) WHERE session_id=$1 AND id=$2`, session, id)
 	if err != nil {
 		return err
 	}

@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.4.0](https://github.com/agentclash/agentclash/compare/v2.3.2...v2.4.0) (2026-11-10)
+
+
+### Features
+
+* **cli:** publish status lifecycles from the server tables ([7c5df9b](https://github.com/agentclash/agentclash/commit/7c5df9babde3d7c76d6d2e37121cc2b8c1c9afaa))
+* **cli:** publish status lifecycles from the server transition tables ([332442d](https://github.com/agentclash/agentclash/commit/332442d4117eef0679a22a6c5ada33e2aea97daf))
+
 ## [2.3.2](https://github.com/agentclash/agentclash/compare/v2.3.1...v2.3.2) (2026-11-09)
 
 
