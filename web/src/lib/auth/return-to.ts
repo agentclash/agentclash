@@ -1,3 +1,5 @@
+import { TRY_CLI_DEMO_SLUGS } from "@/lib/try-cli/demo-slugs";
+
 const DEFAULT_RETURN_TO = "/dashboard";
 const DEVICE_PATH = "/auth/device";
 const GITHUB_SETUP_PATH = "/github/setup";
@@ -38,6 +40,9 @@ export function sanitizeReturnTo(raw: string | null | undefined): string {
   if (parsed.pathname.startsWith(INVITE_WORKSPACE_PATH_PREFIX)) {
     return buildInviteReturnTo("workspace", parsed.pathname);
   }
+
+  if (parsed.pathname === "/tryouts") return buildTryoutReturnTo(parsed.searchParams);
+  if (parsed.pathname.startsWith("/try/")) return buildDemoReturnTo(parsed.pathname.slice(5));
 
   if (!ALLOWED_RETURN_PATHS.has(parsed.pathname)) {
     return DEFAULT_RETURN_TO;
@@ -156,4 +161,26 @@ export function buildVibeReturnTo(input: URLSearchParams): string {
   // use-vibe-navigation still reads.
   if (view && ["agent", "tests", "results", "build", "try", "checks"].includes(view)) params.set("view", view);
   return `/vibe-evals${params.size ? `?${params}` : ""}`;
+}
+
+// A result ID is navigation intent only. The result API remains responsible for access.
+export function buildTryoutReturnTo(input: URLSearchParams): string {
+  const id = input.get("tryout");
+  return id && UUID_PATTERN.test(id) ? `/tryouts?${new URLSearchParams({ tryout: id })}` : "/tryouts";
+}
+
+export function buildDemoReturnTo(slug: string): string {
+  return TRY_CLI_DEMO_SLUGS.some(known => known === slug) ? `/try/${slug}` : DEFAULT_RETURN_TO;
+}
+
+export function isTryoutReturnTo(destination: string): boolean {
+  return destination === "/tryouts" || destination.startsWith("/tryouts?") || destination.startsWith("/try/");
+}
+
+// Public result routes do not guard workspace setup. Check membership before returning.
+export function authCompletionReturnTo(raw: string): string {
+  const destination = sanitizeReturnTo(raw);
+  return isTryoutReturnTo(destination)
+    ? `/dashboard?${new URLSearchParams({ returnTo: destination })}`
+    : destination;
 }

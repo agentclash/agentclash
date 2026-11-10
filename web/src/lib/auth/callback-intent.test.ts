@@ -23,3 +23,11 @@ it("rejects modified and expired intent and sanitizes an external destination", 
   vi.advanceTimersByTime(10 * 60 * 1000);
   expect(readCallbackIntent("state", signed)).toBeNull();
 });
+
+it("preserves selected tryout on cancelled signup retry until intent expires", () => {
+  const destination = "/tryouts?tryout=018f9f2e-65cb-7d0b-9c98-0df2ce4076d8";
+  const signed = signCallbackIntent("tryout-state", `${destination}&claim=1`, "signup");
+  expect(readCallbackIntent("tryout-state", signed)).toEqual({ destination, mode: "signup" });
+  vi.advanceTimersByTime(10 * 60 * 1000);
+  expect(readCallbackIntent("tryout-state", signed)).toBeNull();
+});

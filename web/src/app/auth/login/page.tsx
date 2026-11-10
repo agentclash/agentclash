@@ -1,6 +1,6 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
-import { sanitizeReturnTo } from "@/lib/auth/return-to";
+import { authCompletionReturnTo, sanitizeReturnTo } from "@/lib/auth/return-to";
 import { isReturningVisitor } from "@/lib/auth/returning";
 import { ClashMark } from "@/components/marketing/clash-mark";
 import { LightSpeed } from "./lightspeed";
@@ -16,7 +16,7 @@ export default async function LoginPage({
   const { returnTo: rawReturnTo, mode: rawMode, error } = await searchParams;
   const returnTo = sanitizeReturnTo(rawReturnTo);
   const { user } = await withAuth();
-  if (user) redirect(returnTo);
+  if (user) redirect(authCompletionReturnTo(returnTo));
 
   // Choose sign-in vs sign-up: an explicit ?mode= wins, then the returning-visitor
   // hint cookie, then default to sign-up for a brand-new visitor.

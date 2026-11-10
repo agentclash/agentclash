@@ -31,7 +31,8 @@ func newCORSMiddleware(authMode string, allowedOrigins map[string]struct{}) func
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			if strings.HasPrefix(r.URL.Path, "/v1/vibe/") && origin != "" {
+			credentialed := strings.HasPrefix(r.URL.Path, "/v1/vibe/") || r.URL.Path == "/v1/agent-tryouts" || strings.HasPrefix(r.URL.Path, "/v1/agent-tryouts/")
+			if credentialed && origin != "" {
 				_, allowed := allowedOrigins[origin]
 				if wildcard {
 					u, err := url.Parse(origin)

@@ -1,4 +1,4 @@
-import { sanitizeReturnTo } from "@/lib/auth/return-to";
+import { isTryoutReturnTo, sanitizeReturnTo } from "@/lib/auth/return-to";
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
 import { createApiClient } from "@/lib/api/client";
@@ -33,7 +33,7 @@ async function DashboardRedirectPage({
   const { user, accessToken } = await withAuth();
   const requestedPlan = planIntent(searchParams);
   const returnTo = sanitizeReturnTo(searchParams?.returnTo);
-  const continuation = returnTo.startsWith("/vibe-evals?") ? returnTo : null;
+  const continuation = (returnTo.startsWith("/vibe-evals?") || isTryoutReturnTo(returnTo)) ? returnTo : null;
   if (!user) redirect(`/auth/login?${new URLSearchParams({ returnTo: continuation || (requestedPlan ? `/dashboard?plan=${requestedPlan}` : "/dashboard") })}`);
   const setupURL = `/onboard?${new URLSearchParams({ ...(requestedPlan ? { plan: requestedPlan } : {}), ...(continuation ? { returnTo: continuation } : {}) })}`;
 

@@ -4,7 +4,7 @@ import { getSignInUrl, getSignUpUrl } from "@workos-inc/authkit-nextjs";
 import { cookies } from "next/headers";
 import { callbackIntentCookie, callbackIntentTTL, signCallbackIntent } from "@/lib/auth/callback-intent";
 import { redirect } from "next/navigation";
-import { sanitizeReturnTo } from "@/lib/auth/return-to";
+import { authCompletionReturnTo, sanitizeReturnTo } from "@/lib/auth/return-to";
 
 function resolveReturnTo(formData: FormData): string {
   const raw = formData.get("returnTo");
@@ -24,13 +24,13 @@ async function rememberIntent(url: string, destination: string, mode: "signin" |
 }
 
 export async function signInAction(formData: FormData) {
-  const url = await getSignInUrl({ returnTo: resolveReturnTo(formData) });
+  const url = await getSignInUrl({ returnTo: authCompletionReturnTo(resolveReturnTo(formData)) });
   await rememberIntent(url, resolveReturnTo(formData), "signin");
   redirect(url);
 }
 
 export async function signUpAction(formData: FormData) {
-  const url = await getSignUpUrl({ returnTo: resolveReturnTo(formData) });
+  const url = await getSignUpUrl({ returnTo: authCompletionReturnTo(resolveReturnTo(formData)) });
   await rememberIntent(url, resolveReturnTo(formData), "signup");
   redirect(url);
 }
