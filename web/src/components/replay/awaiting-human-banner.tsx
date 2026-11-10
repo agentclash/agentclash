@@ -12,6 +12,24 @@ import {
 import { Loader2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
+/** Identifies one human turn, so a submitted turn can be told apart from the next. */
+export function humanTurnKey(status: HumanTurnStatus): string {
+  return `${status.turn_index ?? ""}|${status.phase_id ?? ""}`;
+}
+
+/**
+ * Keeps the submitted-turn marker until the server shows a different turn or
+ * stops awaiting input. Until then the same turn must not be submitted again.
+ */
+export function nextSubmittedTurn(
+  submitted: string | null,
+  next: HumanTurnStatus,
+): string | null {
+  if (submitted === null) return null;
+  if (!next.awaiting_human || humanTurnKey(next) !== submitted) return null;
+  return submitted;
+}
+
 interface AwaitingHumanBannerProps {
   getAccessToken: () => Promise<string | undefined>;
   workspaceId: string;
@@ -30,6 +48,9 @@ export function AwaitingHumanBanner({
   const [status, setStatus] = useState<HumanTurnStatus | null>(null);
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Key of the turn this banner already submitted. The server can keep
+  // reporting that turn for a while, and a refresh can fail.
+  const [submittedTurn, setSubmittedTurn] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!enabled) {
@@ -41,6 +62,7 @@ export function AwaitingHumanBanner({
       const api = createApiClient(token);
       const next = await getHumanTurnStatus(api, workspaceId, runId, runAgentId);
       setStatus(next);
+      setSubmittedTurn((prev) => nextSubmittedTurn(prev, next));
     } catch {
       // Ignore polling errors; replay page stays usable.
     }
@@ -57,14 +79,18 @@ export function AwaitingHumanBanner({
     return null;
   }
 
+  const currentTurn = humanTurnKey(status);
+  const alreadySubmitted = submittedTurn === currentTurn;
+
   async function handleSubmit() {
     const trimmed = message.trim();
-    if (!trimmed) return;
+    if (!trimmed || submitting || alreadySubmitted) return;
     setSubmitting(true);
     try {
       const token = await getAccessToken();
       const api = createApiClient(token);
       await submitHumanTurn(api, workspaceId, runId, runAgentId, trimmed);
+      setSubmittedTurn(currentTurn);
       setMessage("");
       toast.success("Human turn submitted");
       await refresh();
@@ -92,9 +118,13 @@ export function AwaitingHumanBanner({
         rows={3}
         className="mb-3 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
       />
-      <Button size="sm" onClick={() => void handleSubmit()} disabled={submitting}>
+      <Button
+        size="sm"
+        onClick={() => void handleSubmit()}
+        disabled={submitting || alreadySubmitted}
+      >
         {submitting && <Loader2 className="mr-1.5 size-4 animate-spin" />}
-        Submit turn
+        {alreadySubmitted ? "Submitted, waiting for the agent" : "Submit turn"}
       </Button>
     </Panel>
   );

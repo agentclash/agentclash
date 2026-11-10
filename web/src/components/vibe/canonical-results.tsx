@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { VibeError, vibeFetch } from "@/lib/vibe";
-import { canonicalBase, type CanonicalResult } from "@/lib/vibe-canonical";
+import { canonicalBase, isCanonicalResultActive, type CanonicalResult } from "@/lib/vibe-canonical";
 import { testCount } from "@/lib/vibe-presentation";
 import type { ProjectResultBinding } from "@/lib/vibe-result-evidence";
 import type { WorkspaceEvidenceAccess } from "@/lib/use-vibe-workspace-access";
@@ -49,7 +49,7 @@ export function CanonicalResults(p: {
                 if (!Array.isArray(rows) || rows.some(row => row.binding.session_id !== p.sessionId || !["run", "eval_session"].includes(row.binding.result_ref.kind)))
                     throw Error("Application results could not be read.");
                 setState({ owner: life.owner, rows });
-                if (rows.some(row => ["queued", "running", "provisioning", "scoring", "aggregating", "pending"].includes(row.status)))
+                if (rows.some(row => isCanonicalResultActive(row.binding.result_ref.kind, row.status)))
                     timer = setTimeout(load, 3000);
             }
             catch (e) {

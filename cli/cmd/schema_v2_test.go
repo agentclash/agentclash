@@ -5,6 +5,8 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/agentclash/agentclash/runtime/domain"
 )
 
 func TestParseArgsFromUse(t *testing.T) {
@@ -90,18 +92,78 @@ func TestSchemaPublishesErrorAndStatusRegistries(t *testing.T) {
 		}
 	}
 
+	// The registry is the server's lifecycle tables, not a copy.
+	if !reflect.DeepEqual(doc.StatusEnums, statusEnumsFromLifecycles(domain.Lifecycles())) {
+		t.Fatal("status_enums drifted from domain.Lifecycles()")
+	}
+
+	// Each follow loop stops on exactly the terminal set that the registry
+	// publishes for the resource that it polls.
+	followPredicates := map[string]func(string) bool{
+		"run":          isTerminalRunStatus,
+		"eval_session": evalSessionStatusTerminal,
+		"eval_set":     evalsetStatusTerminal,
+	}
+	byResource := map[string]StatusEnum{}
 	for _, se := range doc.StatusEnums {
+		byResource[se.Resource] = se
+	}
+	for resource, isTerminal := range followPredicates {
+		se, ok := byResource[resource]
+		if !ok {
+			t.Fatalf("status_enums has no %q entry", resource)
+		}
 		terminal := map[string]bool{}
 		for _, s := range se.Terminal {
-			if !isTerminalRunStatus(s) {
-				t.Errorf("status_enums[%s] lists %q terminal, but isTerminalRunStatus disagrees", se.Resource, s)
-			}
 			terminal[s] = true
 		}
 		for _, s := range se.Values {
-			if isTerminalRunStatus(s) && !terminal[s] {
-				t.Errorf("status_enums[%s]: %q is terminal in code but not in the registry", se.Resource, s)
+			if isTerminal(s) != terminal[s] {
+				t.Errorf("status_enums[%s]: %q terminal in registry = %v, but the follow loop says %v", resource, s, terminal[s], isTerminal(s))
 			}
+		}
+	}
+}
+
+// budget_exceeded is a terminal eval-set status. Before the CLI read the
+// server lifecycle, `eval-set submit --follow` polled forever on it and
+// exited 0.
+func TestEvalsetBudgetExceededEndsFollowWithFailure(t *testing.T) {
+	if !evalsetStatusTerminal("budget_exceeded") {
+		t.Fatal("budget_exceeded must end an eval-set follow loop")
+	}
+	if !evalsetStatusTerminal("canceled") {
+		t.Fatal("the single-l canceled spelling must stay terminal")
+	}
+	if evalsetStatusTerminal("aggregating") {
+		t.Fatal("aggregating is not terminal")
+	}
+	err := evalsetTerminalExit("budget_exceeded")
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != evalsetExitBudgetExceeded {
+		t.Fatalf("evalsetTerminalExit(budget_exceeded) = %v, want exit code %d", err, evalsetExitBudgetExceeded)
+	}
+	if err := evalsetTerminalExit("completed"); err != nil {
+		t.Fatalf("evalsetTerminalExit(completed) = %v, want nil", err)
+	}
+}
+
+func TestCIRunTerminalStatusUsesTheRunLifecycle(t *testing.T) {
+	cases := []struct {
+		status            string
+		terminal, success bool
+	}{
+		{"completed", true, true},
+		{"failed", true, false},
+		{"cancelled", true, false},
+		{" Canceled ", true, false},
+		{"scoring", false, false},
+		{"queued", false, false},
+	}
+	for _, tc := range cases {
+		terminal, success := ciRunTerminalStatus(tc.status)
+		if terminal != tc.terminal || success != tc.success {
+			t.Errorf("ciRunTerminalStatus(%q) = (%v, %v), want (%v, %v)", tc.status, terminal, success, tc.terminal, tc.success)
 		}
 	}
 }
