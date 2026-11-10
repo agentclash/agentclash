@@ -1,26 +1,13 @@
 import type {
   AgentDeployment,
   ChallengePack,
+  EvalSetStatus,
   GetEvalSetResponse,
 } from "@/lib/api/types";
 import { TERMINAL_RUN_STATUSES } from "@/lib/run-status";
+import { nonTerminalStates } from "@/lib/status-lifecycles";
 
-export type EvalSetStatus =
-  | "queued"
-  | "expanding"
-  | "running"
-  | "aggregating"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "budget_exceeded";
-
-export const EVAL_SET_ACTIVE: EvalSetStatus[] = [
-  "queued",
-  "expanding",
-  "running",
-  "aggregating",
-];
+export const EVAL_SET_ACTIVE: EvalSetStatus[] = nonTerminalStates("eval_set");
 
 /**
  * SWR key for the per-run live status map. Terminal sets keep a key so the

@@ -18,9 +18,16 @@ table.
   (`runtime/domain/lifecycle.go`), so it cannot drift from the server.
 - **Agents and scripts** read `status_enums` to learn the states, the terminal
   states, and the legal next states. They do not keep their own list.
-- The **web app** keeps its status sets in `web/src/lib/run-status.ts` and
-  `web/src/lib/vibe.ts`. Components import these sets and do not write inline
-  arrays.
+- The **web app** reads the tables from
+  `web/src/lib/generated/status-lifecycles.json`. A golden test in
+  `runtime/domain` generates this file from `domain.Lifecycles()`, so it cannot
+  drift from the server. `web/src/lib/status-lifecycles.ts` imports the file
+  and gives typed helpers: `states`, `terminalStates`, `nonTerminalStates`,
+  `isTerminal`, and `nextStatuses`. Type checking fails when a status union in
+  `web/src/lib/api/types.ts` does not match the file. Feature modules such as
+  `web/src/lib/run-status.ts` build their sets from these helpers. Vibe
+  operations are not in the file; their set stays in `web/src/lib/vibe.ts`.
+  Components import the sets and do not write inline arrays.
 
 ## Explicit lifecycles
 
@@ -89,7 +96,11 @@ as a side change.
    `docs/api-server/openapi.yaml`.
 6. Regenerate the CLI schema snapshot:
    `cd cli && go test ./cmd -run TestSchemaJSONMatchesGoldenSnapshot -update`.
-7. In the web app, import the status sets from `web/src/lib/run-status.ts` (or
-   the module of the feature). Type each status map as
+   Regenerate the web lifecycles:
+   `cd runtime && go test ./domain -run TestWebStatusLifecyclesMatchDomain -update`.
+7. In the web app, update the status union in `web/src/lib/api/types.ts` and
+   the union records in `web/src/lib/status-lifecycles.test.ts`. Read status
+   sets from `web/src/lib/status-lifecycles.ts` (or the module of the feature,
+   for example `web/src/lib/run-status.ts`). Type each status map as
    `Record<Status, ...>`, so the compiler finds a missing status.
 8. Remove the row of the lifecycle from the implicit table above.

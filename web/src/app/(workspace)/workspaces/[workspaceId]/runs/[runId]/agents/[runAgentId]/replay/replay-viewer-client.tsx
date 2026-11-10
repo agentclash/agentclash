@@ -9,7 +9,6 @@ import { CreatePublicShareButton } from "@/components/share/create-public-share-
 import type {
   Run,
   RunAgent,
-  RunAgentStatus,
   ReplayResponse,
   ReplayStep,
   TranscriptResponse,
@@ -19,6 +18,7 @@ import {
   isRunActive,
   isRunTerminal,
 } from "@/lib/run-status";
+import { runAgentStatusVariant } from "@/lib/status-variant";
 import { getRunAgentTranscript } from "@/lib/api/multi-turn";
 import { Badge } from "@/components/ui/badge";
 import { ReplayTimeline } from "@/components/replay/replay-timeline";
@@ -40,18 +40,6 @@ import {
 
 const POLL_MS = 5000;
 const HUMAN_TURN_POLL_MS = 3000;
-
-const agentStatusVariant: Record<
-  RunAgentStatus,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  queued: "secondary",
-  ready: "secondary",
-  executing: "outline",
-  evaluating: "outline",
-  completed: "default",
-  failed: "destructive",
-};
 
 interface ReplayViewerClientProps {
   initialReplay: ReplayResponse;
@@ -202,7 +190,7 @@ export function ReplayViewerClient({
               </h1>
               <Badge
                 variant={
-                  agentStatusVariant[liveAgent.status as RunAgentStatus] ?? "outline"
+                  runAgentStatusVariant[liveAgent.status] ?? "outline"
                 }
                 className="bg-white/5 text-white/80 border-white/10 hover:bg-white/10"
               >

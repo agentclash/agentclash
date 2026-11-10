@@ -1,11 +1,34 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ACTIVE_AGENT_STATUSES,
+  ACTIVE_RUN_STATUSES,
+  TERMINAL_AGENT_STATUSES,
+  TERMINAL_RUN_STATUSES,
   isAgentLive,
   isAgentTerminal,
   isRunLive,
   isRunTerminal,
 } from "./run-status";
+
+describe("status sets", () => {
+  it("keep the same members and order as the lists they replace", () => {
+    expect(ACTIVE_RUN_STATUSES).toEqual([
+      "queued",
+      "provisioning",
+      "running",
+      "scoring",
+    ]);
+    expect(TERMINAL_RUN_STATUSES).toEqual(["completed", "failed", "cancelled"]);
+    expect(ACTIVE_AGENT_STATUSES).toEqual([
+      "queued",
+      "ready",
+      "executing",
+      "evaluating",
+    ]);
+    expect(TERMINAL_AGENT_STATUSES).toEqual(["completed", "failed"]);
+  });
+});
 
 describe("isRunLive", () => {
   it("is live while the run is active", () => {

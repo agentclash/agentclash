@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { GetEvalSetResponse } from "@/lib/api/types";
 import {
+  EVAL_SET_ACTIVE,
   agentRefFromMatrixKey,
   buildMatrixGrid,
   buildRefLabelMap,
@@ -210,6 +211,17 @@ describe("displayRef / buildRefLabelMap", () => {
     expect(evalSetStatusLabel("budget_exceeded")).toBe("Budget exceeded");
     // scored = runs finished, not case-verdict pass
     expect(matrixCellStateLabel("scored")).toBe("Complete");
+  });
+});
+
+describe("EVAL_SET_ACTIVE", () => {
+  it("lists the non-terminal eval set statuses", () => {
+    expect(EVAL_SET_ACTIVE).toEqual([
+      "queued",
+      "expanding",
+      "running",
+      "aggregating",
+    ]);
   });
 });
 
