@@ -1,5 +1,5 @@
 "use client";
-import {loadCanonicalResult, type CanonicalResult} from "./vibe-canonical";
+import {isCanonicalResultActive, loadCanonicalResult, type CanonicalResult} from "./vibe-canonical";
 import type { RecordedIntakeRequest, RecordedIntakeOutcome, ResultRef, ProjectResultBinding } from "./vibe-result-evidence";
 
 
@@ -381,7 +381,7 @@ export function useVibeWorkspace() {
             (externalKind === "sdk_report" && (value as SDKReport).id !== externalID))
           throw new VibeError("not_found", "The selected result is unavailable in this project.", 404);
         setSourceSelection({ owner: resultLife.owner, value });
-        if (externalKind !== "sdk_report" && ["queued", "running", "provisioning", "scoring", "aggregating", "pending"].includes((value as CanonicalResult).status))
+        if (externalKind !== "sdk_report" && isCanonicalResultActive(externalKind, (value as CanonicalResult).status))
           timer = setTimeout(load, 3000);
       } catch (e) {
         if (!current()) return;

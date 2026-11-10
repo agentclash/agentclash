@@ -478,8 +478,8 @@ func (a *Activities) StartHostedRun(ctx context.Context, input StartHostedRunInp
 	}
 
 	deadlineAt = execution.DeadlineAt
-	result := StartHostedRunResult{DeadlineAt: deadlineAt, Completed: execution.Status == "completed"}
-	if execution.Status == "failed" {
+	result := StartHostedRunResult{DeadlineAt: deadlineAt, Completed: execution.Status == repository.HostedRunExecutionStatusCompleted}
+	if execution.Status == repository.HostedRunExecutionStatusFailed {
 		return result, errors.New("hosted dispatch previously failed; it will not be repeated")
 	}
 	if execution.ExternalRunID != nil {
@@ -509,7 +509,7 @@ func (a *Activities) StartHostedRun(ctx context.Context, input StartHostedRunInp
 		if getErr != nil {
 			return result, getErr
 		}
-		result.Completed = latest.Status == "completed"
+		result.Completed = latest.Status == repository.HostedRunExecutionStatusCompleted
 		if latest.ExternalRunID != nil {
 			result.ExternalRunID = *latest.ExternalRunID
 		}
@@ -526,8 +526,8 @@ func (a *Activities) StartHostedRun(ctx context.Context, input StartHostedRunInp
 		if markErr != nil {
 			return StartHostedRunResult{}, fmt.Errorf("%w; additionally failed to persist hosted rejection: %v", rejectedErr, markErr)
 		}
-		if latest.Status != "failed" {
-			result.Completed = latest.Status == "completed"
+		if latest.Status != repository.HostedRunExecutionStatusFailed {
+			result.Completed = latest.Status == repository.HostedRunExecutionStatusCompleted
 			if latest.ExternalRunID != nil {
 				result.ExternalRunID = *latest.ExternalRunID
 			}
@@ -553,7 +553,7 @@ func (a *Activities) StartHostedRun(ctx context.Context, input StartHostedRunInp
 
 	return StartHostedRunResult{
 		ExternalRunID: response.ExternalRunID,
-		Completed:     latest.Status == "completed",
+		Completed:     latest.Status == repository.HostedRunExecutionStatusCompleted,
 		DeadlineAt:    deadlineAt,
 	}, nil
 }

@@ -84,10 +84,6 @@ func (r *fakeOrgMembershipRepo) CountActiveOrgAdmins(_ context.Context, _ uuid.U
 	return r.adminCount, nil
 }
 
-func (r *fakeOrgMembershipRepo) CascadeOrgMembershipStatusToWorkspaces(_ context.Context, _, _ uuid.UUID, _ string) error {
-	return nil
-}
-
 func TestInviteOrgMember_SendsEmail(t *testing.T) {
 	orgID := uuid.New()
 	userID := uuid.New()

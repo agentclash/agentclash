@@ -34,9 +34,9 @@ func StatusColor(status string) string {
 	switch status {
 	case "completed", "active", "ready", "passed", "pass":
 		return Green(status)
-	case "failed", "fail", "error", "archived":
+	case "failed", "fail", "error", "archived", "budget_exceeded":
 		return Red(status)
-	case "running", "executing", "evaluating", "provisioning", "building":
+	case "running", "executing", "evaluating", "provisioning", "building", "expanding", "aggregating":
 		return Cyan(status)
 	case "queued", "pending", "draft", "invited":
 		return Yellow(status)

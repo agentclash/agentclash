@@ -8,13 +8,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/agentclash/agentclash/runtime/evalset"
 	"github.com/spf13/cobra"
 )
 
 const (
-	evalsetExitFailed    = 1
-	evalsetExitCancelled = 1
+	evalsetExitFailed         = 1
+	evalsetExitCancelled      = 1
+	evalsetExitBudgetExceeded = 1
 )
 
 func init() {
@@ -378,16 +380,21 @@ func evalsetTerminalExit(status string) error {
 		return &ExitCodeError{Code: evalsetExitFailed, Message: "eval set failed"}
 	case "cancelled", "canceled":
 		return &ExitCodeError{Code: evalsetExitCancelled, Message: "eval set cancelled"}
+	case string(domain.EvalSetStatusBudgetExceeded):
+		return &ExitCodeError{Code: evalsetExitBudgetExceeded, Message: "eval set stopped: budget exceeded"}
 	default:
 		return nil
 	}
 }
 
+// evalsetStatusTerminal reports whether an eval set will launch no more work.
+// It reads the server's eval-set lifecycle, so budget_exceeded ends a follow
+// loop. The single-l "canceled" is accepted defensively, as in
+// isTerminalRunStatus.
 func evalsetStatusTerminal(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "completed", "failed", "cancelled", "canceled":
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	if normalized == "canceled" {
 		return true
-	default:
-		return false
 	}
+	return domain.IsEvalSetTerminal(domain.EvalSetStatus(normalized))
 }

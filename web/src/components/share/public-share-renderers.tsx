@@ -41,44 +41,21 @@ import {
 } from "@/components/ui/table";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { scorePercent } from "@/lib/scores";
+import {
+  runAgentStatusVariant,
+  runStatusVariant,
+} from "@/lib/status-variant";
 import type {
   ReplayResponse,
   ReplaySummary,
   ReplayStep,
   Run,
   RunAgent,
-  RunAgentStatus,
   ScorecardResponse,
 } from "@/lib/api/types";
 
 type SharedResource = Record<string, unknown>;
 type PublicScorecardRecord = Record<string, unknown>;
-
-const runStatusVariant: Record<
-  string,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  draft: "outline",
-  queued: "secondary",
-  provisioning: "secondary",
-  running: "outline",
-  scoring: "outline",
-  completed: "default",
-  failed: "destructive",
-  cancelled: "secondary",
-};
-
-const agentStatusVariant: Record<
-  RunAgentStatus,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  queued: "secondary",
-  ready: "secondary",
-  executing: "outline",
-  evaluating: "outline",
-  completed: "default",
-  failed: "destructive",
-};
 
 export function PublicShareRenderer({ resource }: { resource: SharedResource }) {
   if (resource.type === "report_snapshot") {
@@ -338,7 +315,7 @@ function PublicReplay({ resource }: { resource: SharedResource }) {
       <div>
         <div className="flex items-center gap-3 mb-1">
           <h1 className="text-lg font-semibold tracking-tight">{agent.label}</h1>
-          <Badge variant={agentStatusVariant[agent.status] ?? "outline"}>
+          <Badge variant={runAgentStatusVariant[agent.status] ?? "outline"}>
             {agent.status}
           </Badge>
         </div>
@@ -482,7 +459,7 @@ function PublicAgentLane({
             #{agent.lane_index}
           </span>
         </div>
-        <Badge variant={agentStatusVariant[agent.status] ?? "outline"}>
+        <Badge variant={runAgentStatusVariant[agent.status] ?? "outline"}>
           {agent.status}
         </Badge>
       </div>

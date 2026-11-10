@@ -707,6 +707,79 @@ func TestAgentTryoutManagerDoesNotRevertFailedPublicTryoutWhenStartFails(t *test
 	}
 }
 
+func TestAgentTryoutManagerKeepsRunningPublicTryoutWhenStartReportsErrorAfterStarting(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	starter := &fakePublicAgentTryoutWorkflowStarter{err: errors.New("start timed out")}
+	// The workflow did start and took the tryout to running before the start
+	// call returned its error.
+	starter.onStart = func(tryoutID uuid.UUID) {
+		tryout := repo.tryouts[tryoutID]
+		tryout.Status = repository.AgentTryoutStatusRunning
+		tryout.Summary = json.RawMessage(`{"code":"running"}`)
+		repo.tryouts[tryoutID] = tryout
+	}
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithPublicExecution(starter, AgentTryoutExecutionConfig{})
+
+	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "meeting-minutes",
+		Input:                json.RawMessage(`{"notes":"started after all"}`),
+		OwnerProofHash:       hashTryoutProof(strings.Repeat("p", 43)),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if err != nil {
+		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
+	}
+	if tryout.Status != repository.AgentTryoutStatusRunning {
+		t.Fatalf("status = %q, want running", tryout.Status)
+	}
+	if stored := repo.tryouts[tryout.ID]; stored.Status != repository.AgentTryoutStatusRunning || string(stored.Summary) != `{"code":"running"}` {
+		t.Fatalf("stored tryout = %q %s, want running with the workflow summary", stored.Status, stored.Summary)
+	}
+}
+
+func TestAgentTryoutManagerRefreshKeepsFailedTryoutWhenExecutionCompletes(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	repo.transitionErr = errors.New("harness execution transition failed")
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithExecution(&fakeAgentHarnessWorkflowStarter{err: errors.New("temporal unavailable")}, AgentTryoutExecutionConfig{})
+
+	caller := callerWithWorkspace(workspaceID)
+	tryout, err := manager.CreateWorkspaceTryout(ctx, caller, CreateWorkspaceAgentTryoutInput{
+		WorkspaceID:  workspaceID,
+		TemplateSlug: "meeting-minutes",
+		Input:        json.RawMessage(`{"notes":"start fails"}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkspaceTryout returned error: %v", err)
+	}
+	if tryout.Status != repository.AgentTryoutStatusFailed || tryout.RunID == nil {
+		t.Fatalf("created tryout = %q run=%v, want failed with a run", tryout.Status, tryout.RunID)
+	}
+
+	// The harness execution could not be marked failed and later completed.
+	execution := repo.executionsByRunID[*tryout.RunID]
+	started := time.Now().UTC().Add(-time.Second)
+	completed := time.Now().UTC()
+	execution.Status = string(repository.AgentHarnessExecutionStatusCompleted)
+	execution.StartedAt = &started
+	execution.CompletedAt = &completed
+	repo.executionsByRunID[*tryout.RunID] = execution
+
+	refreshed, err := manager.GetWorkspaceTryout(ctx, caller, tryout.ID)
+	if err != nil {
+		t.Fatalf("GetWorkspaceTryout returned error: %v", err)
+	}
+	if refreshed.Status != repository.AgentTryoutStatusFailed || refreshed.RedactionStatus != repository.AgentTryoutRedactionNotRequired {
+		t.Fatalf("refreshed tryout = %q/%q, want failed/not_required", refreshed.Status, refreshed.RedactionStatus)
+	}
+	if stored := repo.tryouts[tryout.ID]; stored.Status != repository.AgentTryoutStatusFailed {
+		t.Fatalf("stored status = %q, want failed", stored.Status)
+	}
+}
+
 func TestAgentTryoutManagerRejectsHarnessExecutionWithoutRunID(t *testing.T) {
 	ctx := context.Background()
 	orgID := uuid.New()
@@ -1367,9 +1440,9 @@ func (r *fakeAgentTryoutRepository) LinkAgentTryoutRunIfUnset(_ context.Context,
 		tryout.RunID = &params.RunID
 		if tryout.Status == repository.AgentTryoutStatusQueued {
 			tryout.Status = params.Status
-		}
-		if len(params.Summary) > 0 {
-			tryout.Summary = params.Summary
+			if len(params.Summary) > 0 {
+				tryout.Summary = params.Summary
+			}
 		}
 	}
 	r.tryouts[tryout.ID] = tryout
@@ -1381,6 +1454,13 @@ func (r *fakeAgentTryoutRepository) UpdateAgentTryoutStatus(_ context.Context, p
 	tryout, ok := r.tryouts[params.ID]
 	if !ok {
 		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
+	}
+	// Mirror the repository guards so dispatcher tests see refused writes.
+	if params.ExpectedStatus != nil && tryout.Status != *params.ExpectedStatus {
+		return repository.AgentTryout{}, repository.TransitionConflictError{Entity: "agent tryout", ID: tryout.ID, Expected: string(*params.ExpectedStatus)}
+	}
+	if !tryout.Status.AllowsWrite(params.Status) {
+		return repository.AgentTryout{}, repository.InvalidTransitionError{Entity: "agent tryout", From: string(tryout.Status), To: string(params.Status)}
 	}
 	tryout.Status = params.Status
 	if len(params.Summary) > 0 {
@@ -1470,11 +1550,17 @@ type fakePublicAgentTryoutWorkflowStarter struct {
 	err          error
 	startedCount int
 	tryoutID     uuid.UUID
+	// onStart runs before the start result returns, to simulate a workflow
+	// that starts although the start call reports an error.
+	onStart func(tryoutID uuid.UUID)
 }
 
 func (f *fakePublicAgentTryoutWorkflowStarter) StartPublicAgentTryoutExecutionWorkflow(_ context.Context, tryoutID uuid.UUID) (AgentHarnessExecutionWorkflowRef, error) {
 	f.startedCount++
 	f.tryoutID = tryoutID
+	if f.onStart != nil {
+		f.onStart(tryoutID)
+	}
 	if f.err != nil {
 		return AgentHarnessExecutionWorkflowRef{}, f.err
 	}

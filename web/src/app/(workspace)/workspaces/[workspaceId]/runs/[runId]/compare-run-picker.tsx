@@ -16,7 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { GitCompare, Loader2 } from "lucide-react";
-import { runStatusVariant } from "../status-variant";
+import { runStatusVariant } from "@/lib/status-variant";
 
 interface CompareRunPickerProps {
   currentRunId: string;

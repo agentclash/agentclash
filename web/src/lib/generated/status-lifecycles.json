@@ -1,0 +1,209 @@
+{
+  "_generated": "Generated from domain.Lifecycles() in runtime/domain/lifecycle.go. Do not edit. Regenerate with: cd runtime && go test ./domain -run TestWebStatusLifecyclesMatchDomain -update",
+  "lifecycles": {
+    "eval_session": {
+      "states": [
+        "queued",
+        "running",
+        "aggregating",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "terminal": [
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "transitions": {
+        "aggregating": [
+          "completed",
+          "failed",
+          "cancelled"
+        ],
+        "cancelled": [],
+        "completed": [],
+        "failed": [],
+        "queued": [
+          "running",
+          "cancelled"
+        ],
+        "running": [
+          "aggregating",
+          "failed",
+          "cancelled"
+        ]
+      }
+    },
+    "eval_set": {
+      "states": [
+        "queued",
+        "expanding",
+        "running",
+        "aggregating",
+        "completed",
+        "failed",
+        "cancelled",
+        "budget_exceeded"
+      ],
+      "terminal": [
+        "completed",
+        "failed",
+        "cancelled",
+        "budget_exceeded"
+      ],
+      "transitions": {
+        "aggregating": [
+          "completed",
+          "failed",
+          "cancelled",
+          "budget_exceeded"
+        ],
+        "budget_exceeded": [],
+        "cancelled": [],
+        "completed": [],
+        "expanding": [
+          "running",
+          "failed",
+          "cancelled"
+        ],
+        "failed": [],
+        "queued": [
+          "expanding",
+          "failed",
+          "cancelled"
+        ],
+        "running": [
+          "aggregating",
+          "failed",
+          "cancelled",
+          "budget_exceeded"
+        ]
+      }
+    },
+    "regression_case": {
+      "states": [
+        "proposed",
+        "active",
+        "muted",
+        "archived",
+        "rejected"
+      ],
+      "terminal": [
+        "archived",
+        "rejected"
+      ],
+      "transitions": {
+        "active": [
+          "muted",
+          "archived"
+        ],
+        "archived": [],
+        "muted": [
+          "active",
+          "archived"
+        ],
+        "proposed": [
+          "active",
+          "archived",
+          "rejected"
+        ],
+        "rejected": []
+      }
+    },
+    "regression_suite": {
+      "states": [
+        "active",
+        "archived"
+      ],
+      "terminal": [],
+      "transitions": {
+        "active": [
+          "archived"
+        ],
+        "archived": [
+          "active"
+        ]
+      }
+    },
+    "run": {
+      "states": [
+        "draft",
+        "queued",
+        "provisioning",
+        "running",
+        "scoring",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "terminal": [
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "transitions": {
+        "cancelled": [],
+        "completed": [],
+        "draft": [
+          "queued"
+        ],
+        "failed": [],
+        "provisioning": [
+          "running",
+          "failed",
+          "cancelled"
+        ],
+        "queued": [
+          "provisioning",
+          "failed",
+          "cancelled"
+        ],
+        "running": [
+          "scoring",
+          "failed",
+          "cancelled"
+        ],
+        "scoring": [
+          "completed",
+          "failed",
+          "cancelled"
+        ]
+      }
+    },
+    "run_agent": {
+      "states": [
+        "queued",
+        "ready",
+        "executing",
+        "evaluating",
+        "completed",
+        "failed"
+      ],
+      "terminal": [
+        "completed",
+        "failed"
+      ],
+      "transitions": {
+        "completed": [],
+        "evaluating": [
+          "completed",
+          "failed"
+        ],
+        "executing": [
+          "evaluating",
+          "failed"
+        ],
+        "failed": [],
+        "queued": [
+          "ready",
+          "failed"
+        ],
+        "ready": [
+          "executing",
+          "failed"
+        ]
+      }
+    }
+  }
+}

@@ -950,13 +950,16 @@ SET input = $1,
     expected = $2,
     metadata = $3,
     tags = $4,
-    status = $5,
-    source = $6,
-    source_run_id = $7,
-    source_trace_id = $8,
-    source_platform = $9,
-    artifact_id = $10
-WHERE id = $11
+    status = CASE
+        WHEN NOT $5::boolean AND status IN ('archived', 'muted') THEN status
+        ELSE $6::text
+    END,
+    source = $7,
+    source_run_id = $8,
+    source_trace_id = $9,
+    source_platform = $10,
+    artifact_id = $11
+WHERE id = $12
 RETURNING id, dataset_id, external_id, input, expected, metadata, tags, status, source, source_run_id, source_trace_id, source_platform, artifact_id, created_by, created_at, updated_at
 `
 
@@ -965,6 +968,7 @@ type UpdateDatasetExampleParams struct {
 	Expected       []byte
 	Metadata       []byte
 	Tags           []string
+	StatusExplicit bool
 	Status         string
 	Source         string
 	SourceRunID    *uuid.UUID
@@ -974,12 +978,15 @@ type UpdateDatasetExampleParams struct {
 	ID             uuid.UUID
 }
 
+// When the caller did not ask for a status (status_explicit is false), the
+// status is only a default: an archived or muted example keeps its status.
 func (q *Queries) UpdateDatasetExample(ctx context.Context, arg UpdateDatasetExampleParams) (DatasetExample, error) {
 	row := q.db.QueryRow(ctx, updateDatasetExample,
 		arg.Input,
 		arg.Expected,
 		arg.Metadata,
 		arg.Tags,
+		arg.StatusExplicit,
 		arg.Status,
 		arg.Source,
 		arg.SourceRunID,

@@ -110,8 +110,9 @@ func TestRepositoryTryoutCreatorClaimAtomicity(t *testing.T) {
 	}
 	for _, status := range []repository.AgentTryoutStatus{repository.AgentTryoutStatusQueued, repository.AgentTryoutStatusRunning} {
 		t.Run("active "+string(status), func(t *testing.T) {
-			row := create(time.Now().Add(time.Hour), &proof)
-			if _, err := repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{ID: row.ID, Status: status}); err != nil {
+			expiry := time.Now().Add(time.Hour)
+			row, err := repo.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{TemplateSlug: "meeting-minutes", Status: status, RedactionStatus: repository.AgentTryoutRedactionPassed, ExpiresAt: &expiry, AnonymousOwnerProofHash: &proof, MaxDurationSeconds: 120})
+			if err != nil {
 				t.Fatal(err)
 			}
 			if _, err := repo.ClaimAgentTryout(ctx, params(row.ID)); !errors.Is(err, repository.ErrAgentTryoutActive) {
@@ -126,6 +127,11 @@ func TestRepositoryTryoutCreatorClaimAtomicity(t *testing.T) {
 			}
 			if _, err := repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{AgentTryoutID: row.ID, OwnerProofHash: proof, Role: "system_end"}); err != nil {
 				t.Fatal(err)
+			}
+			if status == repository.AgentTryoutStatusQueued {
+				if _, err := repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{ID: row.ID, Status: repository.AgentTryoutStatusRunning}); err != nil {
+					t.Fatal(err)
+				}
 			}
 			if _, err := repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{ID: row.ID, Status: repository.AgentTryoutStatusCompleted}); err != nil {
 				t.Fatal(err)
