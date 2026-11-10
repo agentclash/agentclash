@@ -4359,6 +4359,11 @@ paths:
       operationId: importDataset
       tags: [Datasets]
       summary: Import dataset examples from an external format
+      description: >
+        New examples are active. An imported row that matches an existing
+        archived or muted example by external_id updates that example but
+        keeps its status. In replace mode, active examples that are missing
+        from the import are archived.
       security:
         - bearerJWT: []
       parameters:
@@ -7534,6 +7539,10 @@ components:
         status:
           type: string
           enum: [active, archived, muted]
+          description: >
+            Defaults to active for a new example. If omitted and an example
+            with the same external_id is archived or muted, that example keeps
+            its status. Send a status to change it.
         source:
           type: string
           enum: [manual, import, trace, synthetic, promotion]

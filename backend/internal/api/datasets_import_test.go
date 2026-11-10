@@ -76,6 +76,25 @@ func TestDatasetImportAdditiveCreatesVersion(t *testing.T) {
 	if example.Source != domain.DatasetExampleSourceImport {
 		t.Fatalf("source = %q, want import", example.Source)
 	}
+	// Import rows carry no status, so active is only a default and must not
+	// revive an archived or muted example.
+	if len(repo.upserts) != 1 || repo.upserts[0].StatusExplicit {
+		t.Fatalf("upserts = %+v, want one upsert with a default status", repo.upserts)
+	}
+}
+
+func TestDatasetExampleRequestMarksExplicitStatus(t *testing.T) {
+	workspaceID := uuid.New()
+	datasetID := uuid.New()
+	defaulted := datasetExampleRequest{Input: json.RawMessage(`{}`)}.toUpsertInput(workspaceID, datasetID)
+	if defaulted.Status != domain.DatasetExampleStatusActive || defaulted.StatusExplicit {
+		t.Fatalf("request without status = %q explicit %v, want active default", defaulted.Status, defaulted.StatusExplicit)
+	}
+	archived := "archived"
+	explicit := datasetExampleRequest{Input: json.RawMessage(`{}`), Status: &archived}.toUpsertInput(workspaceID, datasetID)
+	if explicit.Status != domain.DatasetExampleStatusArchived || !explicit.StatusExplicit {
+		t.Fatalf("request with status = %q explicit %v, want explicit archived", explicit.Status, explicit.StatusExplicit)
+	}
 }
 
 func TestDatasetImportReplaceArchivesMissingActiveExamples(t *testing.T) {
@@ -147,6 +166,7 @@ func (allowWorkspaceAuthorizer) AuthorizeWorkspace(context.Context, Caller, uuid
 type datasetImportFakeRepo struct {
 	dataset        repository.Dataset
 	examples       []repository.DatasetExample
+	upserts        []repository.UpsertDatasetExampleParams
 	versionCreated bool
 }
 
@@ -183,6 +203,7 @@ func (r *datasetImportFakeRepo) ArchiveDataset(context.Context, uuid.UUID) (repo
 	return repository.Dataset{}, nil
 }
 func (r *datasetImportFakeRepo) UpsertDatasetExample(_ context.Context, params repository.UpsertDatasetExampleParams) (repository.DatasetExample, error) {
+	r.upserts = append(r.upserts, params)
 	for i, example := range r.examples {
 		if params.ExternalID != nil && example.ExternalID != nil && *params.ExternalID == *example.ExternalID {
 			r.examples[i].Input = params.Input

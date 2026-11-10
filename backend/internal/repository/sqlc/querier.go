@@ -216,6 +216,8 @@ type Querier interface {
 	SumCaseResultCostByEvalSetID(ctx context.Context, arg SumCaseResultCostByEvalSetIDParams) (float64, error)
 	UpdateAgentBuildVersionDraft(ctx context.Context, arg UpdateAgentBuildVersionDraftParams) error
 	UpdateAgentTryoutStatus(ctx context.Context, arg UpdateAgentTryoutStatusParams) (AgentTryout, error)
+	// When the caller did not ask for a status (status_explicit is false), the
+	// status is only a default: an archived or muted example keeps its status.
 	UpdateDatasetExample(ctx context.Context, arg UpdateDatasetExampleParams) (DatasetExample, error)
 	UpdateDatasetGenerationJobProgress(ctx context.Context, arg UpdateDatasetGenerationJobProgressParams) (DatasetGenerationJob, error)
 	UpdateDatasetGenerationJobStatus(ctx context.Context, arg UpdateDatasetGenerationJobStatusParams) (DatasetGenerationJob, error)

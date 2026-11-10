@@ -115,12 +115,17 @@ INSERT INTO dataset_examples (
 RETURNING *;
 
 -- name: UpdateDatasetExample :one
+-- When the caller did not ask for a status (status_explicit is false), the
+-- status is only a default: an archived or muted example keeps its status.
 UPDATE dataset_examples
 SET input = @input,
     expected = sqlc.narg('expected'),
     metadata = @metadata,
     tags = @tags,
-    status = @status,
+    status = CASE
+        WHEN NOT sqlc.arg('status_explicit')::boolean AND status IN ('archived', 'muted') THEN status
+        ELSE sqlc.arg('status')::text
+    END,
     source = @source,
     source_run_id = sqlc.narg('source_run_id'),
     source_trace_id = sqlc.narg('source_trace_id'),
