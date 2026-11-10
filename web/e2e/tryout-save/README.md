@@ -39,11 +39,37 @@ named `tryout_test_*`. Create and migrate an owned disposable PostgreSQL cluster
 before setting that variable; never point it at an existing application database.
 The ordinary backend test suite skips this test without that explicit variable.
 
-Rollout: deploy backend credentialed-CORS preparation before the credentialed
-frontend. Deploy migration and proof-aware backend before enabling the new save
-UI. The UI requires `save_eligible === true`; missing/false capability disables
-save. Web/API must be same-site. Legacy results retain redacted public reads but
-cannot be claimed or mutated. Earlier public data is not retroactively private.
-Stale clients must reload the updated app before starting a new tryout. Missing
-or evicted creator cookies require a new tryout; no UUID-based
-ownership recovery or cross-client transfer is provided.
+Rolling deployment uses fresh `GET /v1/agent-tryout-templates` discovery with
+`cache: no-store`, credentials omitted, and a 10-second discovery timeout before
+every anonymous create/read/events/turns or claim operation. There is deliberately
+no cached or global capability mode. Only `creator_access_protocol: "cookie-v1"`
+selects credentialed transport. A valid catalog lacking the field selects legacy
+transport, suppresses Save eligibility, and refuses claim before sending it.
+Unknown/malformed discovery fails closed; failed requests never retry with weaker
+credentials. The shipped frontend does not retry anonymous creation without judge
+selection either.
+
+New backend anonymous creation requires `cookie-v1` before invoking the service,
+quota or proof generation. A stale legacy client meeting an updated backend gets
+409 `creator_access_protocol_required` and must reload/update; there is no legacy
+creation bypass. Workspace creates and authenticated saved/workspace reads retain
+their token contracts. The UI also requires `save_eligible === true`, terminal
+status and an explicitly selected authorized workspace.
+
+`legacy-transport.spec.ts` serves the actual TypeScript transport source and a
+separate loopback old-CORS API without Access-Control-Allow-Credentials. Chromium
+first proves unconditional include fails preflight without a create, then executes
+legacy create/read/events/turns through the production boundary, with Save false
+and no claim request. The seven original journeys use the new backend catalog.
+
+Backend deployment/promotion is separate from source merge. Release narrow CORS
+preparation, migration and proof-aware backend through their actual staged release
+process. No production deployment is asserted by this suite. Web/API must be
+same-site for creator cookies. Legacy rows retain redacted public reads but cannot
+be claimed or mutated on the new backend; earlier public data is not retroactively
+private. Missing/evicted creator cookies require a new tryout; there is no
+UUID-based recovery or cross-client transfer.
+
+Creator-proof migration is `00097_agent_tryout_creator_proof.sql`; upstream owns
+00095 device-auth consumption and 00096 tryout turn leases. The renumbering retains
+its SQL bytes and must be applied with all current migrations in an owned test DB.
