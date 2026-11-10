@@ -24,6 +24,55 @@ const (
 	AgentTryoutStatusCancelled AgentTryoutStatus = "cancelled"
 )
 
+// agentTryoutTransitions lists the status changes a tryout may make. Completed,
+// failed and cancelled are terminal: they have no way out. A write to the
+// current status is not a transition; see AllowsWrite.
+var agentTryoutTransitions = map[AgentTryoutStatus]map[AgentTryoutStatus]struct{}{
+	AgentTryoutStatusQueued: {
+		AgentTryoutStatusRunning:   {},
+		AgentTryoutStatusFailed:    {},
+		AgentTryoutStatusCancelled: {},
+	},
+	AgentTryoutStatusRunning: {
+		AgentTryoutStatusCompleted: {},
+		AgentTryoutStatusFailed:    {},
+		AgentTryoutStatusCancelled: {},
+	},
+	AgentTryoutStatusCompleted: {},
+	AgentTryoutStatusFailed:    {},
+	AgentTryoutStatusCancelled: {},
+}
+
+func (s AgentTryoutStatus) Valid() bool {
+	_, ok := agentTryoutTransitions[s]
+	return ok
+}
+
+// Terminal reports whether s is a final status.
+func (s AgentTryoutStatus) Terminal() bool {
+	next, ok := agentTryoutTransitions[s]
+	return ok && len(next) == 0
+}
+
+func (s AgentTryoutStatus) CanTransitionTo(next AgentTryoutStatus) bool {
+	nextStatuses, ok := agentTryoutTransitions[s]
+	if !ok {
+		return false
+	}
+	_, ok = nextStatuses[next]
+	return ok
+}
+
+// AllowsWrite reports whether a status write from s to next is allowed. A
+// write to the same status is allowed so that retries and summary refreshes
+// stay idempotent, also on a terminal tryout.
+func (s AgentTryoutStatus) AllowsWrite(next AgentTryoutStatus) bool {
+	if s == next {
+		return s.Valid()
+	}
+	return s.CanTransitionTo(next)
+}
+
 type AgentTryoutRedactionStatus string
 
 const (
@@ -131,8 +180,11 @@ type ClaimAgentTryoutParams struct {
 }
 
 type UpdateAgentTryoutStatusParams struct {
-	ID              uuid.UUID
-	Status          AgentTryoutStatus
+	ID     uuid.UUID
+	Status AgentTryoutStatus
+	// ExpectedStatus, when set, makes the write apply only if the tryout is
+	// still in this status. Otherwise it returns a TransitionConflictError.
+	ExpectedStatus  *AgentTryoutStatus
 	Summary         json.RawMessage
 	ActualCostUSD   *float64
 	LatencyMS       *int64
@@ -490,7 +542,15 @@ func (r *Repository) ClaimAgentTryout(ctx context.Context, params ClaimAgentTryo
 	return mapAgentTryout(row)
 }
 
+// UpdateAgentTryoutStatus writes a status together with its summary, cost,
+// latency and redaction status. It refuses a write that the transition table
+// does not allow with an InvalidTransitionError, so a terminal tryout keeps
+// its status. If the row changes between the read and the write, it returns a
+// TransitionConflictError. A refused write changes no column.
 func (r *Repository) UpdateAgentTryoutStatus(ctx context.Context, params UpdateAgentTryoutStatusParams) (AgentTryout, error) {
+	if !params.Status.Valid() {
+		return AgentTryout{}, fmt.Errorf("invalid agent tryout status: %q", params.Status)
+	}
 	actualCost, err := numericFromFloat(params.ActualCostUSD)
 	if err != nil {
 		return AgentTryout{}, fmt.Errorf("encode agent tryout actual cost: %w", err)
@@ -500,8 +560,29 @@ func (r *Repository) UpdateAgentTryoutStatus(ctx context.Context, params UpdateA
 		value := string(*params.RedactionStatus)
 		redactionStatus = &value
 	}
+
+	current, err := r.GetAgentTryoutByID(ctx, params.ID)
+	if err != nil {
+		return AgentTryout{}, err
+	}
+	if params.ExpectedStatus != nil && current.Status != *params.ExpectedStatus {
+		return AgentTryout{}, TransitionConflictError{
+			Entity:   "agent tryout",
+			ID:       params.ID,
+			Expected: string(*params.ExpectedStatus),
+		}
+	}
+	if !current.Status.AllowsWrite(params.Status) {
+		return AgentTryout{}, InvalidTransitionError{
+			Entity: "agent tryout",
+			From:   string(current.Status),
+			To:     string(params.Status),
+		}
+	}
+
 	row, err := r.queries.UpdateAgentTryoutStatus(ctx, repositorysqlc.UpdateAgentTryoutStatusParams{
 		ID:              params.ID,
+		FromStatus:      string(current.Status),
 		Status:          string(params.Status),
 		Summary:         nullableJSON(params.Summary),
 		ActualCostUsd:   actualCost,
@@ -510,7 +591,11 @@ func (r *Repository) UpdateAgentTryoutStatus(ctx context.Context, params UpdateA
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return AgentTryout{}, ErrAgentTryoutNotFound
+			return AgentTryout{}, TransitionConflictError{
+				Entity:   "agent tryout",
+				ID:       params.ID,
+				Expected: string(current.Status),
+			}
 		}
 		return AgentTryout{}, fmt.Errorf("update agent tryout status: %w", err)
 	}
@@ -531,10 +616,20 @@ func (r *Repository) SetAgentTryoutRunID(ctx context.Context, id uuid.UUID, runI
 	return mapAgentTryout(row)
 }
 
+// LinkAgentTryoutRunIfUnset links a run to a tryout that has none. Only a
+// queued tryout also takes the new status and summary, so the link never moves
+// a tryout that already left queued, and never rewrites a terminal summary.
 func (r *Repository) LinkAgentTryoutRunIfUnset(ctx context.Context, params LinkAgentTryoutRunParams) (AgentTryout, error) {
 	status := params.Status
 	if status == "" {
 		status = AgentTryoutStatusRunning
+	}
+	if !AgentTryoutStatusQueued.CanTransitionTo(status) {
+		return AgentTryout{}, InvalidTransitionError{
+			Entity: "agent tryout",
+			From:   string(AgentTryoutStatusQueued),
+			To:     string(status),
+		}
 	}
 	row := r.db.QueryRow(ctx, `
 UPDATE agent_tryouts
@@ -545,7 +640,7 @@ SET
         ELSE status
     END,
     summary = CASE
-        WHEN run_id IS NULL AND $4::jsonb IS NOT NULL THEN $4::jsonb
+        WHEN run_id IS NULL AND status = 'queued' AND $4::jsonb IS NOT NULL THEN $4::jsonb
         ELSE summary
     END
 WHERE id = $1

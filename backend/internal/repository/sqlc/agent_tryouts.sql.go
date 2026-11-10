@@ -573,6 +573,12 @@ SET
     latency_ms = COALESCE($4, latency_ms),
     redaction_status = COALESCE($5, redaction_status)
 WHERE id = $6
+  -- from_status is the status the caller read; a concurrent change matches
+  -- no row.
+  AND status = $7
+  -- A terminal tryout keeps its status. A write to the same status stays
+  -- allowed so that retries and summary refreshes remain idempotent.
+  AND (status NOT IN ('completed', 'failed', 'cancelled') OR status = $1)
 RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind
 `
 
@@ -583,6 +589,7 @@ type UpdateAgentTryoutStatusParams struct {
 	LatencyMs       *int64
 	RedactionStatus *string
 	ID              uuid.UUID
+	FromStatus      string
 }
 
 func (q *Queries) UpdateAgentTryoutStatus(ctx context.Context, arg UpdateAgentTryoutStatusParams) (AgentTryout, error) {
@@ -593,6 +600,7 @@ func (q *Queries) UpdateAgentTryoutStatus(ctx context.Context, arg UpdateAgentTr
 		arg.LatencyMs,
 		arg.RedactionStatus,
 		arg.ID,
+		arg.FromStatus,
 	)
 	var i AgentTryout
 	err := row.Scan(

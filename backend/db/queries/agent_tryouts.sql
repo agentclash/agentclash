@@ -84,6 +84,12 @@ SET
     latency_ms = COALESCE(sqlc.narg('latency_ms'), latency_ms),
     redaction_status = COALESCE(sqlc.narg('redaction_status'), redaction_status)
 WHERE id = @id
+  -- from_status is the status the caller read; a concurrent change matches
+  -- no row.
+  AND status = @from_status
+  -- A terminal tryout keeps its status. A write to the same status stays
+  -- allowed so that retries and summary refreshes remain idempotent.
+  AND (status NOT IN ('completed', 'failed', 'cancelled') OR status = @status)
 RETURNING *;
 
 -- name: SetAgentTryoutRunID :one
