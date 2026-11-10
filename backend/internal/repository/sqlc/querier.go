@@ -19,6 +19,9 @@ type Querier interface {
 	AttachRunToEvalSession(ctx context.Context, arg AttachRunToEvalSessionParams) (Run, error)
 	BeginBillingWebhookEvent(ctx context.Context, arg BeginBillingWebhookEventParams) (string, error)
 	ClaimAgentTryout(ctx context.Context, arg ClaimAgentTryoutParams) (AgentTryout, error)
+	// Claims the oldest pending turn, or a processing turn whose lease ran out
+	// because the session that claimed it is gone. A processing turn without a
+	// lease predates leases and counts as expired.
 	ClaimNextPendingAgentTryoutTurn(ctx context.Context, arg ClaimNextPendingAgentTryoutTurnParams) (AgentTryoutTurn, error)
 	ClearScanFindingsForTarget(ctx context.Context, arg ClearScanFindingsForTargetParams) error
 	CountActiveAgentDeploymentsByWorkspaceID(ctx context.Context, arg CountActiveAgentDeploymentsByWorkspaceIDParams) (int64, error)
@@ -72,6 +75,7 @@ type Querier interface {
 	GetAgentBuildByID(ctx context.Context, arg GetAgentBuildByIDParams) (AgentBuild, error)
 	GetAgentBuildVersionByID(ctx context.Context, arg GetAgentBuildVersionByIDParams) (AgentBuildVersion, error)
 	GetAgentTryoutByID(ctx context.Context, arg GetAgentTryoutByIDParams) (AgentTryout, error)
+	GetAgentTryoutTurnStatus(ctx context.Context, arg GetAgentTryoutTurnStatusParams) (string, error)
 	GetBillingAccountByOrganizationID(ctx context.Context, arg GetBillingAccountByOrganizationIDParams) (BillingAccount, error)
 	GetBillingSubscriptionByDodoID(ctx context.Context, arg GetBillingSubscriptionByDodoIDParams) (BillingSubscription, error)
 	GetCaseResultByID(ctx context.Context, arg GetCaseResultByIDParams) (CaseResult, error)
@@ -188,7 +192,8 @@ type Querier interface {
 	ListVibeEvalDraftsByConversationID(ctx context.Context, arg ListVibeEvalDraftsByConversationIDParams) ([]VibeEvalDraft, error)
 	LockActiveDatasetForVersion(ctx context.Context, arg LockActiveDatasetForVersionParams) (uuid.UUID, error)
 	MarkAgentBuildVersionReady(ctx context.Context, arg MarkAgentBuildVersionReadyParams) error
-	MarkAgentTryoutTurnProcessed(ctx context.Context, arg MarkAgentTryoutTurnProcessedParams) error
+	// Only a processing turn can become done.
+	MarkAgentTryoutTurnProcessed(ctx context.Context, arg MarkAgentTryoutTurnProcessedParams) (int64, error)
 	MarkBillingCheckoutIntentCompleted(ctx context.Context, arg MarkBillingCheckoutIntentCompletedParams) (int64, error)
 	MarkHostedRunExecutionAccepted(ctx context.Context, arg MarkHostedRunExecutionAcceptedParams) (HostedRunExecution, error)
 	MarkHostedRunExecutionFailed(ctx context.Context, arg MarkHostedRunExecutionFailedParams) (HostedRunExecution, error)

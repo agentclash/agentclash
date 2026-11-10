@@ -54,3 +54,27 @@ func TestAgentTryoutStatusTerminal(t *testing.T) {
 		t.Error("AllowsWrite accepted an unknown status")
 	}
 }
+
+func TestAgentTryoutTurnStatusTransitions(t *testing.T) {
+	tests := []struct {
+		from AgentTryoutTurnStatus
+		to   AgentTryoutTurnStatus
+		want bool
+	}{
+		{AgentTryoutTurnStatusPending, AgentTryoutTurnStatusProcessing, true},
+		{AgentTryoutTurnStatusProcessing, AgentTryoutTurnStatusDone, true},
+		{AgentTryoutTurnStatusPending, AgentTryoutTurnStatusDone, false},
+		{AgentTryoutTurnStatusProcessing, AgentTryoutTurnStatusPending, false},
+		{AgentTryoutTurnStatusDone, AgentTryoutTurnStatusProcessing, false},
+		{AgentTryoutTurnStatusDone, AgentTryoutTurnStatusPending, false},
+		{AgentTryoutTurnStatus("bogus"), AgentTryoutTurnStatusDone, false},
+	}
+	for _, tc := range tests {
+		if got := tc.from.CanTransitionTo(tc.to); got != tc.want {
+			t.Errorf("CanTransitionTo(%s, %s) = %v, want %v", tc.from, tc.to, got, tc.want)
+		}
+	}
+	if AgentTryoutTurnStatus("bogus").Valid() {
+		t.Error("unknown turn status reported valid")
+	}
+}

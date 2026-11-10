@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/domain"
@@ -43,7 +44,7 @@ func (f *fakePublicTryoutRepo) RecordAgentTryoutEvent(_ context.Context, params 
 	return repository.AgentTryoutEvent{}, nil
 }
 
-func (f *fakePublicTryoutRepo) ClaimNextPendingAgentTryoutTurn(context.Context, uuid.UUID) (repository.AgentTryoutTurn, bool, error) {
+func (f *fakePublicTryoutRepo) ClaimNextPendingAgentTryoutTurn(context.Context, uuid.UUID, time.Duration) (repository.AgentTryoutTurn, bool, error) {
 	return repository.AgentTryoutTurn{}, false, nil
 }
 

@@ -130,15 +130,47 @@ type AgentTryoutEvent struct {
 	Payload        json.RawMessage
 }
 
+type AgentTryoutTurnStatus string
+
+const (
+	AgentTryoutTurnStatusPending    AgentTryoutTurnStatus = "pending"
+	AgentTryoutTurnStatusProcessing AgentTryoutTurnStatus = "processing"
+	AgentTryoutTurnStatusDone       AgentTryoutTurnStatus = "done"
+)
+
+// agentTryoutTurnTransitions lists the status changes a turn may make. Done
+// is terminal. A processing turn whose lease ran out is claimed again; that
+// is a write to the same status, not a transition.
+var agentTryoutTurnTransitions = map[AgentTryoutTurnStatus]map[AgentTryoutTurnStatus]struct{}{
+	AgentTryoutTurnStatusPending:    {AgentTryoutTurnStatusProcessing: {}},
+	AgentTryoutTurnStatusProcessing: {AgentTryoutTurnStatusDone: {}},
+	AgentTryoutTurnStatusDone:       {},
+}
+
+func (s AgentTryoutTurnStatus) Valid() bool {
+	_, ok := agentTryoutTurnTransitions[s]
+	return ok
+}
+
+func (s AgentTryoutTurnStatus) CanTransitionTo(next AgentTryoutTurnStatus) bool {
+	nextStatuses, ok := agentTryoutTurnTransitions[s]
+	if !ok {
+		return false
+	}
+	_, ok = nextStatuses[next]
+	return ok
+}
+
 type AgentTryoutTurn struct {
 	ID            int64
 	AgentTryoutID uuid.UUID
 	TurnIndex     int32
 	Role          string
 	Message       string
-	Status        string
+	Status        AgentTryoutTurnStatus
 	CreatedAt     time.Time
 	ProcessedAt   *time.Time
+	LeaseUntil    *time.Time
 }
 
 type AppendAgentTryoutTurnParams struct {
@@ -783,8 +815,20 @@ func (r *Repository) AppendAgentTryoutTurn(ctx context.Context, params AppendAge
 	return mapAgentTryoutTurn(row), nil
 }
 
-func (r *Repository) ClaimNextPendingAgentTryoutTurn(ctx context.Context, tryoutID uuid.UUID) (AgentTryoutTurn, bool, error) {
-	row, err := r.queries.ClaimNextPendingAgentTryoutTurn(ctx, repositorysqlc.ClaimNextPendingAgentTryoutTurnParams{AgentTryoutID: tryoutID})
+// ClaimNextPendingAgentTryoutTurn claims the oldest pending turn of a tryout
+// and holds it for lease. A processing turn whose lease ran out (its session
+// crashed before it marked the turn done) is claimed again, so a turn is
+// processed at least once. The lease must outlast the longest time a live
+// session can hold a turn, or a live turn could be claimed twice.
+func (r *Repository) ClaimNextPendingAgentTryoutTurn(ctx context.Context, tryoutID uuid.UUID, lease time.Duration) (AgentTryoutTurn, bool, error) {
+	leaseSeconds := int32(lease / time.Second)
+	if leaseSeconds <= 0 {
+		return AgentTryoutTurn{}, false, fmt.Errorf("agent tryout turn lease must be at least one second, got %s", lease)
+	}
+	row, err := r.queries.ClaimNextPendingAgentTryoutTurn(ctx, repositorysqlc.ClaimNextPendingAgentTryoutTurnParams{
+		AgentTryoutID: tryoutID,
+		LeaseSeconds:  leaseSeconds,
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return AgentTryoutTurn{}, false, nil
 	}
@@ -794,11 +838,32 @@ func (r *Repository) ClaimNextPendingAgentTryoutTurn(ctx context.Context, tryout
 	return mapAgentTryoutTurn(row), true, nil
 }
 
+// MarkAgentTryoutTurnProcessed moves a processing turn to done. Marking a turn
+// that is already done again is a no-op. A turn that was never claimed
+// returns an InvalidTransitionError.
 func (r *Repository) MarkAgentTryoutTurnProcessed(ctx context.Context, id int64) error {
-	if err := r.queries.MarkAgentTryoutTurnProcessed(ctx, repositorysqlc.MarkAgentTryoutTurnProcessedParams{ID: id}); err != nil {
+	updated, err := r.queries.MarkAgentTryoutTurnProcessed(ctx, repositorysqlc.MarkAgentTryoutTurnProcessedParams{ID: id})
+	if err != nil {
 		return fmt.Errorf("mark agent tryout turn processed: %w", err)
 	}
-	return nil
+	if updated > 0 {
+		return nil
+	}
+	current, err := r.queries.GetAgentTryoutTurnStatus(ctx, repositorysqlc.GetAgentTryoutTurnStatusParams{ID: id})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrAgentTryoutTurnNotFound
+		}
+		return fmt.Errorf("get agent tryout turn status: %w", err)
+	}
+	if AgentTryoutTurnStatus(current) == AgentTryoutTurnStatusDone {
+		return nil
+	}
+	return InvalidTransitionError{
+		Entity: "agent tryout turn",
+		From:   current,
+		To:     string(AgentTryoutTurnStatusDone),
+	}
 }
 
 func (r *Repository) CountPendingAgentTryoutTurns(ctx context.Context, tryoutID uuid.UUID) (int64, error) {
@@ -820,8 +885,9 @@ func mapAgentTryoutTurn(row repositorysqlc.AgentTryoutTurn) AgentTryoutTurn {
 		TurnIndex:     row.TurnIndex,
 		Role:          row.Role,
 		Message:       row.Message,
-		Status:        row.Status,
+		Status:        AgentTryoutTurnStatus(row.Status),
 		CreatedAt:     createdAt,
 		ProcessedAt:   optionalTime(row.ProcessedAt),
+		LeaseUntil:    optionalTime(row.LeaseUntil),
 	}
 }

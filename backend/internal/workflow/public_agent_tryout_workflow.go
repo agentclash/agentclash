@@ -156,6 +156,12 @@ const (
 	// publicTryoutSessionCap bounds the whole interactive chat. It must stay
 	// below the activity StartToCloseTimeout (defaultAgentHarnessTimeoutSeconds).
 	publicTryoutSessionCap = 15 * time.Minute
+	// publicTryoutTurnLease is how long a claimed turn stays with its session.
+	// A session stops claiming at its cap and finishes its last turn within
+	// the per-turn timeout, so a live session never loses a turn it holds.
+	// After the lease, a later session for the same tryout claims the turn
+	// again.
+	publicTryoutTurnLease = publicTryoutSessionCap + publicTryoutPerTurnTimeout
 )
 
 // executePublicTryoutSandbox runs an interactive, multi-turn agent session: it
@@ -229,7 +235,7 @@ func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repo
 	// Conversational turns: drain user messages until end / idle / cap.
 	lastActivity := time.Now()
 	for time.Now().Before(deadline) {
-		turn, ok, claimErr := a.publicTryoutRepo.ClaimNextPendingAgentTryoutTurn(ctx, tryout.ID)
+		turn, ok, claimErr := a.publicTryoutRepo.ClaimNextPendingAgentTryoutTurn(ctx, tryout.ID, publicTryoutTurnLease)
 		if claimErr != nil {
 			return nil, claimErr
 		}

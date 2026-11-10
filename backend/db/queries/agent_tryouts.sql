@@ -151,22 +151,39 @@ FROM next_turn
 RETURNING *;
 
 -- name: ClaimNextPendingAgentTryoutTurn :one
+-- Claims the oldest pending turn, or a processing turn whose lease ran out
+-- because the session that claimed it is gone. A processing turn without a
+-- lease predates leases and counts as expired.
 UPDATE agent_tryout_turns
-SET status = 'processing'
+SET status = 'processing',
+    lease_until = now() + make_interval(secs => sqlc.arg('lease_seconds')::integer)
 WHERE id = (
-    SELECT pending.id
-    FROM agent_tryout_turns AS pending
-    WHERE pending.agent_tryout_id = @agent_tryout_id
-      AND pending.status = 'pending'
-    ORDER BY pending.id ASC
+    SELECT candidate.id
+    FROM agent_tryout_turns AS candidate
+    WHERE candidate.agent_tryout_id = @agent_tryout_id
+      AND (
+          candidate.status = 'pending'
+          OR (
+              candidate.status = 'processing'
+              AND (candidate.lease_until IS NULL OR candidate.lease_until < now())
+          )
+      )
+    ORDER BY candidate.id ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
 RETURNING *;
 
--- name: MarkAgentTryoutTurnProcessed :exec
+-- name: MarkAgentTryoutTurnProcessed :execrows
+-- Only a processing turn can become done.
 UPDATE agent_tryout_turns
-SET status = 'done', processed_at = now()
+SET status = 'done', processed_at = now(), lease_until = NULL
+WHERE id = @id
+  AND status = 'processing';
+
+-- name: GetAgentTryoutTurnStatus :one
+SELECT status
+FROM agent_tryout_turns
 WHERE id = @id;
 
 -- name: CountPendingAgentTryoutTurns :one

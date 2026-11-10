@@ -32,7 +32,7 @@ SELECT
     $3,
     'pending'
 FROM next_turn
-RETURNING id, agent_tryout_id, turn_index, role, message, status, created_at, processed_at
+RETURNING id, agent_tryout_id, turn_index, role, message, status, created_at, processed_at, lease_until
 `
 
 type AppendAgentTryoutTurnParams struct {
@@ -53,6 +53,7 @@ func (q *Queries) AppendAgentTryoutTurn(ctx context.Context, arg AppendAgentTryo
 		&i.Status,
 		&i.CreatedAt,
 		&i.ProcessedAt,
+		&i.LeaseUntil,
 	)
 	return i, err
 }
@@ -123,25 +124,36 @@ func (q *Queries) ClaimAgentTryout(ctx context.Context, arg ClaimAgentTryoutPara
 
 const claimNextPendingAgentTryoutTurn = `-- name: ClaimNextPendingAgentTryoutTurn :one
 UPDATE agent_tryout_turns
-SET status = 'processing'
+SET status = 'processing',
+    lease_until = now() + make_interval(secs => $1::integer)
 WHERE id = (
-    SELECT pending.id
-    FROM agent_tryout_turns AS pending
-    WHERE pending.agent_tryout_id = $1
-      AND pending.status = 'pending'
-    ORDER BY pending.id ASC
+    SELECT candidate.id
+    FROM agent_tryout_turns AS candidate
+    WHERE candidate.agent_tryout_id = $2
+      AND (
+          candidate.status = 'pending'
+          OR (
+              candidate.status = 'processing'
+              AND (candidate.lease_until IS NULL OR candidate.lease_until < now())
+          )
+      )
+    ORDER BY candidate.id ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
 )
-RETURNING id, agent_tryout_id, turn_index, role, message, status, created_at, processed_at
+RETURNING id, agent_tryout_id, turn_index, role, message, status, created_at, processed_at, lease_until
 `
 
 type ClaimNextPendingAgentTryoutTurnParams struct {
+	LeaseSeconds  int32
 	AgentTryoutID uuid.UUID
 }
 
+// Claims the oldest pending turn, or a processing turn whose lease ran out
+// because the session that claimed it is gone. A processing turn without a
+// lease predates leases and counts as expired.
 func (q *Queries) ClaimNextPendingAgentTryoutTurn(ctx context.Context, arg ClaimNextPendingAgentTryoutTurnParams) (AgentTryoutTurn, error) {
-	row := q.db.QueryRow(ctx, claimNextPendingAgentTryoutTurn, arg.AgentTryoutID)
+	row := q.db.QueryRow(ctx, claimNextPendingAgentTryoutTurn, arg.LeaseSeconds, arg.AgentTryoutID)
 	var i AgentTryoutTurn
 	err := row.Scan(
 		&i.ID,
@@ -152,6 +164,7 @@ func (q *Queries) ClaimNextPendingAgentTryoutTurn(ctx context.Context, arg Claim
 		&i.Status,
 		&i.CreatedAt,
 		&i.ProcessedAt,
+		&i.LeaseUntil,
 	)
 	return i, err
 }
@@ -349,6 +362,23 @@ func (q *Queries) GetAgentTryoutByID(ctx context.Context, arg GetAgentTryoutByID
 	return i, err
 }
 
+const getAgentTryoutTurnStatus = `-- name: GetAgentTryoutTurnStatus :one
+SELECT status
+FROM agent_tryout_turns
+WHERE id = $1
+`
+
+type GetAgentTryoutTurnStatusParams struct {
+	ID int64
+}
+
+func (q *Queries) GetAgentTryoutTurnStatus(ctx context.Context, arg GetAgentTryoutTurnStatusParams) (string, error) {
+	row := q.db.QueryRow(ctx, getAgentTryoutTurnStatus, arg.ID)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
 const listAgentTryoutEventsAfter = `-- name: ListAgentTryoutEventsAfter :many
 SELECT id, agent_tryout_id, sequence_number, event_type, actor_type, occurred_at, payload
 FROM agent_tryout_events
@@ -453,19 +483,24 @@ func (q *Queries) ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAge
 	return items, nil
 }
 
-const markAgentTryoutTurnProcessed = `-- name: MarkAgentTryoutTurnProcessed :exec
+const markAgentTryoutTurnProcessed = `-- name: MarkAgentTryoutTurnProcessed :execrows
 UPDATE agent_tryout_turns
-SET status = 'done', processed_at = now()
+SET status = 'done', processed_at = now(), lease_until = NULL
 WHERE id = $1
+  AND status = 'processing'
 `
 
 type MarkAgentTryoutTurnProcessedParams struct {
 	ID int64
 }
 
-func (q *Queries) MarkAgentTryoutTurnProcessed(ctx context.Context, arg MarkAgentTryoutTurnProcessedParams) error {
-	_, err := q.db.Exec(ctx, markAgentTryoutTurnProcessed, arg.ID)
-	return err
+// Only a processing turn can become done.
+func (q *Queries) MarkAgentTryoutTurnProcessed(ctx context.Context, arg MarkAgentTryoutTurnProcessedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markAgentTryoutTurnProcessed, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const recordAgentTryoutEvent = `-- name: RecordAgentTryoutEvent :one
