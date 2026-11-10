@@ -18,15 +18,24 @@ import (
 // fakePublicTryoutRepo is a minimal PublicAgentTryoutRepository capturing
 // recorded timeline events for assertions.
 type fakePublicTryoutRepo struct {
-	events []repository.RecordAgentTryoutEventParams
+	events  []repository.RecordAgentTryoutEventParams
+	updates []repository.UpdateAgentTryoutStatusParams
+	// updateErr, when set, decides the result of each status write.
+	updateErr func(params repository.UpdateAgentTryoutStatusParams) error
 }
 
-func (f *fakePublicTryoutRepo) GetAgentTryoutByID(context.Context, uuid.UUID) (repository.AgentTryout, error) {
-	return repository.AgentTryout{}, nil
+func (f *fakePublicTryoutRepo) GetAgentTryoutByID(_ context.Context, id uuid.UUID) (repository.AgentTryout, error) {
+	return repository.AgentTryout{ID: id}, nil
 }
 
 func (f *fakePublicTryoutRepo) UpdateAgentTryoutStatus(_ context.Context, params repository.UpdateAgentTryoutStatusParams) (repository.AgentTryout, error) {
-	return repository.AgentTryout{ID: params.ID}, nil
+	f.updates = append(f.updates, params)
+	if f.updateErr != nil {
+		if err := f.updateErr(params); err != nil {
+			return repository.AgentTryout{}, err
+		}
+	}
+	return repository.AgentTryout{ID: params.ID, Status: params.Status}, nil
 }
 
 func (f *fakePublicTryoutRepo) RecordAgentTryoutEvent(_ context.Context, params repository.RecordAgentTryoutEventParams) (repository.AgentTryoutEvent, error) {

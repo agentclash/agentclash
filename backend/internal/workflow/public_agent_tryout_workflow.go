@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -47,6 +48,9 @@ func (a *Activities) ExecutePublicAgentTryout(ctx context.Context, input Execute
 		return wrapActivityError(fmt.Errorf("public tryout %s is workspace-owned", tryout.ID))
 	}
 
+	// A refused write (the tryout is terminal, for example because the API
+	// marked it failed after a start error) stops the activity. wrapActivityError
+	// makes these errors non-retryable.
 	if _, err := a.publicTryoutRepo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
 		ID:      tryout.ID,
 		Status:  repository.AgentTryoutStatusRunning,
@@ -62,17 +66,9 @@ func (a *Activities) ExecutePublicAgentTryout(ctx context.Context, input Execute
 
 	outputs, err := a.executePublicTryoutSandbox(ctx, tryout)
 	if err != nil {
-		redaction := repository.AgentTryoutRedactionNotRequired
-		_, _ = a.publicTryoutRepo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
-			ID:              tryout.ID,
-			Status:          repository.AgentTryoutStatusFailed,
-			Summary:         publicTryoutSummary("failed", "Hosted public tryout failed. Please try another task or sign in to keep working."),
-			LatencyMS:       int64Ptr(time.Since(started).Milliseconds()),
-			RedactionStatus: &redaction,
-		})
-		_ = a.recordPublicTryoutEvent(ctx, tryout.ID, runevents.EventTypeSystemRunFailed, map[string]any{
-			"status": "failed",
-		})
+		if !publicTryoutWriteRefused(err) {
+			a.markPublicTryoutFailed(ctx, tryout.ID, started)
+		}
 		return wrapActivityError(err)
 	}
 
@@ -121,6 +117,34 @@ func (a *Activities) ExecutePublicAgentTryout(ctx context.Context, input Execute
 		return wrapActivityError(err)
 	}
 	return nil
+}
+
+// markPublicTryoutFailed records the failure of a running tryout. The write
+// expects the tryout to be running, so it never rewrites the summary or the
+// redaction status of a tryout that another writer already ended.
+func (a *Activities) markPublicTryoutFailed(ctx context.Context, tryoutID uuid.UUID, started time.Time) {
+	running := repository.AgentTryoutStatusRunning
+	redaction := repository.AgentTryoutRedactionNotRequired
+	_, err := a.publicTryoutRepo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
+		ID:              tryoutID,
+		Status:          repository.AgentTryoutStatusFailed,
+		ExpectedStatus:  &running,
+		Summary:         publicTryoutSummary("failed", "Hosted public tryout failed. Please try another task or sign in to keep working."),
+		LatencyMS:       int64Ptr(time.Since(started).Milliseconds()),
+		RedactionStatus: &redaction,
+	})
+	if publicTryoutWriteRefused(err) {
+		return
+	}
+	_ = a.recordPublicTryoutEvent(ctx, tryoutID, runevents.EventTypeSystemRunFailed, map[string]any{
+		"status": "failed",
+	})
+}
+
+// publicTryoutWriteRefused reports whether a tryout status write was refused
+// because the tryout is terminal or changed under the activity.
+func publicTryoutWriteRefused(err error) bool {
+	return errors.Is(err, repository.ErrInvalidTransition) || errors.Is(err, repository.ErrTransitionConflict)
 }
 
 // Interactive session tuning. The sandbox is kept alive while the user chats;
