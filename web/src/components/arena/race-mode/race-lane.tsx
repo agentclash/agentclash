@@ -4,16 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Play, CheckCircle2, Upload } from "lucide-react";
 
-import type { RunAgent, RunAgentStatus } from "@/lib/api/types";
+import type { RunAgent, RunStatus } from "@/lib/api/types";
 import type { ArenaLaneState } from "@/hooks/use-agent-arena";
 import { PEER_STANDINGS_INJECTED_HEADLINE } from "@/lib/arena/constants";
-
-const ACTIVE_STATUSES: RunAgentStatus[] = [
-  "queued",
-  "ready",
-  "executing",
-  "evaluating",
-];
+import { isAgentLive } from "@/lib/run-status";
 
 interface RaceLaneProps {
   agent: RunAgent;
@@ -24,6 +18,8 @@ interface RaceLaneProps {
   targetSteps: number;
   workspaceId: string;
   runId: string;
+  /** Status of the parent run. A terminal run stops every lane from animating. */
+  runStatus: RunStatus;
   /** Terminal-only content (e.g. scorecard summary). */
   footer?: React.ReactNode;
 }
@@ -36,9 +32,10 @@ export function RaceLane({
   targetSteps,
   workspaceId,
   runId,
+  runStatus,
   footer,
 }: RaceLaneProps) {
-  const isActive = ACTIVE_STATUSES.includes(agent.status);
+  const isActive = isAgentLive(agent.status, runStatus);
   const isFailed = agent.status === "failed";
 
   // Keep the elapsed clock ticking between SSE events. One timer per live

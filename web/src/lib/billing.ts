@@ -41,6 +41,28 @@ export function formatBillingLimit(value?: number | null): string {
   return value == null ? "Unlimited" : new Intl.NumberFormat().format(value);
 }
 
+/** How long the billing page polls after a Dodo checkout returns. */
+export const CHECKOUT_POLL_INTERVAL_MS = 4000;
+export const CHECKOUT_POLL_MAX_MS = 2 * 60 * 1000;
+
+/**
+ * State of the banner shown after a Dodo checkout returns. The backend only
+ * ever marks an intent completed, so an abandoned checkout stays pending
+ * forever. Polling stops after CHECKOUT_POLL_MAX_MS and the banner moves to
+ * "stalled", where the user can refresh by hand.
+ */
+export type CheckoutReturnState = "none" | "pending" | "stalled" | "synced";
+
+export function checkoutReturnState(
+  returned: boolean,
+  intentStatus: string | undefined,
+  pollTimedOut: boolean,
+): CheckoutReturnState {
+  if (!returned) return "none";
+  if (intentStatus === "completed") return "synced";
+  return pollTimedOut ? "stalled" : "pending";
+}
+
 export function isFreeActive(entitlements?: EffectiveEntitlements): boolean {
   return entitlements?.plan_key === "free" && entitlements.status === "active";
 }

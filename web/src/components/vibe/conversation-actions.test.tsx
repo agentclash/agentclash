@@ -76,3 +76,11 @@ it("retires choices while busy and hides other-scope or legacy questions", async
   delete session.document.conversation_state!.actions_version;
   await render(session); expect(node.textContent).toBe("");
 });
+it("shows the question again once a build answering it ends as partial", async () => {
+  const session = fixture();
+  session.document.build = { responding_to_question: questionID, cycle_id: scope, phase: "done", clarifications_used: 1 };
+  session.operations = [{ state: "RUNNING" } as Session["operations"][number]];
+  await render(session); expect(button("14 days")).toBeUndefined();
+  session.operations = [{ state: "PARTIAL" } as Session["operations"][number]];
+  await render(session); expect(button("14 days")).toBeDefined();
+});
