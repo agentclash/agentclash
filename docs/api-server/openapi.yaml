@@ -1756,7 +1756,14 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenError"
         "409":
-          $ref: "#/components/responses/ConflictError"
+          description: >
+            The user is already an active or invited member
+            (`already_a_member`), or the membership status changed while
+            the invite was being written (`transition_conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
@@ -1768,6 +1775,13 @@ paths:
       description: >
         Org admins can change role or status. Invited users can accept
         (transition invited to active). Invite expires after 7 days.
+        Allowed status changes: invited to active or archived, active to
+        suspended or archived, suspended to active or archived. An archived
+        member can only come back through a new invite. Suspending or
+        archiving a member also closes their workspace memberships in the
+        organization in the same transaction: an active workspace
+        membership becomes suspended (or archived), and a pending workspace
+        invite becomes archived.
       security:
         - bearerJWT: []
       parameters:
@@ -1786,6 +1800,61 @@ paths:
               schema:
                 $ref: "#/components/schemas/OrgMembershipResponse"
         "400":
+          description: >
+            Invalid request. `validation_error` is also returned when status
+            is not one of active, suspended, or archived.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: >
+            The requested status change is not allowed from the current
+            status (`invalid_transition`), the membership status changed
+            while the update was being written (`transition_conflict`), or
+            the update would remove the last organization admin
+            (`last_org_admin`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "410":
+          $ref: "#/components/responses/GoneError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/invites/organization/{inviteToken}:
+    patch:
+      operationId: acceptOrgInvite
+      tags: [OrgMemberships]
+      summary: Accept an organization invite
+      description: >
+        Accepts the invite that the token identifies and makes the
+        membership active. The token is single use.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/InviteToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInviteRequest"
+      responses:
+        "200":
+          description: Invite accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgMembershipResponse"
+        "400":
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
@@ -1794,7 +1863,13 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
         "409":
-          $ref: "#/components/responses/ConflictError"
+          description: >
+            The invite was accepted, archived, or changed by another request
+            (`transition_conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "410":
           $ref: "#/components/responses/GoneError"
         "415":
@@ -1931,7 +2006,14 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenError"
         "409":
-          $ref: "#/components/responses/ConflictError"
+          description: >
+            The user is already an active or invited member
+            (`already_a_member`), or the membership status changed while
+            the invite was being written (`transition_conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
@@ -1942,7 +2024,10 @@ paths:
       summary: Update a workspace membership
       description: >
         Workspace admins or org admins can change role or status. Invited
-        users can accept (transition invited to active).
+        users can accept (transition invited to active). The allowed status
+        changes are the same as for organization memberships. A workspace
+        membership cannot become active while the organization membership
+        of the user is suspended or archived.
       security:
         - bearerJWT: []
       parameters:
@@ -1961,7 +2046,16 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkspaceMembershipDetailResponse"
         "400":
-          $ref: "#/components/responses/ValidationError"
+          description: >
+            Invalid request. `validation_error` is also returned when status
+            is not one of active, suspended, or archived.
+            `org_membership_required` is returned when the membership would
+            become active but the organization membership is suspended,
+            archived, or missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -1969,7 +2063,69 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
         "409":
-          $ref: "#/components/responses/ConflictError"
+          description: >
+            The requested status change is not allowed from the current
+            status (`invalid_transition`), the membership status changed
+            while the update was being written (`transition_conflict`), or
+            the update would remove the last workspace admin
+            (`last_workspace_admin`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "410":
+          $ref: "#/components/responses/GoneError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/invites/workspace/{inviteToken}:
+    patch:
+      operationId: acceptWorkspaceInvite
+      tags: [WorkspaceMemberships]
+      summary: Accept a workspace invite
+      description: >
+        Accepts the invite that the token identifies and makes the
+        membership active. An invited organization membership is activated
+        first. The token is single use.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/InviteToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInviteRequest"
+      responses:
+        "200":
+          description: Invite accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceMembershipDetailResponse"
+        "400":
+          description: >
+            Invalid request, or the organization membership of the user is
+            suspended or archived (`org_membership_required`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: >
+            The invite was accepted, archived, or changed by another request
+            (`transition_conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "410":
           $ref: "#/components/responses/GoneError"
         "415":
@@ -7119,6 +7275,15 @@ components:
       schema:
         type: string
         format: uuid
+    InviteToken:
+      name: inviteToken
+      in: path
+      required: true
+      description: Invite token from the accept URL. It starts with `invite_`.
+      schema:
+        type: string
+        maxLength: 256
+        pattern: "^invite_[A-Za-z0-9_-]+$"
     ProfileID:
       name: profileID
       in: path
@@ -10015,6 +10180,16 @@ components:
           enum: [org_admin, org_member]
         status:
           type: string
+          enum: [active, suspended, archived]
+          description: Only the invite endpoint sets invited.
+
+    AcceptInviteRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active]
 
     OrgMembershipResponse:
       type: object
@@ -10083,6 +10258,8 @@ components:
           enum: [workspace_admin, workspace_member, workspace_viewer]
         status:
           type: string
+          enum: [active, suspended, archived]
+          description: Only the invite endpoint sets invited.
 
     WorkspaceMembershipDetailResponse:
       type: object

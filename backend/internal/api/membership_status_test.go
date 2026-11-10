@@ -27,7 +27,7 @@ func TestHandleMembershipErrorMapsStatusErrors(t *testing.T) {
 		{
 			name:       "invalid transition",
 			err:        repository.InvalidTransitionError{Entity: "organization membership", From: "archived", To: "active"},
-			wantStatus: http.StatusBadRequest,
+			wantStatus: http.StatusConflict,
 			wantCode:   "invalid_transition",
 		},
 		{

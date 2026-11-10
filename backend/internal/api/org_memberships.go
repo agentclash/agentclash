@@ -712,7 +712,7 @@ func handleMembershipError(w http.ResponseWriter, logger *slog.Logger, err error
 	case errors.Is(err, repository.ErrInvalidMembershipStatus):
 		writeError(w, http.StatusBadRequest, "validation_error", "status must be active, suspended, or archived")
 	case errors.Is(err, repository.ErrInvalidTransition):
-		writeError(w, http.StatusBadRequest, "invalid_transition", "invalid membership status transition")
+		writeError(w, http.StatusConflict, "invalid_transition", "invalid membership status transition")
 	case errors.Is(err, repository.ErrTransitionConflict):
 		writeError(w, http.StatusConflict, "transition_conflict", "membership status changed before the update could be applied")
 	default:
