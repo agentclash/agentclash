@@ -12,6 +12,8 @@ import (
 
 // Refund v2 has observed fixture checks, not AgentResult-v1 reply semantics.
 // These types are a read-only projection. SourceJSON remains the original bytes.
+// JSON numbers use float64 so integral decimal/exponent spellings have the same
+// meaning as in the language-neutral schema and MCP; bounds apply before any int conversion.
 type refundReport struct {
 	ReportID       string  `json:"report_id"`
 	RunID          string  `json:"run_id"`
@@ -27,20 +29,20 @@ type refundReport struct {
 	Execution struct {
 		Mode       string   `json:"mode"`
 		Status     string   `json:"status"`
-		PytestExit *int     `json:"pytest_exit_code"`
+		PytestExit *float64 `json:"pytest_exit_code"`
 		Duration   float64  `json:"duration_ms"`
 		Required   []string `json:"required_case_ids"`
 		Missing    []string `json:"missing_required_case_ids"`
 		Complete   bool     `json:"required_cases_complete"`
 	} `json:"execution"`
-	Summary  map[string]int `json:"summary"`
-	Cases    []refundCase   `json:"cases"`
+	Summary  map[string]float64 `json:"summary"`
+	Cases    []refundCase       `json:"cases"`
 	Failures []struct {
 		CaseID  string `json:"case_id"`
 		CheckID string `json:"check_id"`
 		Reason  string `json:"reason"`
 	} `json:"failures"`
-	Exit int `json:"exit_code"`
+	Exit float64 `json:"exit_code"`
 }
 type refundCase struct {
 	Case struct {
@@ -87,7 +89,7 @@ func validateRefundReport(source string) (refundReport, error) {
 	if json.Unmarshal([]byte(source), &r) != nil || r.ReportID != r.RunID {
 		return r, invalidSDK()
 	}
-	counts := map[string]int{"total": len(r.Cases), "passed": 0, "failed": 0, "skipped": 0, "errored": 0, "incomplete": 0, "metric_failures": 0}
+	counts := map[string]float64{"total": float64(len(r.Cases)), "passed": 0, "failed": 0, "skipped": 0, "errored": 0, "incomplete": 0, "metric_failures": 0}
 	ids := map[string]refundCase{}
 	expectedFailures := map[string]string{}
 	for _, c := range r.Cases {
@@ -150,7 +152,7 @@ func validateRefundReport(source string) (refundReport, error) {
 				expectedFailures[c.Case.ID+"/"+ch.ID] = ""
 			}
 		}
-		counts["metric_failures"] += failed
+		counts["metric_failures"] += float64(failed)
 		if c.Status == "passed" || c.Status == "failed" {
 			if !c.complete() {
 				return r, invalidSDK()
@@ -227,7 +229,7 @@ func validateRefundReport(source string) (refundReport, error) {
 		}
 		delete(expectedFailures, key)
 	}
-	code := 0
+	code := float64(0)
 	switch r.Execution.Status {
 	case "config_error":
 		code = 2
@@ -236,7 +238,7 @@ func validateRefundReport(source string) (refundReport, error) {
 	case "internal_error":
 		code = 4
 	case "completed":
-		if r.Execution.PytestExit == nil || *r.Execution.PytestExit < 0 || *r.Execution.PytestExit > 5 {
+		if r.Execution.PytestExit == nil || *r.Execution.PytestExit != math.Trunc(*r.Execution.PytestExit) || *r.Execution.PytestExit < 0 || *r.Execution.PytestExit > 5 {
 			return r, invalidSDK()
 		}
 		switch *r.Execution.PytestExit {
@@ -317,9 +319,10 @@ func refundCheckSource(c refundCheck) *string {
 	return nil
 }
 func refundCheckTurn(c refundCheck) *int {
-	var n int
-	if json.Unmarshal(c.Evidence["turn"], &n) == nil && n >= 1 && n <= 10 {
-		return &n
+	var n float64
+	if json.Unmarshal(c.Evidence["turn"], &n) == nil && n >= 1 && n <= 10 && n == math.Trunc(n) {
+		turn := int(n)
+		return &turn
 	}
 	return nil
 }

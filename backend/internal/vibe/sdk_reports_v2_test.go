@@ -3,6 +3,7 @@ package vibe
 import (
 	"encoding/json"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -276,5 +277,96 @@ func TestSDKRefundV2JSONBudgetPreservesAuthority(t *testing.T) {
 	// Shared v1 data imports retain their prior inert-key behavior.
 	if _, err := DecodeSDKReport(sdkEnvelope(t, "agent_result", `{"input":"original","metadata":{"extra":{"constructor":{"$ref":"inert"}}}}`)); err != nil {
 		t.Fatal("v1 changed", err)
+	}
+}
+
+func replaceRefundNumber(t *testing.T, source, key, old, spelling string) string {
+	t.Helper()
+	before := `"` + key + `": ` + old
+	if !strings.Contains(source, before) {
+		t.Fatalf("numeric fixture field missing: %s", before)
+	}
+	return strings.Replace(source, before, `"`+key+`": `+spelling, 1)
+}
+
+func TestSDKRefundV2IntegralJSONSpellings(t *testing.T) {
+	original := refundFixture(t, "openai-correct-v2")
+	baseline, err := validateRefundReport(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := map[string]string{"total": "1", "passed": "1", "failed": "0", "skipped": "0", "errored": "0", "incomplete": "0", "metric_failures": "0", "pytest_exit_code": "0", "exit_code": "0", "turn": "1"}
+	for key, number := range fields {
+		for _, spelling := range []string{number + ".0", number + "e0", number + ".0e0"} {
+			t.Run(key+"/"+spelling, func(t *testing.T) {
+				source := replaceRefundNumber(t, original, key, number, spelling)
+				in, err := DecodeSDKReport(refundEnvelope(t, source))
+				if err != nil {
+					t.Fatal("equivalent integral JSON rejected", err)
+				}
+				if in.SourceJSON != source || Hash([]byte(in.SourceJSON)) == Hash([]byte(original)) {
+					t.Fatal("original representation was normalized")
+				}
+				got, err := validateRefundReport(in.SourceJSON)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(got.Summary, baseline.Summary) || got.Exit != baseline.Exit || *got.Execution.PytestExit != *baseline.Execution.PytestExit || string(refundProvenance(got)) != string(refundProvenance(baseline)) {
+					t.Fatal("equivalent source changed semantic projection")
+				}
+				c, err := SDKReportCase(SDKReport{SourceKind: "eval_report", SourceSchemaVersion: 2, SourceJSON: source, Cases: in.Metadata.Cases}, in.Metadata.Cases[0].SourceCaseID, "")
+				if err != nil || c.Verdict != Pass || !strings.Contains(c.Checks[0].Evidence, `"turn":1`) {
+					t.Fatal("case view lost integral turn", c, err)
+				}
+			})
+		}
+	}
+}
+
+func TestSDKRefundV2NumericContractBounds(t *testing.T) {
+	original := refundFixture(t, "openai-correct-v2")
+	var envelope SDKReportImport
+	if err := json.Unmarshal(refundEnvelope(t, original), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	numericEnvelope := func(source string) []byte { envelope.SourceJSON = source; return raw(envelope) }
+	for key, number := range map[string]string{"total": "1", "passed": "1", "failed": "0", "skipped": "0", "errored": "0", "incomplete": "0", "metric_failures": "0"} {
+		for _, spelling := range []string{"-1", "0.5", "10001", "1e309", `"0"`} {
+			t.Run(key+"/"+spelling, func(t *testing.T) {
+				source := replaceRefundNumber(t, original, key, number, spelling)
+				if _, err := DecodeSDKReport(numericEnvelope(source)); err == nil {
+					t.Fatal("invalid summary numeric value accepted")
+				}
+			})
+		}
+	}
+	for key, invalid := range map[string][]string{"pytest_exit_code": {"-1", "6", "0.5", "1e309", `"0"`, "null"}, "exit_code": {"-1", "5", "0.5", "1e309", `"0"`, "null"}} {
+		for _, spelling := range invalid {
+			t.Run(key+"/"+spelling, func(t *testing.T) {
+				source := replaceRefundNumber(t, original, key, "0", spelling)
+				if _, err := DecodeSDKReport(numericEnvelope(source)); err == nil {
+					t.Fatal("invalid execution numeric value accepted")
+				}
+			})
+		}
+	}
+	// Evidence is explicitly arbitrary bounded JSON. Unsupported turn values are
+	// retained in the original but excluded from the known safe provenance view.
+	for _, spelling := range []string{"-1", "0", "11", "1.5", "1e100", `"1"`, "null"} {
+		t.Run("turn/"+spelling, func(t *testing.T) {
+			source := replaceRefundNumber(t, original, "turn", "1", spelling)
+			in, err := DecodeSDKReport(numericEnvelope(source))
+			if err != nil || in.SourceJSON != source {
+				t.Fatal("raw turn evidence lost", err)
+			}
+			got, err := validateRefundReport(source)
+			if err != nil || refundCheckTurn(got.Cases[0].Checks[0]) != nil {
+				t.Fatal("unsupported turn projected as known", err)
+			}
+			c, err := SDKReportCase(SDKReport{SourceKind: "eval_report", SourceSchemaVersion: 2, SourceJSON: source, Cases: in.Metadata.Cases}, in.Metadata.Cases[0].SourceCaseID, "")
+			if err != nil || !strings.Contains(c.Checks[0].Evidence, `"turn":null`) {
+				t.Fatal("unknown turn not preserved in case view", err)
+			}
+		})
 	}
 }

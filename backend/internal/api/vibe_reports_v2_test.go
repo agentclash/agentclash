@@ -26,6 +26,11 @@ func refundImport(t *testing.T, a vibe.Artifact) vibe.SDKReportImport {
 	return vibe.SDKReportImport{EnvelopeVersion: 1, SourceKind: "eval_report", SourceSchemaVersion: 2, SourceJSON: " \r\n" + string(b) + "\t\n", Metadata: vibe.SDKImportMetadata{ArtifactID: a.ID, CaptureScope: vibe.UnknownCaptureScope(), Cases: []vibe.SDKCaseBinding{{SourceCaseID: "DEMO-repeat-refund-01", CaseKey: "eligible"}}}}
 }
 func TestVibeSDKRefundV2HTTPRoundtrip(t *testing.T) {
+	for _, representation := range []string{"original", "integral-spellings"} {
+		t.Run(representation, func(t *testing.T) { testVibeSDKRefundV2HTTPRoundtrip(t, representation) })
+	}
+}
+func testVibeSDKRefundV2HTTPRoundtrip(t *testing.T, representation string) {
 	h, ws, a := sdkHarness(t)
 	spy := &recordingPostHog{}
 	h.svc.Store.WithProductAnalytics(productanalytics.New(spy))
@@ -56,6 +61,15 @@ func TestVibeSDKRefundV2HTTPRoundtrip(t *testing.T) {
 	}
 	base := "/v1/vibe/sessions/" + h.session.ID.String()
 	in := refundImport(t, a)
+	original := in.SourceJSON
+	if representation == "integral-spellings" {
+		for key, number := range map[string]string{"total": "1", "passed": "1", "failed": "0", "skipped": "0", "errored": "0", "incomplete": "0", "metric_failures": "0", "pytest_exit_code": "0", "exit_code": "0", "turn": "1"} {
+			in.SourceJSON = strings.ReplaceAll(in.SourceJSON, `"`+key+`": `+number, `"`+key+`": `+number+`.0e0`)
+		}
+		if vibe.Hash([]byte(original)) == vibe.Hash([]byte(in.SourceJSON)) {
+			t.Fatal("representation unchanged")
+		}
+	}
 	body := mustJSON(t, in)
 	code, b, _ := request("GET", "/v1/vibe/config", nil)
 	if code != 200 || !bytes.Contains(b, []byte(`"source_schema_version":2`)) {
@@ -103,6 +117,17 @@ func TestVibeSDKRefundV2HTTPRoundtrip(t *testing.T) {
 	json.Unmarshal(b, &c)
 	if code != 200 || c.Verdict != vibe.Pass || len(c.Checks) != 10 || c.Output != "" || c.Expected != "" {
 		t.Fatal("case view", code, string(b))
+	}
+	if !strings.Contains(c.Checks[0].Evidence, `"turn":1`) {
+		t.Fatal("integral turn lost", c.Checks[0])
+	}
+	if representation == "integral-spellings" {
+		copy := in
+		copy.SourceJSON = original
+		code, b, _ = request("POST", base+"/reports", mustJSON(t, copy))
+		if code != 409 {
+			t.Fatal("equivalent numbers must retain distinct request identity", code, string(b))
+		}
 	}
 	for _, change := range []func(*vibe.SDKReportImport){func(x *vibe.SDKReportImport) { x.SourceJSON += " " }, func(x *vibe.SDKReportImport) { revision := "other"; x.Metadata.ApplicationRevision = &revision }} {
 		copy := in
