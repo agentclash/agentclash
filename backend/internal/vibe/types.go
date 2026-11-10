@@ -37,6 +37,11 @@ func (s Execution) Terminal() bool {
 func busyStates() []string {
 	return []string{string(AwaitingApproval), string(Queued), string(Running), string(Finalizing), string(Cancelling)}
 }
+
+// CanTransition has no move into AwaitingInput. The only move out of it is
+// the move to Cancelling, which applies to each state that is not terminal.
+// Nothing writes AwaitingInput. The question flow uses the build phase
+// "clarifying". The constant agrees with the DB CHECK, thus it stays.
 func CanTransition(from, to Execution) bool {
 	if from.Terminal() {
 		return false
@@ -48,8 +53,8 @@ func CanTransition(from, to Execution) bool {
 	case Created:
 		return to == Validating
 	case Validating:
-		return to == AwaitingInput || to == AwaitingApproval || to == Reserved || to == Failed
-	case AwaitingInput, AwaitingApproval:
+		return to == AwaitingApproval || to == Reserved || to == Failed
+	case AwaitingApproval:
 		return to == Validating || to == Expired || to == Cancelled
 	case Reserved:
 		return to == Queued || to == Failed || to == Expired

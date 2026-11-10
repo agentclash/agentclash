@@ -108,6 +108,20 @@ func TestStateMachine(t *testing.T) {
 			t.Fatal(pair)
 		}
 	}
+	// Nothing writes AwaitingInput. The question flow uses the build phase
+	// "clarifying". The expiry sweep and busyStates do not include the state,
+	// so the state machine must not move an operation into it. The old moves
+	// out of it to Validating, Expired and Cancelled are also gone.
+	for _, pair := range [][2]Execution{{Validating, AwaitingInput}, {AwaitingInput, Validating}, {AwaitingInput, Expired}, {AwaitingInput, Cancelled}} {
+		if CanTransition(pair[0], pair[1]) {
+			t.Fatalf("CanTransition(%s, %s) = true, want false", pair[0], pair[1])
+		}
+	}
+	for _, pair := range [][2]Execution{{Validating, AwaitingApproval}, {AwaitingApproval, Validating}, {AwaitingApproval, Expired}, {AwaitingApproval, Cancelled}, {AwaitingApproval, Cancelling}} {
+		if !CanTransition(pair[0], pair[1]) {
+			t.Fatalf("CanTransition(%s, %s) = false, want true", pair[0], pair[1])
+		}
+	}
 }
 func TestBusyStatesKeepTheSharedSet(t *testing.T) {
 	// The same set that each busy-project query used as a literal list.

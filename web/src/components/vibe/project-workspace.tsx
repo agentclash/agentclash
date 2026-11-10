@@ -130,7 +130,6 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   // Progress, Stop and Approve live in the progress strip, so Guide flags only what needs Guide.
   // A brief has no Guide (its chat is the Agent view), so it has no Guide flag either.
   const guideAttention = initialBrief ? undefined
-    : active?.state === "AWAITING_INPUT" ? "Input needed"
     : guideRecovery ? "Needs attention"
     : p.interactionActions && hasConversationChoice(session) ? "Review needed"
     : latestResponse && read !== latestResponse.id ? "New response" : undefined;
