@@ -53,7 +53,10 @@ export function StartGenerationDialog({
 }: StartGenerationDialogProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Polling runs one request at a time. Each start or stop bumps the token, so
+  // a response from an older poll can never overwrite newer job state.
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollTokenRef = useRef(0);
   const modelRequestRef = useRef<Record<string, number>>({});
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -113,11 +116,13 @@ export function StartGenerationDialog({
   const [loadingJobRejections, setLoadingJobRejections] = useState(false);
   const [recentJobs, setRecentJobs] = useState<DatasetGenerationJob[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [pollError, setPollError] = useState<string | null>(null);
 
   const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
+    pollTokenRef.current += 1;
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
     }
   }, []);
 
@@ -283,6 +288,7 @@ export function StartGenerationDialog({
       void loadRecentJobs();
       setJob(null);
       setJobRejections([]);
+      setPollError(null);
     } else {
       stopPolling();
     }
@@ -300,7 +306,9 @@ export function StartGenerationDialog({
 
   function startPolling(jobId: string) {
     stopPolling();
-    pollRef.current = setInterval(async () => {
+    setPollError(null);
+    const pollToken = pollTokenRef.current;
+    const poll = async () => {
       try {
         const token = await getAccessToken();
         const api = createApiClient(token);
@@ -310,6 +318,7 @@ export function StartGenerationDialog({
           datasetId,
           jobId,
         );
+        if (pollTokenRef.current !== pollToken) return;
         setJob(next);
         if (next.status === "completed" || next.status === "failed") {
           stopPolling();
@@ -322,11 +331,21 @@ export function StartGenerationDialog({
           } else {
             toast.error(next.error_message ?? "Generation failed");
           }
+          return;
         }
-      } catch {
+      } catch (err) {
+        if (pollTokenRef.current !== pollToken) return;
         stopPolling();
+        setPollError(
+          err instanceof ApiError
+            ? err.message
+            : "Could not check the job status.",
+        );
+        return;
       }
-    }, 3000);
+      pollTimerRef.current = setTimeout(poll, 3000);
+    };
+    pollTimerRef.current = setTimeout(poll, 3000);
   }
 
   async function handleStart() {
@@ -625,7 +644,18 @@ export function StartGenerationDialog({
                 )}
               </div>
             ) : null}
-            {(job.status === "queued" || job.status === "running") && (
+            {pollError ? (
+              <div role="alert" className="flex items-center gap-2 text-destructive">
+                <span>Stopped checking for updates: {pollError}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => startPolling(job.id)}
+                >
+                  Check again
+                </Button>
+              </div>
+            ) : (job.status === "queued" || job.status === "running") && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
                 Polling for completion…

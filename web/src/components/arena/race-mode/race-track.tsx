@@ -1,7 +1,8 @@
 "use client";
 
-import type { RunAgent } from "@/lib/api/types";
+import type { RunAgent, RunStatus } from "@/lib/api/types";
 import type { ArenaLaneState } from "@/hooks/use-agent-arena";
+import { isRunTerminal } from "@/lib/run-status";
 import { deriveLeader } from "./utils";
 
 /**
@@ -19,6 +20,7 @@ interface RaceTrackProps {
   lanes: Record<string, ArenaLaneState>;
   targetSteps: number;
   winnerAgentId?: string;
+  runStatus: RunStatus;
 }
 
 export function RaceTrack({
@@ -26,12 +28,17 @@ export function RaceTrack({
   lanes,
   targetSteps,
   winnerAgentId,
+  runStatus,
 }: RaceTrackProps) {
   const agentCount = ranked.length;
-  const activeCount = ranked.filter(
-    ({ agent }) =>
-      agent.status === "executing" || agent.status === "evaluating",
-  ).length;
+  // Agents of a terminal run can keep a non-terminal status (cancel leaves
+  // them as they were), so a finished run never reports active lanes.
+  const activeCount = isRunTerminal(runStatus)
+    ? 0
+    : ranked.filter(
+        ({ agent }) =>
+          agent.status === "executing" || agent.status === "evaluating",
+      ).length;
   const maxStep = ranked.reduce(
     (m, { agent }) => Math.max(m, lanes[agent.id]?.stepIndex ?? 0),
     0,

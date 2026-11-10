@@ -33,6 +33,7 @@ import {
   comboRepeatLabel,
   completionPercent,
   displayRef,
+  evalSetLiveKey,
   evalSetStatusLabel,
   inFlightCount,
   matrixCellStateLabel,
@@ -132,10 +133,12 @@ function EvalSetDetailInner({
   const sessionIds = detail?.eval_session_ids ?? [];
   const active =
     !!detail && EVAL_SET_ACTIVE.includes(detail.eval_set.status);
-  const liveKey =
-    active && sessionIds.length > 0
-      ? (["eval-set-live", evalSetId, ...sessionIds] as const)
-      : null;
+  // Kept after the set ends so the matrix shows final cell states.
+  const liveKey = evalSetLiveKey(
+    evalSetId,
+    detail?.eval_set.status,
+    sessionIds,
+  );
 
   const { data: live = {} } = useSWR<LiveStatusMap>(
     liveKey,
@@ -164,7 +167,9 @@ function EvalSetDetailInner({
     },
     {
       refreshInterval: active ? POLL_MS : 0,
-      revalidateOnFocus: true,
+      revalidateOnFocus: active,
+      // Keep the last known cells while the final fetch runs.
+      keepPreviousData: true,
     },
   );
 

@@ -14,7 +14,11 @@ import type {
   ReplayStep,
   TranscriptResponse,
 } from "@/lib/api/types";
-import { isAgentAwaitingHumanInput, isRunActive } from "@/lib/run-status";
+import {
+  isAgentAwaitingHumanInput,
+  isRunActive,
+  isRunTerminal,
+} from "@/lib/run-status";
 import { getRunAgentTranscript } from "@/lib/api/multi-turn";
 import { Badge } from "@/components/ui/badge";
 import { ReplayTimeline } from "@/components/replay/replay-timeline";
@@ -84,7 +88,10 @@ export function ReplayViewerClient({
   const isErrored = replayData.state === "errored";
   const isReady = replayData.state === "ready";
   const isRunActiveStatus = isRunActive(liveRunStatus);
-  const awaitingHumanEnabled = isAgentAwaitingHumanInput(liveAgent.status);
+  // A cancelled run leaves its agents in executing, so the run status wins.
+  const awaitingHumanEnabled =
+    !isRunTerminal(liveRunStatus) &&
+    isAgentAwaitingHumanInput(liveAgent.status);
 
   // Keep agent/run status fresh while the run is active so the human-input banner can appear.
   useEffect(() => {
