@@ -3,6 +3,7 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -42,8 +43,8 @@ func StandingsField(runAgentID uuid.UUID) string { return racecontext.FieldName(
 const standingsTTL = time.Hour
 
 // RedisStandingsStore persists standings as JSON in a Redis hash, one
-// field per agent. Updates are merged server-side after reading the
-// existing value — see racecontext.MergeEntry for the exact merge rules.
+// field per agent. Updates read, merge and write one field in a WATCH
+// transaction — see racecontext.MergeEntry for the exact merge rules.
 type RedisStandingsStore struct {
 	client *redis.Client
 }
@@ -57,6 +58,16 @@ func NewRedisStandingsStore(client *redis.Client) *RedisStandingsStore {
 	return &RedisStandingsStore{client: client}
 }
 
+// standingsUpdateMaxAttempts bounds the optimistic retries of one Update.
+// Each failed attempt means that another writer committed, so the run as a
+// whole always makes progress.
+const standingsUpdateMaxAttempts = 100
+
+// Update merges one partial update atomically. The read, merge and write
+// run under WATCH on the run's hash: if another writer changes the hash
+// before EXEC, Redis drops the transaction and Update reads again. Without
+// this, two concurrent updates for one agent read the same entry and the
+// second write loses the first one's tool-call and token increments.
 func (s *RedisStandingsStore) Update(ctx context.Context, runID uuid.UUID, updates racecontext.StandingsEntry) error {
 	if updates.RunAgentID == uuid.Nil {
 		return fmt.Errorf("standings update requires run_agent_id")
@@ -64,25 +75,39 @@ func (s *RedisStandingsStore) Update(ctx context.Context, runID uuid.UUID, updat
 	key := racecontext.HashKey(runID)
 	field := racecontext.FieldName(updates.RunAgentID)
 
-	existing, err := s.fetchEntry(ctx, key, field)
-	if err != nil {
+	merge := func(tx *redis.Tx) error {
+		existing, err := fetchEntry(ctx, tx, key, field)
+		if err != nil {
+			return err
+		}
+		merged := racecontext.MergeEntry(existing, updates)
+		merged.LastEventAt = time.Now().UTC()
+
+		payload, err := json.Marshal(merged)
+		if err != nil {
+			return fmt.Errorf("marshal standings entry: %w", err)
+		}
+		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+			pipe.HSet(ctx, key, field, payload)
+			pipe.Expire(ctx, key, standingsTTL)
+			return nil
+		})
 		return err
 	}
-	merged := racecontext.MergeEntry(existing, updates)
-	merged.LastEventAt = time.Now().UTC()
 
-	payload, err := json.Marshal(merged)
-	if err != nil {
-		return fmt.Errorf("marshal standings entry: %w", err)
+	for attempt := 0; attempt < standingsUpdateMaxAttempts; attempt++ {
+		err := s.client.Watch(ctx, merge, key)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, redis.TxFailedErr) {
+			return fmt.Errorf("redis update standings: %w", err)
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return fmt.Errorf("redis update standings: %w", ctxErr)
+		}
 	}
-
-	pipe := s.client.TxPipeline()
-	pipe.HSet(ctx, key, field, payload)
-	pipe.Expire(ctx, key, standingsTTL)
-	if _, err := pipe.Exec(ctx); err != nil {
-		return fmt.Errorf("redis hset standings: %w", err)
-	}
-	return nil
+	return fmt.Errorf("redis update standings: hash changed during %d attempts", standingsUpdateMaxAttempts)
 }
 
 func (s *RedisStandingsStore) Snapshot(ctx context.Context, runID uuid.UUID) (map[uuid.UUID]racecontext.StandingsEntry, error) {
@@ -128,10 +153,10 @@ func decodeStandingsHashField(field string, value []byte) (racecontext.Standings
 
 func (s *RedisStandingsStore) Close() error { return nil }
 
-func (s *RedisStandingsStore) fetchEntry(ctx context.Context, key, field string) (racecontext.StandingsEntry, error) {
-	raw, err := s.client.HGet(ctx, key, field).Result()
+func fetchEntry(ctx context.Context, tx *redis.Tx, key, field string) (racecontext.StandingsEntry, error) {
+	raw, err := tx.HGet(ctx, key, field).Result()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return racecontext.StandingsEntry{}, nil
 		}
 		return racecontext.StandingsEntry{}, fmt.Errorf("redis hget standings: %w", err)
