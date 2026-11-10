@@ -1,28 +1,22 @@
 import type { RunAgentStatus, RunStatus } from "@/lib/api/types";
+import { nonTerminalStates, terminalStates } from "@/lib/status-lifecycles";
 
-// Mirrors RunStatus and RunAgentStatus in runtime/domain/run.go.
+// Read from the server lifecycles (runtime/domain/run.go) through
+// status-lifecycles.ts.
 
-export const ACTIVE_RUN_STATUSES: RunStatus[] = [
-  "queued",
-  "provisioning",
-  "running",
-  "scoring",
+/** A run that was submitted and has not ended. A draft run is not active. */
+export const ACTIVE_RUN_STATUSES: RunStatus[] = nonTerminalStates("run").filter(
+  (status) => status !== "draft",
+);
+
+export const TERMINAL_RUN_STATUSES: RunStatus[] = [...terminalStates("run")];
+
+export const ACTIVE_AGENT_STATUSES: RunAgentStatus[] =
+  nonTerminalStates("run_agent");
+
+export const TERMINAL_AGENT_STATUSES: RunAgentStatus[] = [
+  ...terminalStates("run_agent"),
 ];
-
-export const TERMINAL_RUN_STATUSES: RunStatus[] = [
-  "completed",
-  "failed",
-  "cancelled",
-];
-
-export const ACTIVE_AGENT_STATUSES: RunAgentStatus[] = [
-  "queued",
-  "ready",
-  "executing",
-  "evaluating",
-];
-
-export const TERMINAL_AGENT_STATUSES: RunAgentStatus[] = ["completed", "failed"];
 
 export function isRunActive(status: RunStatus): boolean {
   return ACTIVE_RUN_STATUSES.includes(status);

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Run, RunStatus } from "@/lib/api/types";
+import type { Run } from "@/lib/api/types";
+import { isRunActive } from "@/lib/run-status";
 import { usePaginatedApiQuery } from "@/lib/api/swr";
 import { workspacePageSizes } from "@/lib/workspace-resource";
 import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
@@ -25,12 +26,6 @@ import { isVoiceRun, voiceRunMode, voiceRunTransport } from "@/lib/voice-evals";
 import { Play, ChevronLeft, ChevronRight, GitCompare } from "lucide-react";
 import { runStatusVariant } from "./status-variant";
 
-const ACTIVE_STATUSES: RunStatus[] = [
-  "queued",
-  "provisioning",
-  "running",
-  "scoring",
-];
 const POLL_INTERVAL_MS = 5000;
 
 const PAGE_SIZE = workspacePageSizes.runs;
@@ -52,7 +47,7 @@ export function RunList({
     { limit: PAGE_SIZE, offset },
     {
       refreshInterval: (response) =>
-        response?.items.some((run) => ACTIVE_STATUSES.includes(run.status))
+        response?.items.some((run) => isRunActive(run.status))
           ? POLL_INTERVAL_MS
           : 0,
     },
