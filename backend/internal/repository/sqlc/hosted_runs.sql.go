@@ -217,10 +217,10 @@ func (q *Queries) MarkHostedRunExecutionFailed(ctx context.Context, arg MarkHost
 
 const markHostedRunExecutionTimedOut = `-- name: MarkHostedRunExecutionTimedOut :one
 UPDATE hosted_run_executions
-SET status = CASE WHEN status IN ('completed','failed') THEN status ELSE 'unknown' END,
+SET status = 'unknown',
     error_message = $1,
     finished_at = COALESCE(finished_at, now())
-WHERE run_agent_id = $2 AND status NOT IN ('completed','failed')
+WHERE run_agent_id = $2 AND status NOT IN ('completed','failed','timed_out')
 RETURNING id, run_id, run_agent_id, endpoint_url, trace_level, status, external_run_id, accepted_response, last_event_type, last_event_payload, result_payload, error_message, deadline_at, accepted_at, started_at, finished_at, created_at, updated_at, dispatch_claimed_at
 `
 
@@ -229,6 +229,10 @@ type MarkHostedRunExecutionTimedOutParams struct {
 	RunAgentID   uuid.UUID
 }
 
+// The callback deadline ends the wait, not the remote run. The outcome stays
+// unknown for reconciliation, and finished_at marks that the wait is over, so
+// a late callback cannot change the status. Final statuses keep their value;
+// timed_out is the final status that binaries before migration 00090 wrote.
 func (q *Queries) MarkHostedRunExecutionTimedOut(ctx context.Context, arg MarkHostedRunExecutionTimedOutParams) (HostedRunExecution, error) {
 	row := q.db.QueryRow(ctx, markHostedRunExecutionTimedOut, arg.ErrorMessage, arg.RunAgentID)
 	var i HostedRunExecution
