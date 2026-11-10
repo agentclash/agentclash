@@ -37,7 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { evalSessionStatusVariant, runStatusVariant } from "../../runs/status-variant";
+import { evalSessionStatusVariant, runStatusVariant } from "@/lib/status-variant";
 
 const POLL_INTERVAL_MS = 5000;
 

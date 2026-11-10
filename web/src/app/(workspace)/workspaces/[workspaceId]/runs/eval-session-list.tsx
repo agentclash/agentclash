@@ -26,7 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { evalSessionStatusVariant } from "./status-variant";
+import { evalSessionStatusVariant } from "@/lib/status-variant";
 
 const PAGE_SIZE = workspacePageSizes.runs;
 const POLL_INTERVAL_MS = 5000;

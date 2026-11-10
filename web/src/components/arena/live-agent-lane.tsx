@@ -20,22 +20,11 @@ import { Badge } from "@/components/ui/badge";
 import { UploadArtifactDialog } from "@/components/artifacts/upload-artifact-dialog";
 import { LiveEventTicker } from "@/components/arena/live-event-ticker";
 import { cn } from "@/lib/utils";
-import type { RunAgent, RunAgentStatus, RunStatus } from "@/lib/api/types";
+import type { RunAgent, RunStatus } from "@/lib/api/types";
 import { isAgentLive } from "@/lib/run-status";
+import { runAgentStatusVariant } from "@/lib/status-variant";
 import type { ArenaLaneState } from "@/hooks/use-agent-arena";
 import type { ArenaEventKind } from "@/lib/arena/event-formatter";
-
-const AGENT_STATUS_VARIANT: Record<
-  RunAgentStatus,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  queued: "secondary",
-  ready: "secondary",
-  executing: "outline",
-  evaluating: "outline",
-  completed: "default",
-  failed: "destructive",
-};
 
 const NOW_DOING_ICON: Record<
   ArenaEventKind,
@@ -122,7 +111,7 @@ export function LiveAgentLane({
             #{agent.lane_index}
           </span>
         </div>
-        <Badge variant={AGENT_STATUS_VARIANT[agent.status] ?? "outline"}>
+        <Badge variant={runAgentStatusVariant[agent.status] ?? "outline"}>
           {isActive && (
             <Loader2
               data-icon="inline-start"

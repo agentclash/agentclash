@@ -24,12 +24,11 @@ import {
   isRunLive,
   isRunTerminal,
 } from "@/lib/run-status";
+import { runStatusVariant } from "@/lib/status-variant";
 import { isVoiceRun, voiceRunMode, voiceRunTransport } from "@/lib/voice-evals";
 import type {
   Run,
-  RunStatus,
   RunAgent,
-  RunAgentStatus,
   RunRankingResponse,
   RankingItem,
   ScorecardResponse,
@@ -64,22 +63,6 @@ import { Panel } from "./agents/[runAgentId]/scorecard/components/panel";
 import { RunRankingInsightsCard } from "./run-ranking-insights-card";
 import { ScorecardSummaryCard } from "./scorecard-summary-card";
 import { AwaitingHumanBanner } from "@/components/replay/awaiting-human-banner";
-
-// --- Status variant maps ---
-
-const runStatusVariant: Record<
-  RunStatus,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  draft: "outline",
-  queued: "secondary",
-  provisioning: "secondary",
-  running: "outline",
-  scoring: "outline",
-  completed: "default",
-  failed: "destructive",
-  cancelled: "secondary",
-};
 
 const POLL_MS = 5000;
 

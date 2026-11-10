@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { VoiceModeBadges } from "@/components/voice/voice-mode-badges";
 import { isVoiceRun, voiceRunMode, voiceRunTransport } from "@/lib/voice-evals";
 import { Play, ChevronLeft, ChevronRight, GitCompare } from "lucide-react";
-import { runStatusVariant } from "./status-variant";
+import { runStatusVariant } from "@/lib/status-variant";
 
 const POLL_INTERVAL_MS = 5000;
 
