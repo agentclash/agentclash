@@ -33,3 +33,10 @@
 
 - Covered by loopback browser/HTTP fixtures: inspect catalog/no-store, send stale create without protocol and verify structured rejection/no cookie/no service work, send supported create and verify creator cookie protection. Do not probe production.
 - Source readiness is distinct from the separately staged/promoted backend release; no production rollout is claimed.
+
+## Required upstream integration amendment
+
+- Merge upstream main 4fac4f06c76dfa728d65ddba7b7fc25270660d99 before completing implementation; preserve lifecycle, organization-access and active-turn lease guards alongside creator proof and terminal claim checks. Resolve overlapping code semantically.
+- Rename creator-proof migration from 00095 to the next free version (currently 00097), preserving SQL bytes and updating ordered-migration references. Upstream owns 00095 device auth and 00096 turn leases.
+- Apply all migrations to an owned disposable PostgreSQL database, validate creator claim atomicity and relevant new lifecycle/turn/access behavior. No existing customer DB or production migration.
+- Integrate root-provided final merged CORS-preparation main before final actual-tree validation. Record integration base, conflicts and migration filename separately.
