@@ -31,7 +31,8 @@ table.
 
 ## Explicit lifecycles
 
-These lifecycles have a transition table, a SQL guard, and tests.
+These lifecycles have a transition table, a guard on the old status, and
+tests.
 
 | Resource | Owner | Terminal states | Published in `agentclash schema` |
 |---|---|---|---|
@@ -41,47 +42,71 @@ These lifecycles have a transition table, a SQL guard, and tests.
 | Eval set | `runtime/domain/eval_set.go` | completed, failed, cancelled, budget_exceeded | yes, `eval_set` |
 | Regression suite | `runtime/domain/regression.go` | none (archived can go back to active) | yes, `regression_suite` |
 | Regression case | `runtime/domain/regression.go` | archived, rejected | yes, `regression_case` |
-| Agent harness execution | `backend/internal/repository/agent_harness_executions.go` | completed, failed, cancelled | no (the table is in the backend module) |
+| Agent harness execution | `backend/internal/repository/agent_harness_executions.go` | completed, failed, cancelled | no |
+| Agent tryout | `backend/internal/repository/agent_tryouts.go` | completed, failed, cancelled | no |
+| Organization membership | `backend/internal/repository/membership_status.go` | none (re-invite moves archived to invited) | no |
+| Workspace membership | `backend/internal/repository/membership_status.go` | none (re-invite moves archived to invited) | no |
+| Device auth code | `backend/internal/repository/device_auth_status.go` | denied, expired, consumed | no |
+| Hosted run execution | `backend/internal/repository/hosted_run_status.go` | completed, failed, timed_out | no |
+| Race standings entry (Redis) | `backend/internal/racecontext/types.go` (`StandingsState`) | submitted, failed, timed_out | no |
 | Vibe operation | `backend/internal/vibe/types.go` (`CanTransition`) | COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED | no |
 
-Two facts that the tables do not show:
+The tables in `runtime/domain` are published to the CLI and the web app. The
+tables in the backend module are not published, because no client polls them
+through a shared list.
+
+Facts that the tables do not show:
 
 - Run agents have no cancelled status. A cancelled run leaves its agents in
   their last status. To know when a run ends, follow the run status.
 - `budget_exceeded` ends an eval set before it finishes. The CLI exits with
   code 1 for it.
+- A hosted run execution in `unknown` has an outcome that nobody knows. An
+  owner must reconcile it. A callback that arrives after the wait ended is
+  kept as evidence and does not change the status.
+- Membership changes cascade from the organization to its workspaces in one
+  transaction. A workspace membership can become active only while the
+  organization membership is active or invited.
 
-## Implicit lifecycles
+## Guarded lifecycles
 
-These columns change over time, but no transition table owns them. The writes
-are scattered, and some writes have no guard on the old status. The list comes
-from a code audit on 2026-11-10.
+These columns have no transition table, but each write guards the old status
+or a lease.
 
-| Column | States | Guard on the old status | Known gaps |
-|---|---|---|---|
-| `agent_tryouts.status`, `redaction_status` | queued, running, completed, failed, cancelled | none in `UpdateAgentTryoutStatus` | A terminal tryout can change to another terminal status. A failed tryout gets `not_required` redaction, so it counts as ready to share. |
-| `organization_memberships`, `workspace_memberships` `.membership_status` | invited, active, suspended, archived | checked in the API layer only | The UPDATE has no guard, so two requests can race. The cascade writes invited to suspended, which the API table forbids. An invalid transition returns 400, not 409. |
-| `multi_turn_human_turns.status` | awaiting, submitted, expired | submit and expire guard on awaiting; the upsert does not change a submitted turn | No transition table. |
-| `workspace_arena_tasks.status` | pending, completed | the completing UPDATE guards on pending | No transition table. A late vote returns 409. |
-| `hosted_run_executions.status` | starting, accepted, running, completed, failed, timed_out, unknown | partial | `timed_out` is never written. `unknown` has two meanings: the dispatch result is unknown, or the run timed out. |
-| `dataset_generation_jobs.status` | queued, running, completed, failed | completed and failed are final; a write to the same status is allowed | No transition table. |
-| `organization_github_installations.status` | active, suspended, deleted | deleted is final | No transition table. Repository sync webhooks still run for a deleted installation. |
-| `challenge_pack_drafts.status` | draft, published, discarded | none | Publish does not check the status. `discarded` is never written. |
-| `dataset_examples.status` | active, archived, muted | none | A re-import can bring back an archived example. |
-| `billing_subscriptions.status` | values from the payment provider | event-time order only | No CHECK constraint. A missing event time falls back to `now()`. |
-| `billing_checkout_intents.status` | created, pending, completed, cancelled, expired | guards on completed | Only completed is written, so an abandoned checkout stays created. |
-| `device_auth_codes.status` | pending, approved, denied, expired | guards on pending | No consumed status. |
-| `agent_tryout_turns.status` | pending, processing, done | claim with `SKIP LOCKED` | A crash leaves a turn in processing. |
-| Race standings (`racecontext.StandingsState`, Redis) | not_started, running, submitted, failed, timed_out | none | A late event can change submitted back to running. |
-| `vibe_operations.billing` | UNRESERVED, RESERVED, RECONCILING, SETTLED, RELEASED | callers check that the operation is terminal | A later cost conflict moves a settled operation back to RECONCILING and freezes the account for review. Confirm that this is the intended review flow. |
-| `vibe_attempts.state` | DISPATCHING, SUCCEEDED, UNCERTAIN, RECONCILED | partial | A worker crash can leave an attempt in DISPATCHING. RECONCILED has two meanings. |
-| `vibe_inputs.status` | uploaded, extracting, ready, unreadable, failed, deleted, expired | lease guards on extraction | Delete overwrites expired. The read path can report expired while the row says otherwise. |
-| `vibe_enquiries.status` | received, sending, provider_accepted, needs_review, cancelled | lease guards on send | The sweeper can move a row that another worker sends. |
-| Vibe build phase (`Document.build.phase`, JSONB) | preparing, checking, trying, ready, clarifying, waiting, blocked, error, results | partial | No CHECK constraint. The phase names are copied into SQL. |
+| Column | Guard |
+|---|---|
+| `multi_turn_human_turns.status` (awaiting, submitted, expired) | Submit and expire guard on awaiting. The upsert does not change a submitted turn. |
+| `workspace_arena_tasks.status` (pending, completed) | The completing UPDATE guards on pending. A late vote returns 409. |
+| `dataset_generation_jobs.status` (queued, running, completed, failed) | completed and failed are final. A failed workflow start marks the job failed. |
+| `organization_github_installations.status` (active, suspended, deleted) | deleted is final. |
+| `agent_tryout_turns.status` (pending, processing, done) | A claim takes a 20-minute lease. A later claim takes a turn whose lease ran out. Only a processing turn becomes done. |
+| `challenge_pack_drafts.status` (draft, published, discarded) | The publish transaction writes published. |
+| `dataset_examples.status` (active, archived, muted) | An import or a promotion with a default status keeps an archived or muted example. |
+| `vibe_enquiries.status` | The review sweep skips a send with a live lease. A lost acceptance keeps its provider ID. |
+| `vibe_inputs.status` | Lease guards on extraction. The failure sweep runs before every claim. An expired input stays expired on delete. |
+| Vibe conversation questions (JSONB) | Only an active question becomes answered. |
+| Vibe build phase (`Document.build.phase`, JSONB) | An expired or stopped operation ends the build phase. |
 
-The money paths (`vibe_operations.billing`, `vibe_attempts`) and access control
-(memberships) need an owner decision before a change. Do not add a guard there
-as a side change.
+## Open gaps
+
+These gaps remain. Each needs an owner decision or a larger change.
+
+| Area | Gap |
+|---|---|
+| `vibe_operations.billing` | A later cost conflict moves a settled operation back to RECONCILING and freezes the account for review. Confirm that this is the intended review flow. |
+| `vibe_attempts.state` | A worker crash can leave an attempt in DISPATCHING. RECONCILED has two meanings. |
+| Vibe build quota | `build_cycle.go` and `build_quota.go` leave PARTIAL out of the finished list, so a partial operation counts at its reserved calls. |
+| `billing_subscriptions.status` | No CHECK constraint. A missing event time falls back to `now()`. |
+| `billing_checkout_intents.status` | Only completed is written, so an abandoned checkout stays created. |
+| `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
+| `connector_dispatches.state` | accepted and rejected are in the CHECK constraint but never written. |
+| Hosted run execution | A callback that commits just before the deadline timer fires can leave the execution completed while the run agent fails. |
+| Race standings | Native runs never emit `system.output.finalized`, so native peers never show as submitted. |
+| `agent_tryout_turns` | A reclaimed turn waits for the next session of the same tryout. |
+| Vibe operation | Nothing writes AWAITING_INPUT, but the web app has branches for it. |
+
+The money paths (billing, `vibe_attempts`, the build quota) need an owner
+decision before a change. Do not add a guard there as a side change.
 
 ## Add or change a lifecycle
 
@@ -103,4 +128,5 @@ as a side change.
    sets from `web/src/lib/status-lifecycles.ts` (or the module of the feature,
    for example `web/src/lib/run-status.ts`). Type each status map as
    `Record<Status, ...>`, so the compiler finds a missing status.
-8. Remove the row of the lifecycle from the implicit table above.
+8. Add the lifecycle to the explicit table above, and remove it from the
+   guarded table or the open gaps.
