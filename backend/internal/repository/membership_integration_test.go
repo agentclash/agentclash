@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
@@ -260,6 +261,43 @@ func TestRepositoryOrgMembershipCascadeFailureRollsBackOrgUpdate(t *testing.T) {
 	}
 }
 
+func TestRepositoryWorkspaceMembershipActivationRequiresOpenOrgMembership(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	orgMembershipID := insertOrgMembership(t, ctx, db, fixture.organizationID, fixture.userID, "suspended")
+	suspendedWS := insertWorkspaceMembership(t, ctx, db, fixture.organizationID, fixture.workspaceID, fixture.userID, "suspended")
+
+	_, err := repo.UpdateWorkspaceMembership(ctx, suspendedWS, repository.UpdateWorkspaceMembershipInput{
+		Status:         statusPtr("active"),
+		ExpectedStatus: "suspended",
+	})
+	if !errors.Is(err, repository.ErrOrgMembershipRequired) {
+		t.Fatalf("activate while org suspended error = %v, want ErrOrgMembershipRequired", err)
+	}
+	if state := readMembershipState(t, ctx, db, "workspace_memberships", suspendedWS); state.Status != "suspended" {
+		t.Fatalf("workspace membership = %+v, want suspended", state)
+	}
+
+	// An invited organization membership keeps the existing invite flow.
+	if _, err := db.Exec(ctx, `UPDATE organization_memberships SET membership_status = 'invited' WHERE id = $1`, orgMembershipID); err != nil {
+		t.Fatalf("set org membership invited: %v", err)
+	}
+	invitedWS := insertWorkspaceMembership(t, ctx, db, fixture.organizationID, insertWorkspace(t, ctx, db, fixture.organizationID, "invite-ws"), fixture.userID, "invited")
+	activated, err := repo.UpdateWorkspaceMembership(ctx, invitedWS, repository.UpdateWorkspaceMembershipInput{
+		Status:           statusPtr("active"),
+		ExpectedStatus:   "invited",
+		ClearInviteToken: true,
+	})
+	if err != nil {
+		t.Fatalf("activate while org invited: %v", err)
+	}
+	if activated.MembershipStatus != "active" || activated.InviteToken != "" {
+		t.Fatalf("activated = %+v, want active without invite token", activated)
+	}
+}
+
 func TestRepositoryUpdateWorkspaceMembershipStaleStatusConflicts(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -290,5 +328,55 @@ func TestRepositoryUpdateWorkspaceMembershipStaleStatusConflicts(t *testing.T) {
 		ExpectedStatus: "active",
 	}); !errors.Is(err, repository.ErrMembershipNotFound) {
 		t.Fatalf("missing membership error = %v, want ErrMembershipNotFound", err)
+	}
+}
+
+func TestRepositoryWorkspaceActivationWaitsForConcurrentOrgSuspend(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	orgMembershipID := insertOrgMembership(t, ctx, db, fixture.organizationID, fixture.userID, "active")
+	workspaceMembershipID := insertWorkspaceMembership(t, ctx, db, fixture.organizationID, fixture.workspaceID, fixture.userID, "suspended")
+
+	// Hold an uncommitted suspend of the organization membership.
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(ctx, `UPDATE organization_memberships SET membership_status = 'suspended' WHERE id = $1`, orgMembershipID); err != nil {
+		t.Fatalf("suspend in open transaction: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := repo.UpdateWorkspaceMembership(ctx, workspaceMembershipID, repository.UpdateWorkspaceMembershipInput{
+			Status:         statusPtr("active"),
+			ExpectedStatus: "suspended",
+		})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("activation finished before the suspend committed: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit suspend: %v", err)
+	}
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, repository.ErrOrgMembershipRequired) {
+			t.Fatalf("activation error = %v, want ErrOrgMembershipRequired", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("activation did not finish after the suspend committed")
+	}
+	if state := readMembershipState(t, ctx, db, "workspace_memberships", workspaceMembershipID); state.Status != "suspended" {
+		t.Fatalf("workspace membership = %+v, want suspended", state)
 	}
 }

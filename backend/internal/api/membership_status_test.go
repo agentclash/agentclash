@@ -250,3 +250,30 @@ func TestUpdateWorkspaceMembership_StatusRules(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateWorkspaceMembership_ActivationWhileOrgSuspendedIsRefused(t *testing.T) {
+	orgID := uuid.New()
+	membershipID := uuid.New()
+	repo := &fakeWsMembershipRepo{
+		orgID: orgID,
+		wsMembership: repository.WorkspaceMembershipFullRow{
+			ID:               membershipID,
+			WorkspaceID:      uuid.New(),
+			OrganizationID:   orgID,
+			UserID:           uuid.New(),
+			Role:             "workspace_member",
+			MembershipStatus: "suspended",
+		},
+		updateErr: repository.ErrOrgMembershipRequired,
+	}
+	manager := NewWorkspaceMembershipManager(repo, nil, "https://app.agentclash.dev")
+
+	status := "active"
+	_, err := manager.UpdateWorkspaceMembership(context.Background(), orgAdminCaller(orgID), membershipID, UpdateWorkspaceMembershipInput{Status: &status})
+	if !errors.Is(err, repository.ErrOrgMembershipRequired) {
+		t.Fatalf("error = %v, want ErrOrgMembershipRequired", err)
+	}
+	if repo.lastOrgUpdate.Status != nil {
+		t.Fatal("an admin reactivation must not change the organization membership")
+	}
+}

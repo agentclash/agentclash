@@ -4013,6 +4013,12 @@ func (r *Repository) UpdateWorkspaceMembership(ctx context.Context, membershipID
 	}
 	defer rollback(ctx, tx)
 
+	if input.Status != nil && *input.Status == string(WorkspaceMembershipStatusActive) {
+		if err := requireOrgMembershipForWorkspaceActivation(ctx, tx, membershipID, input.UserID); err != nil {
+			return WorkspaceMembershipFullRow{}, err
+		}
+	}
+
 	var m WorkspaceMembershipFullRow
 	var inviteTokenExpiresAt pgtype.Timestamptz
 	err = tx.QueryRow(ctx, query, args...).Scan(
@@ -4069,6 +4075,46 @@ func membershipUpdateMiss(ctx context.Context, tx pgx.Tx, existsQuery, entity st
 		return ErrMembershipNotFound
 	}
 	return TransitionConflictError{Entity: entity, ID: membershipID, Expected: expectedStatus}
+}
+
+// requireOrgMembershipForWorkspaceActivation checks the organization
+// membership before a workspace membership becomes active. Workspace access
+// checks look only at the workspace membership, so it must not become active
+// while the organization membership is suspended or archived.
+//
+// The share lock makes a concurrent suspend or archive of the organization
+// membership wait for this transaction. Its cascade then sees the active
+// workspace row and changes it.
+func requireOrgMembershipForWorkspaceActivation(ctx context.Context, tx pgx.Tx, membershipID uuid.UUID, newUserID *uuid.UUID) error {
+	var orgStatus string
+	err := tx.QueryRow(ctx, `
+		SELECT om.membership_status
+		FROM workspace_memberships wm
+		JOIN organization_memberships om
+		  ON om.organization_id = wm.organization_id
+		 AND om.user_id = COALESCE($2::uuid, wm.user_id)
+		WHERE wm.id = $1
+		FOR SHARE OF om
+	`, membershipID, newUserID).Scan(&orgStatus)
+	if errors.Is(err, pgx.ErrNoRows) {
+		var exists bool
+		if err := tx.QueryRow(ctx, workspaceMembershipExistsQuery, membershipID).Scan(&exists); err != nil {
+			return fmt.Errorf("check workspace membership before activation: %w", err)
+		}
+		if !exists {
+			return ErrMembershipNotFound
+		}
+		return ErrOrgMembershipRequired
+	}
+	if err != nil {
+		return fmt.Errorf("lock organization membership for workspace activation: %w", err)
+	}
+	switch OrgMembershipStatus(orgStatus) {
+	case OrgMembershipStatusActive, OrgMembershipStatusInvited:
+		return nil
+	default:
+		return ErrOrgMembershipRequired
+	}
 }
 
 func (r *Repository) CountActiveWorkspaceAdmins(ctx context.Context, workspaceID uuid.UUID) (int64, error) {

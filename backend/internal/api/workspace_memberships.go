@@ -261,7 +261,8 @@ func (m *WorkspaceMembershipManager) UpdateWorkspaceMembership(ctx context.Conte
 	}
 
 	// The repository applies the update only while the membership still has
-	// the status that the checks above used.
+	// the status that the checks above used. It also refuses to activate the
+	// membership while the organization membership is suspended or archived.
 	updateInput := repository.UpdateWorkspaceMembershipInput{
 		Role:           input.Role,
 		Status:         input.Status,
