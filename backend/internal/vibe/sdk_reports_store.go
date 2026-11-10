@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/agentclash/agentclash/backend/internal/productanalytics"
 	"github.com/agentclash/agentclash/backend/internal/vibe/access"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -146,6 +147,8 @@ func (s *Store) ImportSDKReport(ctx context.Context, actor string, session uuid.
 		in.ExternalReportID = "content:" + requestHash
 	}
 	var out SDKReport
+	var imported bool
+	var workspaceID uuid.UUID
 	err = s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		v, e := sdkAccess(ctx, tx, actor, session, true)
 		if e != nil {
@@ -201,8 +204,20 @@ func (s *Store) ImportSDKReport(ctx context.Context, actor string, session uuid.
 		if e != nil {
 			return e
 		}
+		imported = true
+		workspaceID = *v.WorkspaceID
 		return event(ctx, tx, session, nil, "report.imported")
 	})
+	// Never record inside the transaction: commit failure must remain a failure.
+	if err == nil && imported && strings.HasPrefix(actor, "user:") {
+		userID, parseErr := uuid.Parse(strings.TrimPrefix(actor, "user:"))
+		if parseErr == nil {
+			productanalytics.Record(s.analytics, ctx, productanalytics.Event{
+				Name: productanalytics.SDKReportImported, DistinctID: userID, EntityID: out.ID,
+				WorkspaceID: workspaceID,
+			})
+		}
+	}
 	return out, err
 }
 func sdkReportTx(ctx context.Context, tx pgx.Tx, session, id uuid.UUID) (SDKReport, error) {

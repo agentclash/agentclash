@@ -1,0 +1,23 @@
+{
+  "scope": "synthetic component replay of real isolated PostgreSQL receipt identities; not live WorkOS or production onboarding",
+  "journeys": [
+    {
+      "host": "claude",
+      "internal_user_id": "1cece025-dff2-4104-97a4-b1e2f3e91ff5",
+      "workspace_id": "47b7f8d8-a54a-4058-94f5-b0ee8bf18930",
+      "sdk_report_id": "a353f1e5-4e35-479b-88e2-315495ae8adc",
+      "event_uuid": "12e7eafc-7d2d-569a-a98b-005238b55601",
+      "event": "product.sdk_report.imported",
+      "workflow_kind": "imported_local_evidence"
+    },
+    {
+      "host": "codex",
+      "internal_user_id": "a3cc4b5c-6827-4523-9435-2cd498e8d27f",
+      "workspace_id": "10de88b8-08c4-4ade-b82e-a27d8efbe1a2",
+      "sdk_report_id": "6915c029-4187-4ef0-aae0-3825ed01929b",
+      "event_uuid": "349fd5fd-f22b-55a8-9ddb-eb4bc54d5d53",
+      "event": "product.sdk_report.imported",
+      "workflow_kind": "imported_local_evidence"
+    }
+  ]
+}

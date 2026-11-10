@@ -76,3 +76,19 @@ func TestDeterministicUUIDSeparatesMilestones(t *testing.T) {
 		t.Fatal("different milestone produced the same UUID")
 	}
 }
+
+func TestObservedHostAndReservedProperties(t *testing.T) {
+	for _, host := range []string{"claude", "codex", "ClaudeBot", "claude; private", ""} {
+		client := &captureClient{}
+		id := uuid.New()
+		New(client).Record(WithObservedHost(context.Background(), host), Event{Name: RunCreated, EntityID: id, DistinctID: id, Properties: map[string]any{"observed_host": "forged", "run_id": "forged", "workflow_kind": "customer_app"}})
+		want := "unknown"
+		if host == "claude" || host == "codex" {
+			want = host
+		}
+		p := client.events[0].Properties
+		if p["observed_host"] != want || p["workflow_kind"] != "hosted_run" || p["run_id"] != id.String() {
+			t.Fatal(p)
+		}
+	}
+}

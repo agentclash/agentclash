@@ -174,6 +174,7 @@ func agentAPIRouteKind(path string) string {
 var userAgentPattern = regexp.MustCompile(`^agentclash-cli/([\w.\-+]+)(?:\s+\(([^)]+)\))?$`)
 
 type cliUserAgent struct {
+	Host    string
 	Version string
 	Command string
 	OS      string
@@ -189,7 +190,7 @@ func parseCLIUserAgent(raw string) (cliUserAgent, bool) {
 	if m == nil {
 		return cliUserAgent{}, false
 	}
-	ua := cliUserAgent{Version: m[1]}
+	ua := cliUserAgent{Version: m[1], Host: "unknown"}
 	if len(m) > 2 && m[2] != "" {
 		for _, pair := range strings.Split(m[2], ";") {
 			kv := strings.SplitN(strings.TrimSpace(pair), "=", 2)
@@ -198,6 +199,8 @@ func parseCLIUserAgent(raw string) (cliUserAgent, bool) {
 			}
 			value := strings.TrimSpace(kv[1])
 			switch strings.TrimSpace(kv[0]) {
+			case "host":
+				ua.Host = productanalytics.NormalizeObservedHost(value)
 			case "cmd":
 				ua.Command = value
 			case "os":
@@ -262,6 +265,8 @@ func classifyRequestSurface(r *http.Request) productanalytics.Surface {
 func requestAnalyticsSurface(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := productanalytics.WithSurface(r.Context(), classifyRequestSurface(r))
+		ua, _ := parseCLIUserAgent(r.UserAgent())
+		ctx = productanalytics.WithObservedHost(ctx, ua.Host)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -313,12 +318,13 @@ func trackUsage(logger *slog.Logger, hog posthog.Client) func(http.Handler) http
 			}
 
 			props := map[string]any{
-				"route":       routePattern,
-				"method":      r.Method,
-				"status_code": rec.Status(),
-				"duration_ms": durationMs,
-				"surface":     surface,
-				"$request_id": requestID.String(),
+				"route":         routePattern,
+				"method":        r.Method,
+				"status_code":   rec.Status(),
+				"duration_ms":   durationMs,
+				"surface":       surface,
+				"observed_host": productanalytics.NormalizeObservedHost(ua.Host),
+				"$request_id":   requestID.String(),
 			}
 			if ua.Command != "" {
 				props["command"] = ua.Command

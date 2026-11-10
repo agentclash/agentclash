@@ -15,10 +15,10 @@ const HostedAPIHost = "api.agentclash.dev"
 
 // BuildUserAgent composes the User-Agent header value the CLI sends.
 //
-//	  Hosted (api.agentclash.dev):
-//	    agentclash-cli/<version> (cmd=<dotted-cmd>; os=<goos>; arch=<goarch>; go=<goversion>)
-//	  Self-hosted / localhost / unknown:
-//	    agentclash-cli/<version>
+//	Hosted (api.agentclash.dev):
+//	  agentclash-cli/<version> (cmd=<dotted-cmd>; os=<goos>; arch=<goarch>; go=<goversion>)
+//	Self-hosted / localhost / unknown:
+//	  agentclash-cli/<version>
 //
 // Gating is by URL host only — the resolved base URL flows from the same
 // resolution order documented in the project README (--api-url >
@@ -26,14 +26,27 @@ const HostedAPIHost = "api.agentclash.dev"
 // parse, the neutral form is returned (safe default — never leak command
 // metadata when we're uncertain about the destination).
 func BuildUserAgent(apiURL, version, commandPath string) string {
+	return buildUserAgent(apiURL, version, commandPath, "")
+}
+
+// BuildUserAgentWithHost opts into a self-reported host observation on existing
+// hosted requests only. This is not installation or verified host evidence.
+func BuildUserAgentWithHost(apiURL, version, commandPath, host string) string {
+	if host != "claude" && host != "codex" {
+		host = "unknown"
+	}
+	return buildUserAgent(apiURL, version, commandPath, host)
+}
+
+func buildUserAgent(apiURL, version, commandPath, host string) string {
 	neutral := neutralUserAgent(version)
 
 	parsed, err := url.Parse(apiURL)
 	if err != nil || parsed == nil || parsed.Host == "" {
 		return neutral
 	}
-	host := strings.ToLower(parsed.Hostname())
-	if host != HostedAPIHost {
+	destinationHost := strings.ToLower(parsed.Hostname())
+	if destinationHost != HostedAPIHost {
 		return neutral
 	}
 
@@ -41,9 +54,13 @@ func BuildUserAgent(apiURL, version, commandPath string) string {
 	if command == "" {
 		return neutral
 	}
+	marker := ""
+	if host != "" {
+		marker = "; host=" + host
+	}
 	return fmt.Sprintf(
-		"agentclash-cli/%s (cmd=%s; os=%s; arch=%s; go=%s)",
-		safeVersion(version), command, runtime.GOOS, runtime.GOARCH, runtime.Version(),
+		"agentclash-cli/%s (cmd=%s; os=%s; arch=%s; go=%s%s)",
+		safeVersion(version), command, runtime.GOOS, runtime.GOARCH, runtime.Version(), marker,
 	)
 }
 

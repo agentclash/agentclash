@@ -318,3 +318,20 @@ func TestTrackUsageDeviceFlowEmitsNoEvents(t *testing.T) {
 		t.Fatalf("protected route produced %d events, want 1", n)
 	}
 }
+
+func TestExplicitObservedHostContext(t *testing.T) {
+	for _, tc := range []struct{ ua, want string }{
+		{"agentclash-cli/dev (cmd=run.list; host=claude)", "claude"},
+		{"agentclash-cli/dev (cmd=run.list; host=codex)", "codex"},
+		{"agentclash-cli/dev (cmd=run.list; host=secret.invalid)", "unknown"},
+		{"ClaudeBot", "unknown"}, {"agentclash-cli/dev", "unknown"},
+	} {
+		request := httptest.NewRequest("GET", "/v1/runs?utm_source=claude", nil)
+		request.Header.Set("User-Agent", tc.ua)
+		requestAnalyticsSurface(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if got := productanalytics.ObservedHostFromContext(r.Context()); got != tc.want {
+				t.Fatalf("%s: %s", tc.ua, got)
+			}
+		})).ServeHTTP(httptest.NewRecorder(), request)
+	}
+}

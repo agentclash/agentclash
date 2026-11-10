@@ -38,6 +38,9 @@ type VibeHandler struct {
 
 func (h *VibeHandler) Routes() http.Handler {
 	r := chi.NewRouter()
+	// Vibe performs its own authentication outside the protected API group.
+	// Carry bounded request context into its durable product events as well.
+	r.Use(requestAnalyticsSurface)
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")

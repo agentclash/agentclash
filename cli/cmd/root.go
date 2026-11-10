@@ -157,7 +157,7 @@ Get started:
 		// User-Agent carries the dotted command path only when pointed at
 		// the hosted backend (api.agentclash.dev). Self-hosted backends and
 		// localhost see the neutral form — no command leaks to a third party.
-		opts = append(opts, api.WithUserAgent(api.BuildUserAgent(mgr.APIURL(), cliVersion, cmd.CommandPath())))
+		opts = append(opts, api.WithUserAgent(api.BuildUserAgentWithHost(mgr.APIURL(), cliVersion, cmd.CommandPath(), os.Getenv("AGENTCLASH_ANALYTICS_HOST"))))
 
 		if devUser := mgr.DevUserID(); devUser != "" {
 			opts = append(opts, api.WithDevMode(devUser, mgr.DevOrgMemberships(), mgr.DevWorkspaceMemberships()))

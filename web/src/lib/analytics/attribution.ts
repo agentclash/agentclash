@@ -28,6 +28,8 @@ interface AttributionState {
 }
 
 function safePathname(pathname: string): string {
+  // Reject encoded/freeform or oversized persisted paths before identification.
+  if (pathname.length > 512 || /[%@\\\x00-\x1f]/.test(pathname)) return "/";
   const pathOnly = pathname.split(/[?#]/, 1)[0] || "/";
   const normalized = pathOnly.startsWith("/") ? pathOnly : `/${pathOnly}`;
   return normalized
@@ -47,25 +49,44 @@ function hostname(raw: string): string {
   }
 }
 
+function safeTag(value: unknown, limit: number): string {
+  if (typeof value !== "string") return "";
+  const tag = value.trim();
+  return tag.length <= limit && /^[a-zA-Z0-9._-]+$/.test(tag) && !EMAIL_LIKE_VALUE.test(tag) ? tag : "";
+}
+
+function validExpiry(value: unknown, now: number): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > now && value <= now + ATTRIBUTION_TTL_MS;
+}
+
 function readState(now = Date.now()): AttributionState {
   if (typeof window === "undefined") return {};
   try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(ATTRIBUTION_KEY) ?? "{}",
-    ) as AttributionState;
-    let expired = false;
-    if (parsed.first_touch && parsed.first_touch.expires_at <= now) {
-      delete parsed.first_touch;
-      expired = true;
+    const parsed = JSON.parse(window.localStorage.getItem(ATTRIBUTION_KEY) ?? "{}");
+    const state: AttributionState = {};
+    const touch = parsed?.first_touch;
+    if (touch && validExpiry(touch.expires_at, now) && typeof touch.entry_path === "string") {
+      const utm: Record<string, string> = {};
+      for (const key of SAFE_UTM_KEYS) {
+        const value = safeTag(touch.utm?.[key], 200);
+        if (value) utm[key] = value;
+      }
+      const referrer = typeof touch.referrer_hostname === "string" &&
+        /^[a-z0-9.-]{1,253}$/.test(touch.referrer_hostname) ? touch.referrer_hostname : "";
+      state.first_touch = {
+        entry_path: safePathname(touch.entry_path), expires_at: touch.expires_at,
+        ...(referrer ? { referrer_hostname: referrer } : {}),
+        ...(Object.keys(utm).length ? { utm } : {}),
+      };
     }
-    if (parsed.acquisition_cta && parsed.acquisition_cta.expires_at <= now) {
-      delete parsed.acquisition_cta;
-      expired = true;
+    const cta = parsed?.acquisition_cta;
+    const ctaId = safeTag(cta?.cta_id, 160);
+    if (ctaId && validExpiry(cta?.expires_at, now)) {
+      state.acquisition_cta = { cta_id: ctaId, expires_at: cta.expires_at };
     }
-    if (expired) {
-      window.localStorage.setItem(ATTRIBUTION_KEY, JSON.stringify(parsed));
-    }
-    return parsed;
+    // Storage is untrusted input, including previously written legacy state.
+    writeState(state);
+    return state;
   } catch {
     return {};
   }
@@ -90,7 +111,7 @@ export function recordFirstTouch(): void {
   const params = new URLSearchParams(window.location.search);
   for (const key of SAFE_UTM_KEYS) {
     const value = params.get(key);
-    const safeValue = value?.trim().slice(0, 200) ?? "";
+    const safeValue = safeTag(value, 200);
     if (safeValue && !EMAIL_LIKE_VALUE.test(safeValue)) utm[key] = safeValue;
   }
   const referrer = hostname(document.referrer);
@@ -104,6 +125,7 @@ export function recordFirstTouch(): void {
 }
 
 export function rememberAcquisitionCTA(ctaId: string): void {
+  ctaId = safeTag(ctaId, 160);
   if (!ctaId) return;
   const now = Date.now();
   const state = readState(now);
@@ -119,6 +141,8 @@ export function attributionSetOnce(): Record<string, string> {
   const properties: Record<string, string> = {};
   if (state.first_touch) {
     properties.acquisition_entry_path = state.first_touch.entry_path;
+    const source = state.first_touch.utm?.utm_source;
+    properties.acquisition_channel = source === "claude" || source === "codex" ? source : "unknown";
     if (state.first_touch.referrer_hostname) {
       properties.acquisition_referrer_hostname =
         state.first_touch.referrer_hostname;

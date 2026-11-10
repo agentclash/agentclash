@@ -269,6 +269,7 @@ func run() int {
 		logger.Info("posthog analytics: disabled (POSTHOG_API_KEY not set)")
 	}
 	productAnalytics := productanalytics.New(posthogClient)
+	agentTryoutManager.WithProductAnalytics(productAnalytics)
 	runCreationManager.WithProductAnalytics(productAnalytics)
 	runReadManager.WithProductAnalytics(productAnalytics)
 	challengePackAuthoringManager.WithProductAnalytics(productAnalytics)
@@ -305,7 +306,7 @@ func run() int {
 	readiness := &vibe.Readiness{DB: db, Redis: vibeRedis, Temporal: temporalClient}
 	cfg.DependencyReadiness = api.WithConnectorReadiness(readiness.DependencyChecks, repo)
 	cfg.ConnectorRepository = repo
-	vibeService := &vibe.Service{Readiness: readiness, Store: vibe.NewStore(db, vibeConfig), Config: vibeConfig, Gate: vibe.Gate{Redis: vibeRedis}, Compiler: api.VibePackCompiler{}}
+	vibeService := &vibe.Service{Readiness: readiness, Store: vibe.NewStore(db, vibeConfig).WithProductAnalytics(productAnalytics), Config: vibeConfig, Gate: vibe.Gate{Redis: vibeRedis}, Compiler: api.VibePackCompiler{}}
 	vibeService.Store.Inputs.Blobs = artifactStore
 	if err := billingManager.WithVibeCredits(vibeService.Store, cfg.FrontendURL); err != nil {
 		logger.Error("invalid Vibe credit configuration", "error", err)
