@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -17,6 +18,68 @@ import (
 
 var ErrConnectorUnapproved = errors.New("connector approval is absent, revoked, or its workspace secret has changed")
 var ErrConnectorOutcomeUnknown = errors.New("connector outcome unknown; execution will not be automatically repeated")
+
+// ErrConnectorRejected matches each ConnectorRejectedError.
+var ErrConnectorRejected = errors.New("connector dispatch rejected; execution will not be automatically repeated")
+
+// ConnectorRejection is the detail of a rejected dispatch. The remote did not
+// run the request. RejectConnectorDispatch stores this detail, and it holds
+// no response body and no secret.
+type ConnectorRejection struct {
+	// Reason is connectors.RejectionNotSent or connectors.RejectionRefused.
+	Reason string `json:"reason"`
+	// Status is the HTTP status of a refusal. It is 0 for a request that
+	// was not sent.
+	Status int `json:"status,omitempty"`
+}
+
+// ConnectorRejectedError reports a dispatch that the remote did not run.
+// errors.Is(err, ErrConnectorRejected) is true. Unwrap gives the cause, and
+// the cause is nil when the detail comes from the database.
+type ConnectorRejectedError struct {
+	Rejection ConnectorRejection
+	Err       error
+}
+
+func (e *ConnectorRejectedError) Error() string {
+	switch e.Rejection.Reason {
+	case connectors.RejectionRefused:
+		return fmt.Sprintf("connector refused the request with HTTP status %d; execution will not be automatically repeated", e.Rejection.Status)
+	case connectors.RejectionNotSent:
+		message := "connector request was not sent; execution will not be automatically repeated"
+		if e.Err != nil {
+			message += ": " + e.Err.Error()
+		}
+		return message
+	default:
+		return ErrConnectorRejected.Error()
+	}
+}
+
+func (e *ConnectorRejectedError) Unwrap() error { return e.Err }
+
+// Is makes errors.Is(err, ErrConnectorRejected) true.
+func (e *ConnectorRejectedError) Is(target error) bool { return target == ErrConnectorRejected }
+
+// ConnectorRejectionFor gives the rejection that err proves. ok is false when
+// the remote outcome is unknown.
+func ConnectorRejectionFor(err error) (*ConnectorRejectedError, bool) {
+	reason, status, ok := connectors.Rejection(err)
+	if !ok {
+		return nil, false
+	}
+	return &ConnectorRejectedError{Rejection: ConnectorRejection{Reason: reason, Status: status}, Err: err}, true
+}
+
+// StoredConnectorRejection gives the error for the detail that
+// RejectConnectorDispatch stored.
+func StoredConnectorRejection(raw json.RawMessage) *ConnectorRejectedError {
+	var rejection ConnectorRejection
+	if err := json.Unmarshal(raw, &rejection); err != nil {
+		rejection = ConnectorRejection{}
+	}
+	return &ConnectorRejectedError{Rejection: rejection}
+}
 
 type CreateConnectorParams struct {
 	WorkspaceID, ActorUserID uuid.UUID
@@ -194,7 +257,7 @@ func validateConnectorAdmission(ctx context.Context, q interface {
 
 type ConnectorDispatch struct {
 	ID         uuid.UUID
-	State      string
+	State      ConnectorDispatchState
 	DeadlineAt time.Time
 	Response   json.RawMessage
 }
@@ -224,6 +287,17 @@ func (r *Repository) ClaimConnectorDispatch(ctx context.Context, runAgent, snaps
 }
 func (r *Repository) UnknownConnectorDispatch(ctx context.Context, id uuid.UUID) error {
 	_, err := r.db.Exec(ctx, `UPDATE connector_dispatches SET state='unknown',updated_at=now() WHERE id=$1 AND state='sending'`, id)
+	return err
+}
+
+// RejectConnectorDispatch records that the remote did not run the dispatch.
+// The response column gets only the reason and the HTTP status.
+func (r *Repository) RejectConnectorDispatch(ctx context.Context, id uuid.UUID, rejection ConnectorRejection) error {
+	detail, err := json.Marshal(rejection)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `UPDATE connector_dispatches SET state='rejected',response=$2,updated_at=now() WHERE id=$1 AND state='sending'`, id, detail)
 	return err
 }
 

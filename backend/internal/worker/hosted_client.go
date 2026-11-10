@@ -43,25 +43,28 @@ func (c HostedRunClient) WithConnectorRepository(repo ConnectorCredentialSource)
 	return c
 }
 
+// Start sends the start request. Each failure before the send is a
+// connectors.NotSentError, and a refusal status is a connectors.RefusedError.
+// For each other failure, the remote outcome is unknown.
 func (c HostedRunClient) Start(ctx context.Context, input workflowpkg.HostedRunStartInput) (hostedruns.StartResponse, error) {
 	if c.credentials == nil {
-		return hostedruns.StartResponse{}, errors.New("hosted connector approval is unavailable")
+		return hostedruns.StartResponse{}, notSent(errors.New("hosted connector approval is unavailable"))
 	}
 	binding, secret, err := c.credentials.ResolveApprovedConnector(ctx, input.ExecutionContext.Deployment.AgentDeploymentSnapshotID, input.ExecutionContext.Run.WorkspaceID)
 	if err != nil {
-		return hostedruns.StartResponse{}, err
+		return hostedruns.StartResponse{}, notSent(err)
 	}
 	if binding.Config.Adapter != connectors.Hosted {
-		return hostedruns.StartResponse{}, errors.New("snapshot is not a hosted connector")
+		return hostedruns.StartResponse{}, notSent(errors.New("snapshot is not a hosted connector"))
 	}
 	endpointURL, err := hostedEndpointURL(binding.Config.EndpointURL)
 	if err != nil {
-		return hostedruns.StartResponse{}, err
+		return hostedruns.StartResponse{}, notSent(err)
 	}
 
 	callbackToken, err := c.callbackSigner.Sign(input.ExecutionContext.Run.ID, input.ExecutionContext.RunAgent.ID)
 	if err != nil {
-		return hostedruns.StartResponse{}, err
+		return hostedruns.StartResponse{}, notSent(err)
 	}
 
 	requestBody := hostedruns.StartRequest{
@@ -75,12 +78,12 @@ func (c HostedRunClient) Start(ctx context.Context, input workflowpkg.HostedRunS
 		DeadlineAt:             input.DeadlineAt,
 	}
 	if err := requestBody.Validate(); err != nil {
-		return hostedruns.StartResponse{}, err
+		return hostedruns.StartResponse{}, notSent(err)
 	}
 
 	payload, err := json.Marshal(requestBody)
 	if err != nil {
-		return hostedruns.StartResponse{}, fmt.Errorf("marshal hosted run request: %w", err)
+		return hostedruns.StartResponse{}, notSent(fmt.Errorf("marshal hosted run request: %w", err))
 	}
 
 	deadline := input.DeadlineAt
@@ -113,6 +116,12 @@ func (c HostedRunClient) Start(ctx context.Context, input workflowpkg.HostedRunS
 		return hostedruns.StartResponse{}, fmt.Errorf("hosted deployment response is missing external_run_id")
 	}
 	return startResponse, nil
+}
+
+// notSent marks a failure before the send. The text of err does not change,
+// and errors.Is and errors.As still find err.
+func notSent(err error) error {
+	return &connectors.NotSentError{Err: err}
 }
 
 func hostedEndpointURL(raw string) (string, error) {

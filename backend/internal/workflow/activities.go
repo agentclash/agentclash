@@ -502,6 +502,27 @@ func (a *Activities) StartHostedRun(ctx context.Context, input StartHostedRunInp
 	if err != nil {
 		persist, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 		defer cancel()
+		// A start that was not sent, or that the remote refused, cannot have
+		// started the remote run. Fail the execution now, and do not wait
+		// for the callback deadline.
+		if rejected, ok := repository.ConnectorRejectionFor(err); ok {
+			latest, markErr := a.repo.MarkHostedRunExecutionFailed(persist, repository.MarkHostedRunExecutionFailedParams{
+				RunAgentID:   input.RunAgentID,
+				ErrorMessage: rejected.Error(),
+			})
+			if markErr != nil {
+				return StartHostedRunResult{}, fmt.Errorf("%w; additionally failed to persist hosted rejection: %v", rejected, markErr)
+			}
+			// A terminal callback committed first. Keep its result.
+			if latest.Status != repository.HostedRunExecutionStatusFailed {
+				result.Completed = latest.Status == repository.HostedRunExecutionStatusCompleted
+				if latest.ExternalRunID != nil {
+					result.ExternalRunID = *latest.ExternalRunID
+				}
+				return result, nil
+			}
+			return StartHostedRunResult{}, rejected
+		}
 		if markErr := a.repo.MarkHostedRunUnknown(persist, input.RunAgentID); markErr != nil {
 			return result, markErr
 		}

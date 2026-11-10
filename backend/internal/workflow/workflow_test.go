@@ -2141,6 +2141,10 @@ func (r *fakeRunRepository) MarkHostedRunExecutionFailed(_ context.Context, para
 	if !ok {
 		return repository.HostedRunExecution{}, repository.ErrHostedRunExecutionNotFound
 	}
+	// Mirrors the SQL: only starting and unknown move to failed.
+	if execution.Status != repository.HostedRunExecutionStatusStarting && execution.Status != repository.HostedRunExecutionStatusUnknown {
+		return execution, nil
+	}
 	execution.Status = "failed"
 	execution.ErrorMessage = stringPtr(params.ErrorMessage)
 	r.hostedExecutions[params.RunAgentID] = execution
