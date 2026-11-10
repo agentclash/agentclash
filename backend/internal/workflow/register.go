@@ -121,6 +121,7 @@ func registerScoringActivities(registrar Registrar, activities *Activities) {
 
 func registerBackgroundActivities(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.ExecutePublicAgentTryout, sdkactivity.RegisterOptions{Name: executePublicAgentTryoutActivityName})
+	registrar.RegisterActivityWithOptions(activities.FailPublicAgentTryout, sdkactivity.RegisterOptions{Name: failPublicAgentTryoutActivityName})
 	registrar.RegisterActivityWithOptions(activities.ListScanTargets, sdkactivity.RegisterOptions{Name: listScanTargetsActivityName})
 	registrar.RegisterActivityWithOptions(activities.ScanOneTarget, sdkactivity.RegisterOptions{Name: scanOneTargetActivityName})
 	registrar.RegisterActivityWithOptions(activities.ScanEvalSet, sdkactivity.RegisterOptions{Name: scanEvalSetActivityName})
