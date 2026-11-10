@@ -284,9 +284,7 @@ func prepareConversationState(p *Plan, v Session) error {
 		}
 		if advanced {
 			s.PendingPreparation = nil
-			// Only an active question can be superseded. An answered or
-			// dismissed question keeps its status; its answers become obsolete.
-			if s.PendingQuestion != nil && s.PendingQuestion.Status == "active" {
+			if s.PendingQuestion != nil {
 				s.PendingQuestion.Status = "superseded"
 			}
 			for i := range s.Brief.Facts {
