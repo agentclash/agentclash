@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -165,6 +166,7 @@ func (m *WorkspaceMembershipManager) InviteWorkspaceMember(ctx context.Context, 
 		result, err := m.repo.UpdateWorkspaceMembership(ctx, existing.ID, repository.UpdateWorkspaceMembershipInput{
 			Role:                 &input.Role,
 			Status:               strPtr("invited"),
+			ExpectedStatus:       existing.MembershipStatus,
 			InviteToken:          &inviteToken,
 			InviteTokenExpiresAt: &inviteTokenExpiresAt,
 		})
@@ -238,7 +240,7 @@ func (m *WorkspaceMembershipManager) UpdateWorkspaceMembership(ctx context.Conte
 	}
 
 	if input.Status != nil {
-		if err := validateWsMembershipTransition(membership.MembershipStatus, *input.Status); err != nil {
+		if err := validateWsMembershipStatusChange(membership.MembershipStatus, *input.Status); err != nil {
 			return WorkspaceMembershipResult{}, err
 		}
 	}
@@ -258,9 +260,12 @@ func (m *WorkspaceMembershipManager) UpdateWorkspaceMembership(ctx context.Conte
 		}
 	}
 
+	// The repository applies the update only while the membership still has
+	// the status that the checks above used.
 	updateInput := repository.UpdateWorkspaceMembershipInput{
-		Role:   input.Role,
-		Status: input.Status,
+		Role:           input.Role,
+		Status:         input.Status,
+		ExpectedStatus: membership.MembershipStatus,
 	}
 	if isInviteLinkHolder {
 		updateInput.UserID = &caller.UserID
@@ -306,6 +311,7 @@ func (m *WorkspaceMembershipManager) AcceptWorkspaceInvite(ctx context.Context, 
 	status := "active"
 	updateInput := repository.UpdateWorkspaceMembershipInput{
 		Status:           &status,
+		ExpectedStatus:   membership.MembershipStatus,
 		ClearInviteToken: true,
 	}
 	if membership.UserID != caller.UserID {
@@ -373,6 +379,7 @@ func (m *WorkspaceMembershipManager) reinviteOrgMembershipForWorkspace(ctx conte
 	return m.repo.UpdateOrgMembership(ctx, orgMembership.ID, repository.UpdateOrgMembershipInput{
 		Role:                 &role,
 		Status:               &status,
+		ExpectedStatus:       orgMembership.MembershipStatus,
 		InviteToken:          &inviteToken,
 		InviteTokenExpiresAt: &inviteTokenExpiresAt,
 		EntitlementGate:      entitlementGate,
@@ -422,6 +429,7 @@ func (m *WorkspaceMembershipManager) ensureActiveOrgMembership(ctx context.Conte
 	status := "active"
 	return m.repo.UpdateOrgMembership(ctx, orgMembership.ID, repository.UpdateOrgMembershipInput{
 		Status:           &status,
+		ExpectedStatus:   orgMembership.MembershipStatus,
 		ClearInviteToken: true,
 		EntitlementGate:  entitlementGate,
 	})
@@ -519,18 +527,18 @@ func isRemovingWsAdmin(membership repository.WorkspaceMembershipFullRow, input U
 	return false
 }
 
-func validateWsMembershipTransition(from, to string) error {
-	valid := map[string][]string{
-		"invited":   {"active", "archived"},
-		"active":    {"suspended", "archived"},
-		"suspended": {"active", "archived"},
+// validateWsMembershipStatusChange checks a status change requested with
+// PATCH. PATCH cannot set invited. Only the invite endpoint sets it, because
+// it also issues a new invite token.
+func validateWsMembershipStatusChange(from, to string) error {
+	next, err := repository.ParseWorkspaceMembershipStatus(to)
+	if err != nil || next == repository.WorkspaceMembershipStatusInvited {
+		return fmt.Errorf("%w: %q cannot be set with this request", repository.ErrInvalidMembershipStatus, to)
 	}
-	for _, allowed := range valid[from] {
-		if to == allowed {
-			return nil
-		}
+	if !repository.WorkspaceMembershipStatus(from).CanTransitionTo(next) {
+		return repository.InvalidTransitionError{Entity: "workspace membership", From: from, To: to}
 	}
-	return ErrInvalidTransition
+	return nil
 }
 
 func (m *WorkspaceMembershipManager) wsMembershipRowToResult(row repository.WorkspaceMembershipFullRow, includeInviteLink bool) WorkspaceMembershipResult {
