@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { terminal, VibeError } from "@/lib/vibe";
 import { testCount } from "@/lib/vibe-presentation";
 import { loadObservedEvidence, type ObservedEvidence, type ObservedEntry } from "@/lib/vibe-observed";
+import { isCanonicalResultActive } from "@/lib/vibe-canonical";
 import type { DimensionCapture, ProjectResultBinding } from "@/lib/vibe-result-evidence";
 import type { WorkspaceEvidenceAccess } from "@/lib/use-vibe-workspace-access";
 import { useVibeEvidenceOwner } from "@/lib/use-vibe-evidence-owner";
@@ -55,7 +56,7 @@ export function ObservedResults(p: {
                 if (!live || !current())
                     return;
                 setState({ owner: life.owner, value });
-                if (ref.kind === "vibe_operation" ? !terminal(value.status) : ["queued", "running", "provisioning", "scoring", "aggregating"].includes(value.status))
+                if (ref.kind === "vibe_operation" ? !terminal(value.status) : isCanonicalResultActive(ref.kind, value.status))
                     timer = setTimeout(load, 3000);
             }
             catch (e) {

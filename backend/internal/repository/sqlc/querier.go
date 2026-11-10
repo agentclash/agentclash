@@ -13,7 +13,6 @@ import (
 type Querier interface {
 	AggregateCaseResultsByEvalSet(ctx context.Context, arg AggregateCaseResultsByEvalSetParams) ([]AggregateCaseResultsByEvalSetRow, error)
 	AppendAgentTryoutTurn(ctx context.Context, arg AppendAgentTryoutTurnParams) (AgentTryoutTurn, error)
-	ApplyHostedRunEvent(ctx context.Context, arg ApplyHostedRunEventParams) (HostedRunExecution, error)
 	ArchiveChallengePiece(ctx context.Context, arg ArchiveChallengePieceParams) (ChallengePiece, error)
 	ArchiveDataset(ctx context.Context, arg ArchiveDatasetParams) (Dataset, error)
 	AttachEvalSessionToEvalSet(ctx context.Context, arg AttachEvalSessionToEvalSetParams) error
@@ -191,9 +190,12 @@ type Querier interface {
 	MarkAgentBuildVersionReady(ctx context.Context, arg MarkAgentBuildVersionReadyParams) error
 	MarkAgentTryoutTurnProcessed(ctx context.Context, arg MarkAgentTryoutTurnProcessedParams) error
 	MarkBillingCheckoutIntentCompleted(ctx context.Context, arg MarkBillingCheckoutIntentCompletedParams) (int64, error)
-	MarkDatasetTraceCandidatePromotedIfPending(ctx context.Context, arg MarkDatasetTraceCandidatePromotedIfPendingParams) (DatasetTraceCandidate, error)
 	MarkHostedRunExecutionAccepted(ctx context.Context, arg MarkHostedRunExecutionAcceptedParams) (HostedRunExecution, error)
 	MarkHostedRunExecutionFailed(ctx context.Context, arg MarkHostedRunExecutionFailedParams) (HostedRunExecution, error)
+	// The callback deadline ends the wait, not the remote run. The outcome stays
+	// unknown for reconciliation, and finished_at marks that the wait is over, so
+	// a late callback cannot change the status. Final statuses keep their value;
+	// timed_out is the final status that binaries before migration 00090 wrote.
 	MarkHostedRunExecutionTimedOut(ctx context.Context, arg MarkHostedRunExecutionTimedOutParams) (HostedRunExecution, error)
 	NextDatasetVersionNumber(ctx context.Context, arg NextDatasetVersionNumberParams) (int32, error)
 	PatchChallengePackDraft(ctx context.Context, arg PatchChallengePackDraftParams) (ChallengePackDraft, error)

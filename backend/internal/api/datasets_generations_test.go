@@ -17,6 +17,12 @@ func (datasetGenerationFakeStarter) StartSyntheticDatasetGenerationWorkflow(cont
 	return nil
 }
 
+type datasetGenerationFailingStarter struct{ err error }
+
+func (s datasetGenerationFailingStarter) StartSyntheticDatasetGenerationWorkflow(context.Context, uuid.UUID) error {
+	return s.err
+}
+
 type denyWorkspaceAccessAuthorizer struct{}
 
 func (denyWorkspaceAccessAuthorizer) AuthorizeWorkspace(context.Context, Caller, uuid.UUID) error {
@@ -32,6 +38,7 @@ type datasetGenerationFakeRepo struct {
 	deployments           map[uuid.UUID]repository.RunnableDeployment
 	challengePackVersions map[uuid.UUID]repository.RunnableChallengePackVersion
 	publicPacksEnabled    bool
+	statusUpdates         []repository.UpdateDatasetGenerationJobStatusParams
 }
 
 func (r *datasetGenerationFakeRepo) CreateDatasetGenerationJob(_ context.Context, params repository.CreateDatasetGenerationJobParams) (repository.DatasetGenerationJob, error) {
@@ -53,6 +60,17 @@ func (r *datasetGenerationFakeRepo) GetDatasetGenerationJobByID(_ context.Contex
 		return r.job, nil
 	}
 	return repository.DatasetGenerationJob{}, repository.ErrDatasetGenerationJobNotFound
+}
+
+func (r *datasetGenerationFakeRepo) UpdateDatasetGenerationJobStatus(_ context.Context, params repository.UpdateDatasetGenerationJobStatusParams) (repository.DatasetGenerationJob, error) {
+	if r.job.ID != params.ID {
+		return repository.DatasetGenerationJob{}, repository.ErrDatasetGenerationJobNotFound
+	}
+	r.statusUpdates = append(r.statusUpdates, params)
+	r.job.Status = params.Status
+	r.job.ErrorMessage = params.ErrorMessage
+	r.job.FailedAt = params.FailedAt
+	return r.job, nil
 }
 
 func (r *datasetGenerationFakeRepo) GetProviderAccountByID(_ context.Context, id uuid.UUID) (repository.ProviderAccountRow, error) {
@@ -166,6 +184,52 @@ func TestStartDatasetGenerationCreatesJob(t *testing.T) {
 	}
 	if job.TargetCount != 2 {
 		t.Fatalf("expected target_count 2, got %d", job.TargetCount)
+	}
+}
+
+func TestStartDatasetGenerationMarksJobFailedWhenWorkflowStartFails(t *testing.T) {
+	wsID := uuid.New()
+	datasetID := uuid.New()
+	providerID := uuid.New()
+	repo := &datasetGenerationFakeRepo{
+		datasetImportFakeRepo: newDatasetImportFakeRepo(wsID, datasetID),
+		providerAccount:       repository.ProviderAccountRow{ID: providerID, WorkspaceID: &wsID, ProviderKey: "openai"},
+	}
+	repo.examples = []repository.DatasetExample{{
+		ID:        uuid.New(),
+		DatasetID: datasetID,
+		Input:     json.RawMessage(`{"q":"seed"}`),
+		Status:    domain.DatasetExampleStatusActive,
+	}}
+	startErr := errors.New("temporal unavailable")
+	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo).WithGenerationWorkflowStarter(datasetGenerationFailingStarter{err: startErr})
+	_, err := manager.StartDatasetGeneration(context.Background(), Caller{UserID: uuid.New()}, StartDatasetGenerationInput{
+		WorkspaceID:       wsID,
+		DatasetID:         datasetID,
+		Strategy:          "self-instruct",
+		TargetCount:       2,
+		ProviderAccountID: providerID,
+		Model:             "gpt-4.1",
+	})
+	var startFailure DatasetGenerationWorkflowStartError
+	if !errors.As(err, &startFailure) || !errors.Is(err, startErr) {
+		t.Fatalf("error = %v, want DatasetGenerationWorkflowStartError wrapping start error", err)
+	}
+	if len(repo.statusUpdates) != 1 {
+		t.Fatalf("status updates = %d, want 1", len(repo.statusUpdates))
+	}
+	update := repo.statusUpdates[0]
+	if update.Status != repository.DatasetGenerationStatusFailed {
+		t.Fatalf("status = %q, want failed", update.Status)
+	}
+	if update.ErrorMessage == nil || *update.ErrorMessage == "" {
+		t.Fatal("expected an error message on the failed job")
+	}
+	if update.FailedAt == nil {
+		t.Fatal("expected failed_at on the failed job")
+	}
+	if startFailure.Job.Status != repository.DatasetGenerationStatusFailed {
+		t.Fatalf("returned job status = %q, want failed", startFailure.Job.Status)
 	}
 }
 

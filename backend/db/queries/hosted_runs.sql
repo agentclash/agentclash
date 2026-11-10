@@ -52,36 +52,15 @@ WHERE run_agent_id = @run_agent_id AND status IN ('starting','unknown')
 RETURNING *;
 
 -- name: MarkHostedRunExecutionTimedOut :one
+-- The callback deadline ends the wait, not the remote run. The outcome stays
+-- unknown for reconciliation, and finished_at marks that the wait is over, so
+-- a late callback cannot change the status. Final statuses keep their value;
+-- timed_out is the final status that binaries before migration 00090 wrote.
 UPDATE hosted_run_executions
-SET status = CASE WHEN status IN ('completed','failed') THEN status ELSE 'unknown' END,
+SET status = 'unknown',
     error_message = @error_message,
     finished_at = COALESCE(finished_at, now())
-WHERE run_agent_id = @run_agent_id AND status NOT IN ('completed','failed')
-RETURNING *;
-
--- name: ApplyHostedRunEvent :one
-UPDATE hosted_run_executions
-SET status = @status,
-    external_run_id = COALESCE(external_run_id, sqlc.narg('external_run_id')),
-    last_event_type = @last_event_type,
-    last_event_payload = @last_event_payload,
-    result_payload = CASE
-        WHEN sqlc.narg('result_payload')::jsonb IS NULL THEN result_payload
-        ELSE sqlc.narg('result_payload')
-    END,
-    error_message = CASE
-        WHEN sqlc.narg('error_message') IS NULL THEN error_message
-        ELSE sqlc.narg('error_message')
-    END,
-    started_at = CASE
-        WHEN @status IN ('running', 'completed', 'failed') AND started_at IS NULL THEN @occurred_at
-        ELSE started_at
-    END,
-    finished_at = CASE
-        WHEN @status IN ('completed', 'failed') AND finished_at IS NULL THEN @occurred_at
-        ELSE finished_at
-    END
-WHERE run_agent_id = @run_agent_id
+WHERE run_agent_id = @run_agent_id AND status NOT IN ('completed','failed','timed_out')
 RETURNING *;
 
 -- name: UpsertRunAgentReplaySummary :one
