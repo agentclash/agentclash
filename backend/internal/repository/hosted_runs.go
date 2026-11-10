@@ -21,7 +21,7 @@ type HostedRunExecution struct {
 	RunAgentID       uuid.UUID
 	EndpointURL      string
 	TraceLevel       string
-	Status           string
+	Status           HostedRunExecutionStatus
 	ExternalRunID    *string
 	AcceptedResponse json.RawMessage
 	LastEventType    *string
@@ -149,6 +149,10 @@ func mapHostedRunExecution(row repositorysqlc.HostedRunExecution) (HostedRunExec
 	if err != nil {
 		return HostedRunExecution{}, err
 	}
+	status, err := ParseHostedRunExecutionStatus(row.Status)
+	if err != nil {
+		return HostedRunExecution{}, err
+	}
 
 	return HostedRunExecution{
 		ID:               row.ID,
@@ -156,7 +160,7 @@ func mapHostedRunExecution(row repositorysqlc.HostedRunExecution) (HostedRunExec
 		RunAgentID:       row.RunAgentID,
 		EndpointURL:      row.EndpointUrl,
 		TraceLevel:       row.TraceLevel,
-		Status:           row.Status,
+		Status:           status,
 		ExternalRunID:    cloneStringPtr(row.ExternalRunID),
 		AcceptedResponse: cloneJSON(row.AcceptedResponse),
 		LastEventType:    cloneStringPtr(row.LastEventType),
