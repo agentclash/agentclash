@@ -14,6 +14,7 @@ import (
 func createQueuedAnonymousAgentTryout(t *testing.T, ctx context.Context, repo *repository.Repository) repository.AgentTryout {
 	t.Helper()
 	fingerprint := "anon-guard-" + uuid.NewString()
+	proof := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	expiresAt := time.Now().UTC().Add(24 * time.Hour)
 	tryout, err := repo.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{
 		TemplateSlug:             "meeting-minutes",
@@ -28,6 +29,7 @@ func createQueuedAnonymousAgentTryout(t *testing.T, ctx context.Context, repo *r
 		CostLimitUSD:             0.25,
 		MaxDurationSeconds:       120,
 		AnonymousFingerprintHash: &fingerprint,
+		AnonymousOwnerProofHash:  &proof,
 		ExpiresAt:                &expiresAt,
 	})
 	if err != nil {

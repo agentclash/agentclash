@@ -25,6 +25,7 @@ type Server struct {
 }
 
 type routerOptions struct {
+	tryoutDevelopmentCookies   bool
 	connectorRepository        ConnectorRepository
 	connectorResolver          provider.EndpointResolver
 	dependencyReadiness        func(context.Context) map[string]string
@@ -116,6 +117,7 @@ func NewServer(
 	router := buildRouter(routerOptions{
 		connectorRepository: cfg.ConnectorRepository, connectorResolver: cfg.ConnectorResolver,
 		vibeHandler:                cfg.VibeHandler,
+		tryoutDevelopmentCookies:   cfg.AppEnvironment == "development",
 		dependencyReadiness:        cfg.DependencyReadiness,
 		authMode:                   cfg.AuthMode,
 		corsAllowedOrigins:         cfg.CORSAllowedOrigins,
@@ -432,6 +434,14 @@ func buildRouter(opts routerOptions) http.Handler {
 
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
+		r.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if req.URL.Path == "/v1/agent-tryouts" || strings.HasPrefix(req.URL.Path, "/v1/agent-tryouts/") {
+					w.Header().Set("Cache-Control", "no-store")
+				}
+				next.ServeHTTP(w, req.WithContext(context.WithValue(req.Context(), tryoutDevelopmentContextKey{}, opts.tryoutDevelopmentCookies)))
+			})
+		})
 		registerPublicAgentTryoutRoutes(r, logger, agentTryoutService)
 		if opts.vibeHandler != nil {
 			r.Mount("/vibe", opts.vibeHandler)

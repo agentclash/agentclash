@@ -19,6 +19,8 @@ export interface ApiResponse<T> {
 
 /** Options shared by every request method. */
 interface RequestOptions {
+  /** Opt-in cookie transport for APIs with a narrow credentialed CORS policy. */
+  credentials?: RequestCredentials;
   /** Query parameters appended to the URL. */
   params?: Record<string, string | number | undefined>;
   /** Additional headers merged onto the request. */
@@ -148,6 +150,7 @@ async function requestWithMeta<T>(
           : undefined,
       signal: opts.signal,
       cache: opts.cache,
+      credentials: opts.credentials,
     });
   } catch (err) {
     throw new NetworkError(

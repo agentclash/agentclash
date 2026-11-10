@@ -18,6 +18,8 @@ import (
 	"github.com/google/uuid"
 )
 
+const testTryoutOwnerProofHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
 func TestAgentTryoutManagerCreateAnonymousPersistsGuardrailSnapshots(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
@@ -26,6 +28,7 @@ func TestAgentTryoutManagerCreateAnonymousPersistsGuardrailSnapshots(t *testing.
 	manager.now = func() time.Time { return now }
 
 	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"ship the first tryout"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -61,6 +64,7 @@ func TestAgentTryoutManagerCreateAnonymousPersistsSelectedModelPolicy(t *testing
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
 	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "slide-deck",
 		Input:                json.RawMessage(`{"brief":"make a launch deck"}`),
 		SelectedHarnessKind:  "claude_e2b",
@@ -85,6 +89,7 @@ func TestAgentTryoutManagerRejectsPublicModelHarnessMismatch(t *testing.T) {
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
 	_, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "slide-deck",
 		Input:                json.RawMessage(`{"brief":"make a launch deck"}`),
 		SelectedHarnessKind:  "claude_e2b",
@@ -101,6 +106,7 @@ func TestAgentTryoutManagerRejectsAnonymousWhenTemplateDisabled(t *testing.T) {
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
 	_, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "tiny-bugfix",
 		Input:                json.RawMessage(`{"task":"fix it"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -242,6 +248,7 @@ func TestAgentTryoutManagerRejectsInvalidTemplateInputBeforeCreate(t *testing.T)
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
+				OwnerProofHash:       testTryoutOwnerProofHash,
 				TemplateSlug:         "meeting-minutes",
 				Input:                tc.input,
 				AnonymousFingerprint: "203.0.113.10",
@@ -261,6 +268,7 @@ func TestAgentTryoutManagerRejectsUnavailableTemplateBeforeCreate(t *testing.T) 
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
 	_, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "structured-data",
 		Input:                json.RawMessage(`{"text":"name: Ada"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -278,6 +286,7 @@ func TestAgentTryoutManagerRejectsClientRuntimePolicyFields(t *testing.T) {
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
 	_, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"hello","tools":["sandbox_shell"],"network":"enabled","cost_limit_usd":99}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -295,7 +304,8 @@ func TestAgentTryoutManagerAllowsEvalSetupInput(t *testing.T) {
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
 	tryout, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
-		TemplateSlug: "meeting-minutes",
+		OwnerProofHash: testTryoutOwnerProofHash,
+		TemplateSlug:   "meeting-minutes",
 		Input: json.RawMessage(`{
 			"notes":"hello",
 			"eval_setup":{
@@ -319,6 +329,7 @@ func TestAgentTryoutManagerRejectsOversizedInput(t *testing.T) {
 	oversized := `{"notes":"` + strings.Repeat("x", 65*1024) + `"}`
 
 	_, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(oversized),
 		AnonymousFingerprint: "203.0.113.10",
@@ -339,6 +350,7 @@ func TestAgentTryoutManagerAllowsAnonymousWithinQuotaAndSpendCaps(t *testing.T) 
 	})
 
 	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"within cap"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -364,6 +376,7 @@ func TestAgentTryoutManagerRejectsAnonymousQuotaExhaustedBeforeCreate(t *testing
 		AnonymousPerRunCostCapUSD: 10,
 	})
 	input := CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"first"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -417,6 +430,7 @@ func TestAgentTryoutManagerRejectsQuotaAccountingUnavailableBeforeCreate(t *test
 			})
 
 			_, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+				OwnerProofHash:       testTryoutOwnerProofHash,
 				TemplateSlug:         "meeting-minutes",
 				Input:                json.RawMessage(`{"notes":"fail closed"}`),
 				AnonymousFingerprint: "203.0.113.10",
@@ -443,6 +457,7 @@ func TestAgentTryoutManagerRejectsHostedSpendCapExceededBeforeCreate(t *testing.
 	})
 
 	_, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"over daily cap"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -466,6 +481,7 @@ func TestAgentTryoutManagerRejectsPerRunCostCapExceededBeforeCreate(t *testing.T
 	})
 
 	_, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"over per run cap"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -510,7 +526,8 @@ func TestAgentTryoutManagerDoesNotApplyAnonymousQuotaToWorkspaceTryout(t *testin
 }
 
 func TestAgentTryoutManagerCreateWorkspaceClaimAndShare(t *testing.T) {
-	ctx := context.Background()
+	proofHash := hashTryoutProof(strings.Repeat("A", 43))
+	ctx := context.WithValue(context.Background(), tryoutProofContextKey{}, proofHash)
 	orgID := uuid.New()
 	workspaceID := uuid.New()
 	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
@@ -529,7 +546,7 @@ func TestAgentTryoutManagerCreateWorkspaceClaimAndShare(t *testing.T) {
 		t.Fatalf("workspace tryout scope = org %v workspace %v, want org %s workspace %s", tryout.OrganizationID, tryout.WorkspaceID, orgID, workspaceID)
 	}
 
-	anonymous, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+	anonymous, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{OwnerProofHash: proofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"claim this"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -537,6 +554,8 @@ func TestAgentTryoutManagerCreateWorkspaceClaimAndShare(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
 	}
+	anonymous.Status = repository.AgentTryoutStatusCompleted
+	repo.tryouts[anonymous.ID] = anonymous
 	claimed, err := manager.ClaimTryout(ctx, caller, ClaimAgentTryoutInput{ID: anonymous.ID, WorkspaceID: workspaceID})
 	if err != nil {
 		t.Fatalf("ClaimTryout returned error: %v", err)
@@ -580,6 +599,7 @@ func TestAgentTryoutManagerDispatchesAnonymousTryout(t *testing.T) {
 	})
 
 	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"ship the execution bridge"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -639,6 +659,7 @@ func TestAgentTryoutManagerMarksFailedWhenDispatchStartFails(t *testing.T) {
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithPublicExecution(&fakePublicAgentTryoutWorkflowStarter{err: starterErr}, AgentTryoutExecutionConfig{})
 
 	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"fail safely"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -659,13 +680,14 @@ func TestAgentTryoutManagerMarksFailedWhenDispatchStartFails(t *testing.T) {
 }
 
 func TestAgentTryoutManagerDoesNotRevertFailedPublicTryoutWhenStartFails(t *testing.T) {
-	ctx := context.Background()
+	ctx := context.WithValue(context.Background(), tryoutProofContextKey{}, testTryoutOwnerProofHash)
 	orgID := uuid.New()
 	workspaceID := uuid.New()
 	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithPublicExecution(&fakePublicAgentTryoutWorkflowStarter{err: errors.New("temporal unavailable")}, AgentTryoutExecutionConfig{})
 
 	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"fail and stay failed"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -702,6 +724,7 @@ func TestAgentTryoutManagerKeepsRunningPublicTryoutWhenStartReportsErrorAfterSta
 	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"started after all"}`),
+		OwnerProofHash:       hashTryoutProof(strings.Repeat("p", 43)),
 		AnonymousFingerprint: "203.0.113.10",
 	})
 	if err != nil {
@@ -825,13 +848,14 @@ func TestAgentTryoutManagerMapsHarnessExecutionStatusOnRead(t *testing.T) {
 }
 
 func TestAgentTryoutManagerSkipsNoopRefreshWrite(t *testing.T) {
-	ctx := context.Background()
+	ctx := context.WithValue(context.Background(), tryoutProofContextKey{}, testTryoutOwnerProofHash)
 	orgID := uuid.New()
 	workspaceID := uuid.New()
 	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
 	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		OwnerProofHash:       testTryoutOwnerProofHash,
 		TemplateSlug:         "meeting-minutes",
 		Input:                json.RawMessage(`{"notes":"avoid writes"}`),
 		AnonymousFingerprint: "203.0.113.10",
@@ -914,7 +938,7 @@ func TestCreateAnonymousAgentTryoutHandler(t *testing.T) {
 		},
 	}
 	handler := createAnonymousAgentTryoutHandler(slog.Default(), service)
-	req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", bytes.NewBufferString(`{"template_slug":"meeting-minutes","input":{"notes":"hello"}}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", bytes.NewBufferString(`{"creator_access_protocol":"cookie-v1","template_slug":"meeting-minutes","input":{"notes":"hello"}}`))
 	req.Header.Set("X-Forwarded-For", "203.0.113.10, 198.51.100.1")
 	rr := httptest.NewRecorder()
 
@@ -952,7 +976,7 @@ func TestListAgentTryoutTemplatesHandlerReturnsRuntimeMetadata(t *testing.T) {
 func TestCreateAnonymousAgentTryoutHandlerMapsUnavailableTemplate(t *testing.T) {
 	service := &fakeAgentTryoutService{createAnonymousErr: fmt.Errorf("%w: structured data validator runtime is not enabled yet", ErrAgentTryoutTemplateUnavailable)}
 	handler := createAnonymousAgentTryoutHandler(slog.Default(), service)
-	req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", bytes.NewBufferString(`{"template_slug":"structured-data","input":{"text":"name: Ada"}}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", bytes.NewBufferString(`{"creator_access_protocol":"cookie-v1","template_slug":"structured-data","input":{"text":"name: Ada"}}`))
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -1012,7 +1036,7 @@ func TestCreateAnonymousAgentTryoutHandlerMapsQuotaAndSpendErrors(t *testing.T) 
 		t.Run(tt.name, func(t *testing.T) {
 			service := &fakeAgentTryoutService{createAnonymousErr: tt.err}
 			handler := createAnonymousAgentTryoutHandler(slog.Default(), service)
-			req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", strings.NewReader(`{"template_slug":"meeting-minutes","input":{"notes":"quota"}}`))
+			req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", strings.NewReader(`{"creator_access_protocol":"cookie-v1","template_slug":"meeting-minutes","input":{"notes":"quota"}}`))
 			rr := httptest.NewRecorder()
 
 			handler.ServeHTTP(rr, req)
@@ -1112,28 +1136,28 @@ func TestGetWorkspaceAgentTryoutHandlerValidatesWorkspaceIDBeforeServiceCall(t *
 }
 
 type fakeAgentTryoutRepository struct {
-	orgID               uuid.UUID
-	workspaceID         uuid.UUID
-	tryouts             map[uuid.UUID]repository.AgentTryout
-	harnessBySlug       map[string]repository.AgentHarness
-	executionsByRunID   map[uuid.UUID]repository.AgentHarnessExecution
-	createdHarnesses    []repository.CreateAgentHarnessParams
-	createdExecutions   []repository.CreateAgentHarnessExecutionParams
-	transitionedStatus  repository.AgentHarnessExecutionStatus
-	transitionedReason  *string
-	transitionErr       error
-	omitExecutionRunID  bool
-	updateStatusCalls   int
-	share               repository.PublicShareLink
-	countAnonymousErr   error
-	sumAnonymousErr     error
-	hostedSpendUSD      float64
-	runEvents           []repository.RunEvent
-	tryoutEvents        []repository.AgentTryoutEvent
-	tryoutTurns         []repository.AgentTryoutTurn
-	runEventsErr        error
-	artifacts           []repository.Artifact
-	artifactsErr        error
+	orgID              uuid.UUID
+	workspaceID        uuid.UUID
+	tryouts            map[uuid.UUID]repository.AgentTryout
+	harnessBySlug      map[string]repository.AgentHarness
+	executionsByRunID  map[uuid.UUID]repository.AgentHarnessExecution
+	createdHarnesses   []repository.CreateAgentHarnessParams
+	createdExecutions  []repository.CreateAgentHarnessExecutionParams
+	transitionedStatus repository.AgentHarnessExecutionStatus
+	transitionedReason *string
+	transitionErr      error
+	omitExecutionRunID bool
+	updateStatusCalls  int
+	share              repository.PublicShareLink
+	countAnonymousErr  error
+	sumAnonymousErr    error
+	hostedSpendUSD     float64
+	runEvents          []repository.RunEvent
+	tryoutEvents       []repository.AgentTryoutEvent
+	tryoutTurns        []repository.AgentTryoutTurn
+	runEventsErr       error
+	artifacts          []repository.Artifact
+	artifactsErr       error
 }
 
 func newFakeAgentTryoutRepository(orgID, workspaceID uuid.UUID) *fakeAgentTryoutRepository {
@@ -1247,6 +1271,7 @@ func (r *fakeAgentTryoutRepository) CreateAgentTryout(_ context.Context, params 
 		LatencyMS:                params.LatencyMS,
 		MaxDurationSeconds:       params.MaxDurationSeconds,
 		AnonymousFingerprintHash: params.AnonymousFingerprintHash,
+		AnonymousOwnerProofHash:  params.AnonymousOwnerProofHash,
 		CreatedByUserID:          params.CreatedByUserID,
 		ParentTryoutID:           params.ParentTryoutID,
 		ExpiresAt:                params.ExpiresAt,
@@ -1476,13 +1501,23 @@ func (r *fakeAgentTryoutRepository) ClaimAgentTryout(_ context.Context, params r
 	if !ok {
 		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
 	}
+	if tryout.AnonymousOwnerProofHash == nil || *tryout.AnonymousOwnerProofHash != params.OwnerProofHash {
+		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
+	}
 	if tryout.WorkspaceID != nil {
-		return repository.AgentTryout{}, repository.ErrAgentTryoutAlreadyClaimed
+		if *tryout.WorkspaceID == params.WorkspaceID && tryout.ClaimedByUserID != nil && *tryout.ClaimedByUserID == params.ClaimedByUserID {
+			return tryout, nil
+		}
+		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
+	}
+	if tryout.ExpiresAt == nil || !tryout.ExpiresAt.After(time.Now()) {
+		return repository.AgentTryout{}, repository.ErrAgentTryoutExpired
 	}
 	tryout.OrganizationID = &params.OrganizationID
 	tryout.WorkspaceID = &params.WorkspaceID
 	tryout.ClaimedByUserID = &params.ClaimedByUserID
 	tryout.ClaimedAt = &params.ClaimedAt
+	tryout.ExpiresAt = nil
 	r.tryouts[tryout.ID] = tryout
 	return tryout, nil
 }
@@ -1566,12 +1601,14 @@ func (s *fakeAgentTryoutService) SubmitAnonymousTryoutTurn(_ context.Context, _ 
 }
 
 func TestSubmitAnonymousTryoutTurnValidatesAndAppends(t *testing.T) {
-	ctx := context.Background()
+	proofHash := hashTryoutProof(strings.Repeat("A", 43))
+	ctx := context.WithValue(context.Background(), tryoutProofContextKey{}, proofHash)
+	expires := time.Now().Add(time.Hour)
 	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
 	publicID := uuid.New()
-	repo.tryouts[publicID] = repository.AgentTryout{ID: publicID, Status: repository.AgentTryoutStatusRunning}
+	repo.tryouts[publicID] = repository.AgentTryout{ID: publicID, Status: repository.AgentTryoutStatusRunning, AnonymousOwnerProofHash: &proofHash, ExpiresAt: &expires}
 
 	// Empty message rejected.
 	if err := manager.SubmitAnonymousTryoutTurn(ctx, publicID, SubmitAgentTryoutTurnInput{}); err == nil {
@@ -1666,4 +1703,41 @@ func (s *fakeAgentTryoutService) CompareWorkspaceTryouts(context.Context, Caller
 
 func (s *fakeAgentTryoutService) PromoteTryoutToEval(context.Context, Caller, PromoteAgentTryoutInput) (AgentTryoutPromotionResult, error) {
 	return AgentTryoutPromotionResult{}, nil
+}
+
+func TestAgentTryoutManagerDefersActiveClaimUntilTerminal(t *testing.T) {
+	for _, status := range []repository.AgentTryoutStatus{repository.AgentTryoutStatusQueued, repository.AgentTryoutStatusRunning} {
+		t.Run(string(status), func(t *testing.T) {
+			workspace := uuid.New()
+			repo := newFakeAgentTryoutRepository(uuid.New(), workspace)
+			manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+			ctx := context.WithValue(context.Background(), tryoutProofContextKey{}, testTryoutOwnerProofHash)
+			expires := time.Now().Add(time.Hour)
+			proof := testTryoutOwnerProofHash
+			id := uuid.New()
+			row := repository.AgentTryout{ID: id, Status: status, ExpiresAt: &expires, AnonymousOwnerProofHash: &proof}
+			repo.tryouts[id] = row
+			if mapPublicAgentTryoutResponse(row).SaveEligible {
+				t.Fatal("active result eligible")
+			}
+			caller := callerWithWorkspace(workspace)
+			if _, err := manager.ClaimTryout(ctx, caller, ClaimAgentTryoutInput{ID: id, WorkspaceID: workspace}); !errors.Is(err, repository.ErrAgentTryoutActive) {
+				t.Fatalf("active claim error = %v", err)
+			}
+			if repo.tryouts[id].WorkspaceID != nil {
+				t.Fatal("active claim changed ownership")
+			}
+			if err := manager.SubmitAnonymousTryoutTurn(ctx, id, SubmitAgentTryoutTurnInput{Message: "continue"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := manager.SubmitAnonymousTryoutTurn(ctx, id, SubmitAgentTryoutTurnInput{End: true}); err != nil {
+				t.Fatal(err)
+			}
+			row.Status = repository.AgentTryoutStatusCompleted
+			repo.tryouts[id] = row
+			if _, err := manager.ClaimTryout(ctx, caller, ClaimAgentTryoutInput{ID: id, WorkspaceID: workspace}); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }

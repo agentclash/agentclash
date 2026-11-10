@@ -15,11 +15,11 @@ func TestRepositoryAgentTryoutTurnLeaseReclaim(t *testing.T) {
 	repo := repository.New(db)
 	tryout := createQueuedAnonymousAgentTryout(t, ctx, repo)
 
-	first, err := repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{AgentTryoutID: tryout.ID, Message: "first"})
+	first, err := repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{AgentTryoutID: tryout.ID, OwnerProofHash: *tryout.AnonymousOwnerProofHash, Message: "first"})
 	if err != nil {
 		t.Fatalf("AppendAgentTryoutTurn returned error: %v", err)
 	}
-	second, err := repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{AgentTryoutID: tryout.ID, Message: "second"})
+	second, err := repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{AgentTryoutID: tryout.ID, OwnerProofHash: *tryout.AnonymousOwnerProofHash, Message: "second"})
 	if err != nil {
 		t.Fatalf("AppendAgentTryoutTurn returned error: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestRepositoryAgentTryoutTurnLeaseReclaim(t *testing.T) {
 		t.Fatalf("claim after done = ok %v err %v, want nothing", ok, err)
 	}
 
-	pending, err := repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{AgentTryoutID: tryout.ID, Message: "third"})
+	pending, err := repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{AgentTryoutID: tryout.ID, OwnerProofHash: *tryout.AnonymousOwnerProofHash, Message: "third"})
 	if err != nil {
 		t.Fatalf("AppendAgentTryoutTurn returned error: %v", err)
 	}

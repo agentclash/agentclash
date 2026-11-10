@@ -5,7 +5,7 @@ import type {
   AgentTryoutEventsResponse,
   AgentTryoutInputAttachment,
   AgentTryoutPromotionResult,
-  AgentTryoutTemplate,
+  ListAgentTryoutTemplatesResponse,
   CreateAgentTryoutInput,
   ListAgentTryoutArtifactsResponse,
   PromoteAgentTryoutInput,
@@ -16,17 +16,45 @@ export function workspaceAgentTryoutsPath(workspaceId: string): string {
   return `/v1/workspaces/${workspaceId}/agent-tryouts`;
 }
 
-export function listAgentTryoutTemplates(
+const creatorAccessProtocol = "cookie-v1" as const;
+
+// Discovery is deliberately fresh per operation, including polling. A cached
+// legacy decision must never silently survive a backend upgrade or host change.
+export async function listAgentTryoutTemplates(
   api: ApiClient,
-): Promise<{ items: AgentTryoutTemplate[] }> {
-  return api.get<{ items: AgentTryoutTemplate[] }>("/v1/agent-tryout-templates");
+): Promise<ListAgentTryoutTemplatesResponse> {
+  const catalog = await api.get<ListAgentTryoutTemplatesResponse>("/v1/agent-tryout-templates", {
+    credentials: "omit", cache: "no-store", signal: AbortSignal.timeout(10_000),
+  });
+  if (!catalog || !Array.isArray(catalog.items) ||
+      !catalog.items.every(item => item && typeof item === "object" && typeof item.slug === "string") ||
+      (Object.hasOwn(catalog, "creator_access_protocol") && catalog.creator_access_protocol !== creatorAccessProtocol)) {
+    throw new Error("Reload or update this client. The tryout API returned an unsupported creator access protocol.");
+  }
+  return catalog;
 }
 
-export function createAnonymousAgentTryout(
+async function publicTryoutTransport(api: ApiClient) {
+  const catalog = await listAgentTryoutTemplates(api);
+  const protocol = catalog.creator_access_protocol;
+  return {
+    protocol,
+    options: { credentials: protocol === creatorAccessProtocol ? "include" as const : "omit" as const, cache: "no-store" as const },
+  };
+}
+
+function publicTryoutResult(result: AgentTryout, protocol: string | undefined): AgentTryout {
+  // Older APIs may still expose ID-only claim handlers. Never offer that save.
+  return { ...result, save_eligible: protocol === creatorAccessProtocol && result.save_eligible === true };
+}
+
+export async function createAnonymousAgentTryout(
   api: ApiClient,
   input: CreateAgentTryoutInput,
 ): Promise<AgentTryout> {
-  return api.post<AgentTryout>("/v1/agent-tryouts", input);
+  const { protocol, options } = await publicTryoutTransport(api);
+  const result = await api.post<AgentTryout>("/v1/agent-tryouts", { ...input, creator_access_protocol: protocol }, options);
+  return publicTryoutResult(result, protocol);
 }
 
 export function uploadAgentTryoutInputAttachment(
@@ -41,32 +69,36 @@ export function uploadAgentTryoutInputAttachment(
   );
 }
 
-export function getPublicAgentTryout(
+export async function getPublicAgentTryout(
   api: ApiClient,
   tryoutId: string,
 ): Promise<AgentTryout> {
-  return api.get<AgentTryout>(`/v1/agent-tryouts/${tryoutId}`);
+  const { protocol, options } = await publicTryoutTransport(api);
+  return publicTryoutResult(await api.get<AgentTryout>(`/v1/agent-tryouts/${tryoutId}`, options), protocol);
 }
 
-export function submitAgentTryoutTurn(
+export async function submitAgentTryoutTurn(
   api: ApiClient,
   tryoutId: string,
   input: { message?: string; end?: boolean },
 ): Promise<{ status: string }> {
+  const { options } = await publicTryoutTransport(api);
   return api.post<{ status: string }>(
     `/v1/agent-tryouts/${tryoutId}/turns`,
     input,
+    options,
   );
 }
 
-export function getPublicAgentTryoutEvents(
+export async function getPublicAgentTryoutEvents(
   api: ApiClient,
   tryoutId: string,
   opts?: { after?: number; limit?: number },
 ): Promise<AgentTryoutEventsResponse> {
+  const { options } = await publicTryoutTransport(api);
   return api.get<AgentTryoutEventsResponse>(
     `/v1/agent-tryouts/${tryoutId}/events`,
-    { params: { after: opts?.after, limit: opts?.limit } },
+    { ...options, params: { after: opts?.after, limit: opts?.limit } },
   );
 }
 
@@ -148,4 +180,16 @@ export function compareAgentTryouts(
     `${workspaceAgentTryoutsPath(workspaceId)}/compare`,
     { tryout_ids: tryoutIds },
   );
+}
+
+export async function claimAgentTryout(api: ApiClient, tryoutId: string, workspaceId: string): Promise<AgentTryout> {
+  const { protocol, options } = await publicTryoutTransport(api);
+  if (protocol !== creatorAccessProtocol) {
+    throw new Error("This API cannot safely save this result. Reload or update before starting a new tryout.");
+  }
+  return api.post<AgentTryout>(`/v1/agent-tryouts/${tryoutId}/claim`, { workspace_id: workspaceId }, options);
+}
+
+export function getSavedAgentTryout(api: ApiClient, tryoutId: string): Promise<AgentTryout> {
+  return api.get<AgentTryout>(`/v1/agent-tryouts/${tryoutId}/saved`, { cache: "no-store" });
 }

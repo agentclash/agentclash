@@ -111,6 +111,7 @@ type AgentTryout struct {
 	LatencyMS                *int64
 	MaxDurationSeconds       int32
 	AnonymousFingerprintHash *string
+	AnonymousOwnerProofHash  *string
 	CreatedByUserID          *uuid.UUID
 	ParentTryoutID           *uuid.UUID
 	ClaimedByUserID          *uuid.UUID
@@ -174,9 +175,10 @@ type AgentTryoutTurn struct {
 }
 
 type AppendAgentTryoutTurnParams struct {
-	AgentTryoutID uuid.UUID
-	Role          string
-	Message       string
+	OwnerProofHash string
+	AgentTryoutID  uuid.UUID
+	Role           string
+	Message        string
 }
 
 type CreateAgentTryoutParams struct {
@@ -198,12 +200,14 @@ type CreateAgentTryoutParams struct {
 	LatencyMS                *int64
 	MaxDurationSeconds       int32
 	AnonymousFingerprintHash *string
+	AnonymousOwnerProofHash  *string
 	CreatedByUserID          *uuid.UUID
 	ParentTryoutID           *uuid.UUID
 	ExpiresAt                *time.Time
 }
 
 type ClaimAgentTryoutParams struct {
+	OwnerProofHash  string
 	ID              uuid.UUID
 	OrganizationID  uuid.UUID
 	WorkspaceID     uuid.UUID
@@ -309,6 +313,7 @@ func createAgentTryout(ctx context.Context, queries *repositorysqlc.Queries, par
 		LatencyMs:                cloneInt64Ptr(params.LatencyMS),
 		MaxDurationSeconds:       params.MaxDurationSeconds,
 		AnonymousFingerprintHash: cloneStringPtr(params.AnonymousFingerprintHash),
+		AnonymousOwnerProofHash:  cloneStringPtr(params.AnonymousOwnerProofHash),
 		CreatedByUserID:          cloneUUIDPtr(params.CreatedByUserID),
 		ParentTryoutID:           cloneUUIDPtr(params.ParentTryoutID),
 		ExpiresAt:                toPGTimestamp(params.ExpiresAt),
@@ -557,6 +562,7 @@ func (r *Repository) ListAgentTryoutsByWorkspaceID(ctx context.Context, workspac
 func (r *Repository) ClaimAgentTryout(ctx context.Context, params ClaimAgentTryoutParams) (AgentTryout, error) {
 	row, err := r.queries.ClaimAgentTryout(ctx, repositorysqlc.ClaimAgentTryoutParams{
 		ID:              params.ID,
+		OwnerProofHash:  params.OwnerProofHash,
 		OrganizationID:  &params.OrganizationID,
 		WorkspaceID:     &params.WorkspaceID,
 		ClaimedByUserID: &params.ClaimedByUserID,
@@ -564,10 +570,28 @@ func (r *Repository) ClaimAgentTryout(ctx context.Context, params ClaimAgentTryo
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			if _, lookupErr := r.GetAgentTryoutByID(ctx, params.ID); errors.Is(lookupErr, ErrAgentTryoutNotFound) {
-				return AgentTryout{}, ErrAgentTryoutNotFound
+			// A retry is a read, never a second ownership transition.
+			row, retryErr := r.queries.GetClaimedAgentTryoutRetry(ctx, repositorysqlc.GetClaimedAgentTryoutRetryParams{
+				ID: params.ID, OrganizationID: &params.OrganizationID, WorkspaceID: &params.WorkspaceID,
+				ClaimedByUserID: &params.ClaimedByUserID, OwnerProofHash: params.OwnerProofHash,
+			})
+			if retryErr == nil {
+				return mapAgentTryout(row)
 			}
-			return AgentTryout{}, ErrAgentTryoutAlreadyClaimed
+			if !errors.Is(retryErr, pgx.ErrNoRows) {
+				return AgentTryout{}, fmt.Errorf("read claim retry: %w", retryErr)
+			}
+			existing, lookupErr := r.GetAgentTryoutByID(ctx, params.ID)
+			if lookupErr != nil {
+				return AgentTryout{}, lookupErr
+			}
+			if existing.WorkspaceID == nil && existing.AnonymousOwnerProofHash != nil && *existing.AnonymousOwnerProofHash == params.OwnerProofHash && existing.ExpiresAt != nil && !existing.ExpiresAt.After(time.Now()) {
+				return AgentTryout{}, ErrAgentTryoutExpired
+			}
+			if existing.WorkspaceID == nil && existing.OrganizationID == nil && existing.ClaimedByUserID == nil && existing.AnonymousOwnerProofHash != nil && *existing.AnonymousOwnerProofHash == params.OwnerProofHash && existing.Status != AgentTryoutStatusCompleted && existing.Status != AgentTryoutStatusFailed && existing.Status != AgentTryoutStatusCancelled {
+				return AgentTryout{}, ErrAgentTryoutActive
+			}
+			return AgentTryout{}, ErrAgentTryoutNotFound
 		}
 		return AgentTryout{}, fmt.Errorf("claim agent tryout: %w", err)
 	}
@@ -680,7 +704,7 @@ RETURNING id, organization_id, workspace_id, template_slug, status, input_snapsh
     template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy,
     summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms,
     max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id,
-    claimed_by_user_id, claimed_at, expires_at, created_at, updated_at`,
+    claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, anonymous_owner_proof_hash`,
 		params.ID, params.RunID, string(status), nullableJSON(params.Summary),
 	)
 	tryout, err := scanAgentTryoutRow(row)
@@ -737,6 +761,7 @@ func scanAgentTryoutRow(scanner agentTryoutScanner) (AgentTryout, error) {
 		&row.ExpiresAt,
 		&row.CreatedAt,
 		&row.UpdatedAt,
+		&row.AnonymousOwnerProofHash,
 	)
 	if err != nil {
 		return AgentTryout{}, err
@@ -773,6 +798,7 @@ func mapAgentTryout(row repositorysqlc.AgentTryout) (AgentTryout, error) {
 		LatencyMS:                cloneInt64Ptr(row.LatencyMs),
 		MaxDurationSeconds:       row.MaxDurationSeconds,
 		AnonymousFingerprintHash: cloneStringPtr(row.AnonymousFingerprintHash),
+		AnonymousOwnerProofHash:  cloneStringPtr(row.AnonymousOwnerProofHash),
 		CreatedByUserID:          cloneUUIDPtr(row.CreatedByUserID),
 		ParentTryoutID:           cloneUUIDPtr(row.ParentTryoutID),
 		ClaimedByUserID:          cloneUUIDPtr(row.ClaimedByUserID),
@@ -805,11 +831,15 @@ func (r *Repository) AppendAgentTryoutTurn(ctx context.Context, params AppendAge
 		role = "user"
 	}
 	row, err := r.queries.AppendAgentTryoutTurn(ctx, repositorysqlc.AppendAgentTryoutTurnParams{
-		AgentTryoutID: params.AgentTryoutID,
-		Role:          role,
-		Message:       params.Message,
+		AgentTryoutID:  params.AgentTryoutID,
+		OwnerProofHash: params.OwnerProofHash,
+		Role:           role,
+		Message:        params.Message,
 	})
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return AgentTryoutTurn{}, ErrAgentTryoutNotFound
+		}
 		return AgentTryoutTurn{}, fmt.Errorf("append agent tryout turn: %w", err)
 	}
 	return mapAgentTryoutTurn(row), nil

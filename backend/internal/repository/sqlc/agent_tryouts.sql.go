@@ -13,7 +13,14 @@ import (
 )
 
 const appendAgentTryoutTurn = `-- name: AppendAgentTryoutTurn :one
-WITH next_turn AS (
+WITH owned_tryout AS (
+    SELECT id FROM agent_tryouts
+    WHERE id = $1 AND workspace_id IS NULL
+      AND organization_id IS NULL AND claimed_by_user_id IS NULL
+      AND anonymous_owner_proof_hash = $4::text
+      AND expires_at > CURRENT_TIMESTAMP AND status IN ('queued', 'running')
+    FOR UPDATE
+), next_turn AS (
     SELECT COALESCE(MAX(turn_index), -1) + 1 AS turn_index
     FROM agent_tryout_turns
     WHERE agent_tryout_id = $1
@@ -31,18 +38,24 @@ SELECT
     $2,
     $3,
     'pending'
-FROM next_turn
+FROM next_turn, owned_tryout
 RETURNING id, agent_tryout_id, turn_index, role, message, status, created_at, processed_at, lease_until
 `
 
 type AppendAgentTryoutTurnParams struct {
-	AgentTryoutID uuid.UUID
-	Role          string
-	Message       string
+	AgentTryoutID  uuid.UUID
+	Role           string
+	Message        string
+	OwnerProofHash string
 }
 
 func (q *Queries) AppendAgentTryoutTurn(ctx context.Context, arg AppendAgentTryoutTurnParams) (AgentTryoutTurn, error) {
-	row := q.db.QueryRow(ctx, appendAgentTryoutTurn, arg.AgentTryoutID, arg.Role, arg.Message)
+	row := q.db.QueryRow(ctx, appendAgentTryoutTurn,
+		arg.AgentTryoutID,
+		arg.Role,
+		arg.Message,
+		arg.OwnerProofHash,
+	)
 	var i AgentTryoutTurn
 	err := row.Scan(
 		&i.ID,
@@ -71,7 +84,10 @@ WHERE id = $5
   AND organization_id IS NULL
   AND workspace_id IS NULL
   AND claimed_by_user_id IS NULL
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind
+  AND anonymous_owner_proof_hash = $6::text
+  AND expires_at > CURRENT_TIMESTAMP
+  AND status IN ('completed', 'failed', 'cancelled')
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash
 `
 
 type ClaimAgentTryoutParams struct {
@@ -80,6 +96,7 @@ type ClaimAgentTryoutParams struct {
 	ClaimedByUserID *uuid.UUID
 	ClaimedAt       pgtype.Timestamptz
 	ID              uuid.UUID
+	OwnerProofHash  string
 }
 
 func (q *Queries) ClaimAgentTryout(ctx context.Context, arg ClaimAgentTryoutParams) (AgentTryout, error) {
@@ -89,6 +106,7 @@ func (q *Queries) ClaimAgentTryout(ctx context.Context, arg ClaimAgentTryoutPara
 		arg.ClaimedByUserID,
 		arg.ClaimedAt,
 		arg.ID,
+		arg.OwnerProofHash,
 	)
 	var i AgentTryout
 	err := row.Scan(
@@ -118,6 +136,7 @@ func (q *Queries) ClaimAgentTryout(ctx context.Context, arg ClaimAgentTryoutPara
 		&i.UpdatedAt,
 		&i.ParentTryoutID,
 		&i.SelectedHarnessKind,
+		&i.AnonymousOwnerProofHash,
 	)
 	return i, err
 }
@@ -207,6 +226,7 @@ INSERT INTO agent_tryouts (
     latency_ms,
     max_duration_seconds,
     anonymous_fingerprint_hash,
+    anonymous_owner_proof_hash,
     created_by_user_id,
     parent_tryout_id,
     expires_at
@@ -232,9 +252,10 @@ VALUES (
     $18,
     $19,
     $20,
-    $21
+    $21,
+    $22
 )
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash
 `
 
 type CreateAgentTryoutParams struct {
@@ -256,6 +277,7 @@ type CreateAgentTryoutParams struct {
 	LatencyMs                *int64
 	MaxDurationSeconds       int32
 	AnonymousFingerprintHash *string
+	AnonymousOwnerProofHash  *string
 	CreatedByUserID          *uuid.UUID
 	ParentTryoutID           *uuid.UUID
 	ExpiresAt                pgtype.Timestamptz
@@ -281,6 +303,7 @@ func (q *Queries) CreateAgentTryout(ctx context.Context, arg CreateAgentTryoutPa
 		arg.LatencyMs,
 		arg.MaxDurationSeconds,
 		arg.AnonymousFingerprintHash,
+		arg.AnonymousOwnerProofHash,
 		arg.CreatedByUserID,
 		arg.ParentTryoutID,
 		arg.ExpiresAt,
@@ -313,12 +336,13 @@ func (q *Queries) CreateAgentTryout(ctx context.Context, arg CreateAgentTryoutPa
 		&i.UpdatedAt,
 		&i.ParentTryoutID,
 		&i.SelectedHarnessKind,
+		&i.AnonymousOwnerProofHash,
 	)
 	return i, err
 }
 
 const getAgentTryoutByID = `-- name: GetAgentTryoutByID :one
-SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind
+SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash
 FROM agent_tryouts
 WHERE id = $1
 LIMIT 1
@@ -358,6 +382,7 @@ func (q *Queries) GetAgentTryoutByID(ctx context.Context, arg GetAgentTryoutByID
 		&i.UpdatedAt,
 		&i.ParentTryoutID,
 		&i.SelectedHarnessKind,
+		&i.AnonymousOwnerProofHash,
 	)
 	return i, err
 }
@@ -377,6 +402,64 @@ func (q *Queries) GetAgentTryoutTurnStatus(ctx context.Context, arg GetAgentTryo
 	var status string
 	err := row.Scan(&status)
 	return status, err
+}
+
+const getClaimedAgentTryoutRetry = `-- name: GetClaimedAgentTryoutRetry :one
+SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash FROM agent_tryouts
+WHERE id = $1
+  AND workspace_id = $2
+  AND organization_id = $3
+  AND claimed_by_user_id = $4
+  AND anonymous_owner_proof_hash = $5::text
+`
+
+type GetClaimedAgentTryoutRetryParams struct {
+	ID              uuid.UUID
+	WorkspaceID     *uuid.UUID
+	OrganizationID  *uuid.UUID
+	ClaimedByUserID *uuid.UUID
+	OwnerProofHash  string
+}
+
+func (q *Queries) GetClaimedAgentTryoutRetry(ctx context.Context, arg GetClaimedAgentTryoutRetryParams) (AgentTryout, error) {
+	row := q.db.QueryRow(ctx, getClaimedAgentTryoutRetry,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.OrganizationID,
+		arg.ClaimedByUserID,
+		arg.OwnerProofHash,
+	)
+	var i AgentTryout
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.WorkspaceID,
+		&i.TemplateSlug,
+		&i.Status,
+		&i.InputSnapshot,
+		&i.TemplateSnapshot,
+		&i.ToolPolicySnapshot,
+		&i.EvaluationSpecSnapshot,
+		&i.SelectedModelPolicy,
+		&i.Summary,
+		&i.RedactionStatus,
+		&i.RunID,
+		&i.CostLimitUsd,
+		&i.ActualCostUsd,
+		&i.LatencyMs,
+		&i.MaxDurationSeconds,
+		&i.AnonymousFingerprintHash,
+		&i.CreatedByUserID,
+		&i.ClaimedByUserID,
+		&i.ClaimedAt,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ParentTryoutID,
+		&i.SelectedHarnessKind,
+		&i.AnonymousOwnerProofHash,
+	)
+	return i, err
 }
 
 const listAgentTryoutEventsAfter = `-- name: ListAgentTryoutEventsAfter :many
@@ -423,7 +506,7 @@ func (q *Queries) ListAgentTryoutEventsAfter(ctx context.Context, arg ListAgentT
 }
 
 const listAgentTryoutsByWorkspaceID = `-- name: ListAgentTryoutsByWorkspaceID :many
-SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind
+SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash
 FROM agent_tryouts
 WHERE workspace_id = $1
 ORDER BY created_at DESC
@@ -472,6 +555,7 @@ func (q *Queries) ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAge
 			&i.UpdatedAt,
 			&i.ParentTryoutID,
 			&i.SelectedHarnessKind,
+			&i.AnonymousOwnerProofHash,
 		); err != nil {
 			return nil, err
 		}
@@ -557,7 +641,7 @@ const setAgentTryoutRunID = `-- name: SetAgentTryoutRunID :one
 UPDATE agent_tryouts
 SET run_id = $1
 WHERE id = $2
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash
 `
 
 type SetAgentTryoutRunIDParams struct {
@@ -595,6 +679,7 @@ func (q *Queries) SetAgentTryoutRunID(ctx context.Context, arg SetAgentTryoutRun
 		&i.UpdatedAt,
 		&i.ParentTryoutID,
 		&i.SelectedHarnessKind,
+		&i.AnonymousOwnerProofHash,
 	)
 	return i, err
 }
@@ -614,7 +699,7 @@ WHERE id = $6
   -- A terminal tryout keeps its status. A write to the same status stays
   -- allowed so that retries and summary refreshes remain idempotent.
   AND (status NOT IN ('completed', 'failed', 'cancelled') OR status = $1)
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash
 `
 
 type UpdateAgentTryoutStatusParams struct {
@@ -665,6 +750,7 @@ func (q *Queries) UpdateAgentTryoutStatus(ctx context.Context, arg UpdateAgentTr
 		&i.UpdatedAt,
 		&i.ParentTryoutID,
 		&i.SelectedHarnessKind,
+		&i.AnonymousOwnerProofHash,
 	)
 	return i, err
 }

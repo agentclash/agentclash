@@ -83,6 +83,7 @@ type Querier interface {
 	GetChallengeInputSetByID(ctx context.Context, arg GetChallengeInputSetByIDParams) (ChallengeInputSet, error)
 	GetChallengePackDraftByID(ctx context.Context, arg GetChallengePackDraftByIDParams) (ChallengePackDraft, error)
 	GetChallengePieceByID(ctx context.Context, arg GetChallengePieceByIDParams) (ChallengePiece, error)
+	GetClaimedAgentTryoutRetry(ctx context.Context, arg GetClaimedAgentTryoutRetryParams) (AgentTryout, error)
 	GetDatasetBaselineByID(ctx context.Context, arg GetDatasetBaselineByIDParams) (DatasetBaseline, error)
 	GetDatasetByID(ctx context.Context, arg GetDatasetByIDParams) (GetDatasetByIDRow, error)
 	GetDatasetEvalRunByRunID(ctx context.Context, arg GetDatasetEvalRunByRunIDParams) (DatasetEvalRun, error)

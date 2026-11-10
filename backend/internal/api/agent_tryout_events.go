@@ -350,10 +350,13 @@ func (m *AgentTryoutManager) GetPublicTryoutEvents(ctx context.Context, id uuid.
 	if err != nil {
 		return AgentTryoutEventsResult{}, err
 	}
-	if tryout.WorkspaceID != nil {
-		return AgentTryoutEventsResult{}, repository.ErrAgentTryoutNotFound
+	if err := m.authorizeAnonymousTryout(ctx, tryout, false); err != nil {
+		return AgentTryoutEventsResult{}, err
 	}
 	tryout = m.refreshTryoutFromExecution(ctx, tryout)
+	if err := m.authorizeAnonymousTryout(ctx, tryout, false); err != nil {
+		return AgentTryoutEventsResult{}, err
+	}
 	return m.buildTryoutEvents(ctx, tryout, cursor, true)
 }
 
@@ -530,7 +533,7 @@ func getPublicAgentTryoutEventsHandler(logger *slog.Logger, service AgentTryoutS
 			writeError(w, http.StatusBadRequest, "invalid_tryout_id", "tryout_id must be a UUID")
 			return
 		}
-		result, err := service.GetPublicTryoutEvents(r.Context(), id, parseTryoutEventsCursor(r))
+		result, err := service.GetPublicTryoutEvents(tryoutRequestContext(r, id), id, parseTryoutEventsCursor(r))
 		if err != nil {
 			writeAgentTryoutError(w, logger, err)
 			return

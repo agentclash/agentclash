@@ -2653,6 +2653,8 @@ export interface AgentTryoutInputSchema {
 }
 
 export interface AgentTryout {
+  /** Missing/false means safe creator-proof save is unavailable. */
+  save_eligible?: boolean;
   id: string;
   organization_id?: string;
   workspace_id?: string;
@@ -2773,6 +2775,17 @@ export interface AgentTryoutInputAttachment {
   filename: string;
   media_type: string;
   size_bytes: number;
+}
+
+export interface ListAgentTryoutTemplatesResponse {
+  items: AgentTryoutTemplate[];
+  /** Absent only on older APIs; unknown values must fail closed at runtime. */
+  creator_access_protocol?: "cookie-v1";
+}
+
+/** Wire body required by creator-proof-capable anonymous APIs. Workspace creates keep their existing input. */
+export interface CreateAnonymousAgentTryoutInput extends CreateAgentTryoutInput {
+  creator_access_protocol: "cookie-v1";
 }
 
 export interface CreateAgentTryoutInput {
