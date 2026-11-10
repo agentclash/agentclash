@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.0](https://github.com/agentclash/agentclash/compare/v2.4.0...v2.5.0) (2026-11-10)
+
+
+### Features
+
+* **analytics:** distinguish agent referrals and observed hosted use ([0861ec1](https://github.com/agentclash/agentclash/commit/0861ec1206ddee4cb2e0ba29a9af2679ae66c9bd))
+
 ## [2.4.0](https://github.com/agentclash/agentclash/compare/v2.3.2...v2.4.0) (2026-11-10)
 
 
