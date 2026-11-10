@@ -63,17 +63,6 @@ type MarkHostedRunExecutionTimedOutParams struct {
 	ErrorMessage string
 }
 
-type ApplyHostedRunEventParams struct {
-	RunAgentID       uuid.UUID
-	Status           string
-	ExternalRunID    *string
-	LastEventType    string
-	LastEventPayload json.RawMessage
-	ResultPayload    json.RawMessage
-	ErrorMessage     *string
-	OccurredAt       time.Time
-}
-
 func (r *Repository) CreateHostedRunExecution(ctx context.Context, params CreateHostedRunExecutionParams) (HostedRunExecution, error) {
 	row, err := r.queries.CreateHostedRunExecution(ctx, repositorysqlc.CreateHostedRunExecutionParams{
 		RunID:       params.RunID,
@@ -143,26 +132,6 @@ func (r *Repository) MarkHostedRunExecutionTimedOut(ctx context.Context, params 
 			return r.GetHostedRunExecutionByRunAgentID(ctx, params.RunAgentID)
 		}
 		return HostedRunExecution{}, fmt.Errorf("mark hosted run execution timed out: %w", err)
-	}
-	return mapHostedRunExecution(row)
-}
-
-func (r *Repository) ApplyHostedRunEvent(ctx context.Context, params ApplyHostedRunEventParams) (HostedRunExecution, error) {
-	row, err := r.queries.ApplyHostedRunEvent(ctx, repositorysqlc.ApplyHostedRunEventParams{
-		RunAgentID:       params.RunAgentID,
-		Status:           params.Status,
-		ExternalRunID:    cloneStringPtr(params.ExternalRunID),
-		LastEventType:    stringPtr(params.LastEventType),
-		LastEventPayload: cloneJSON(params.LastEventPayload),
-		ResultPayload:    cloneJSON(params.ResultPayload),
-		ErrorMessage:     cloneStringPtr(params.ErrorMessage),
-		OccurredAt:       pgtype.Timestamptz{Time: params.OccurredAt.UTC(), Valid: true},
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return HostedRunExecution{}, ErrHostedRunExecutionNotFound
-		}
-		return HostedRunExecution{}, fmt.Errorf("apply hosted run event: %w", err)
 	}
 	return mapHostedRunExecution(row)
 }
