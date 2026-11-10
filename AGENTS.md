@@ -25,12 +25,16 @@ scoring. To drive it from a coding agent in *your* project:
    the full workflow map, skill dependency order, hosted defaults, and product
    UI links.
 
-3. Introspect the whole CLI — every command, flag, and stable exit code — as
-   JSON, no auth required:
+3. Introspect the whole CLI — every command, flag, stable exit code, and
+   status lifecycle — as JSON, no auth required:
 
    ```bash
    agentclash schema --json
    ```
+
+   Read `.status_enums` for each status lifecycle: the states, the terminal
+   states that end a follow loop, and the legal next states. Do not write
+   your own status list.
 
 4. Humans do one-time setup on the **web** (sign in, add provider API keys /
    BYOK, deployments) at https://www.agentclash.dev. The CLI is the
