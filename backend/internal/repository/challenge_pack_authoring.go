@@ -286,11 +286,40 @@ func (r *Repository) PublishChallengePackBundle(ctx context.Context, params Publ
 		published.BundleArtifactID = &artifact.ID
 	}
 
+	if params.Source != nil {
+		if err := markChallengePackDraftPublishedTx(ctx, tx, params.Source.DraftID, params.WorkspaceID, packID, versionID); err != nil {
+			return PublishedChallengePack{}, err
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return PublishedChallengePack{}, fmt.Errorf("commit challenge pack publish: %w", err)
 	}
 
 	return published, nil
+}
+
+// markChallengePackDraftPublishedTx links the source draft to the version it
+// just published, in the publish transaction, so a pack version never exists
+// without its draft bookkeeping. A draft may be published again (for
+// example with a new version number); each publish moves the link to the
+// newest version.
+func markChallengePackDraftPublishedTx(ctx context.Context, tx pgx.Tx, draftID, workspaceID, packID, versionID uuid.UUID) error {
+	tag, err := tx.Exec(ctx, `
+		UPDATE challenge_pack_drafts
+		SET status = 'published',
+			last_published_version_id = $3,
+			challenge_pack_id = $4
+		WHERE id = $1
+		  AND workspace_id = $2
+	`, draftID, workspaceID, versionID, packID)
+	if err != nil {
+		return fmt.Errorf("mark challenge pack draft published: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrChallengePackDraftNotFound
+	}
+	return nil
 }
 
 func resolveOrCreateChallengePack(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, bundle challengepack.Bundle) (uuid.UUID, error) {
