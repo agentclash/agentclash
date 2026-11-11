@@ -239,7 +239,7 @@ func validateRetryAdmission(ctx context.Context, tx pgx.Tx, v Session, sub Submi
 	if uncertain && !manuallyRetryableRateLimit(source) {
 		return fault("retry_uncertain", "The previous provider attempt is still unresolved. It cannot be repeated yet.")
 	}
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND input#>>'{submission,retry_of}'=$2 AND (state NOT IN ('COMPLETED','PARTIAL','FAILED','CANCELLED','EXPIRED') OR completion_receipt IS NOT NULL OR state='COMPLETED'))`, v.ID, source.ID.String()).Scan(&duplicate); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND input#>>'{submission,retry_of}'=$2 AND (NOT (state=ANY($3)) OR completion_receipt IS NOT NULL OR state='COMPLETED'))`, v.ID, source.ID.String(), terminalStates()).Scan(&duplicate); err != nil {
 		return err
 	}
 	if duplicate {

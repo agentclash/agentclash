@@ -144,7 +144,19 @@ RETURNING
 UPDATE billing_checkout_intents
 SET status = 'completed'
 WHERE id = @id
-  AND status <> 'completed';
+  AND status IN ('created', 'expired');
+
+-- name: ExpireStaleBillingCheckoutIntents :execrows
+UPDATE billing_checkout_intents
+SET status = 'expired'
+WHERE billing_checkout_intents.id IN (
+    SELECT stale.id
+    FROM billing_checkout_intents AS stale
+    WHERE stale.status = 'created'
+      AND stale.created_at <= sqlc.arg('expire_before')::timestamptz
+    FOR UPDATE SKIP LOCKED
+)
+  AND billing_checkout_intents.status = 'created';
 
 -- name: GetLatestBillingCheckoutIntentByOrganizationID :one
 SELECT
@@ -191,6 +203,9 @@ FROM billing_accounts
 WHERE organization_id = @organization_id;
 
 -- name: UpsertBillingSubscription :one
+-- Dodo owns the subscription transitions, so the guard on the old state is the
+-- Dodo event time. An event with no time can insert a missing row, but it does
+-- not update a row. An event that is older than the row does not update it.
 INSERT INTO billing_subscriptions (
     organization_id,
     dodo_subscription_id,
@@ -239,14 +254,10 @@ ON CONFLICT (dodo_subscription_id) DO UPDATE SET
     trial_period_days = EXCLUDED.trial_period_days,
     seat_quantity = EXCLUDED.seat_quantity,
     addon_quantities = EXCLUDED.addon_quantities,
-    latest_dodo_event_at = COALESCE(
-        GREATEST(billing_subscriptions.latest_dodo_event_at, EXCLUDED.latest_dodo_event_at),
-        billing_subscriptions.latest_dodo_event_at,
-        EXCLUDED.latest_dodo_event_at
-    )
-WHERE billing_subscriptions.latest_dodo_event_at IS NULL
-   OR EXCLUDED.latest_dodo_event_at IS NULL
-   OR EXCLUDED.latest_dodo_event_at >= billing_subscriptions.latest_dodo_event_at
+    latest_dodo_event_at = EXCLUDED.latest_dodo_event_at
+WHERE EXCLUDED.latest_dodo_event_at IS NOT NULL
+  AND (billing_subscriptions.latest_dodo_event_at IS NULL
+       OR EXCLUDED.latest_dodo_event_at >= billing_subscriptions.latest_dodo_event_at)
 RETURNING
     id,
     organization_id,

@@ -23,7 +23,7 @@ func (s *Store) RetirementInventory(ctx context.Context) (RetirementInventory, e
 	if err != nil {
 		return out, err
 	}
-	err = s.DB.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE b.operation_id IS NOT NULL AND b.delivered_at IS NULL) FROM vibe_operations o JOIN vibe_sessions s ON s.id=o.session_id LEFT JOIN vibe_outbox b ON b.operation_id=o.id WHERE o.state NOT IN ('COMPLETED','PARTIAL','FAILED','CANCELLED','EXPIRED') AND `+retiringOperation).Scan(&out.PendingOperations, &out.PendingOutbox)
+	err = s.DB.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE b.operation_id IS NOT NULL AND b.delivered_at IS NULL) FROM vibe_operations o JOIN vibe_sessions s ON s.id=o.session_id LEFT JOIN vibe_outbox b ON b.operation_id=o.id WHERE NOT (o.state=ANY($1)) AND `+retiringOperation, terminalStates()).Scan(&out.PendingOperations, &out.PendingOutbox)
 	return out, err
 }
 

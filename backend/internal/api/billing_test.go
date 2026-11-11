@@ -908,12 +908,28 @@ func (f *fakeBillingRepository) GetBillingAccount(_ context.Context, orgID uuid.
 }
 
 func (f *fakeBillingRepository) UpsertBillingSubscription(_ context.Context, input repository.BillingSubscriptionInput) (repository.BillingSubscription, error) {
+	subscription, _ := f.upsertSubscription(input)
+	return subscription, nil
+}
+
+// upsertSubscription copies the event-time guard of the UpsertBillingSubscription
+// query. An event with no time can insert a missing row, but it does not update
+// an existing row. An older event does not update a row.
+func (f *fakeBillingRepository) upsertSubscription(input repository.BillingSubscriptionInput) (repository.BillingSubscription, bool) {
+	id := uuid.New()
+	if f.subscription.ID != uuid.Nil && f.subscription.DodoSubscriptionID == input.DodoSubscriptionID {
+		existing := f.subscription.LatestDodoEventAt
+		if input.LatestDodoEventAt == nil || (existing != nil && input.LatestDodoEventAt.Before(*existing)) {
+			return f.subscription, false
+		}
+		id = f.subscription.ID
+	}
 	addons := input.AddonQuantities
 	if len(addons) == 0 {
 		addons = json.RawMessage(`{}`)
 	}
 	f.subscription = repository.BillingSubscription{
-		ID:                      uuid.New(),
+		ID:                      id,
 		OrganizationID:          input.OrganizationID,
 		DodoSubscriptionID:      input.DodoSubscriptionID,
 		DodoProductID:           input.DodoProductID,
@@ -926,7 +942,7 @@ func (f *fakeBillingRepository) UpsertBillingSubscription(_ context.Context, inp
 		ExpiresAt:               input.ExpiresAt,
 		LatestDodoEventAt:       input.LatestDodoEventAt,
 	}
-	return f.subscription, nil
+	return f.subscription, true
 }
 
 func (f *fakeBillingRepository) GetBillingOverview(_ context.Context, orgID uuid.UUID) (repository.BillingOverview, error) {
@@ -952,18 +968,20 @@ func (f *fakeBillingRepository) ApplyBillingWebhookEvent(ctx context.Context, ev
 		return true, nil
 	}
 	f.webhookIDs[event.WebhookID] = true
+	// Copy the repository: the subscription upsert comes first. If the event
+	// is older than the row, or has no time, the event changes nothing else.
+	var sourceSubscriptionID *uuid.UUID
+	if application.Subscription != nil {
+		subscription, applied := f.upsertSubscription(*application.Subscription)
+		if !applied {
+			return false, nil
+		}
+		sourceSubscriptionID = &subscription.ID
+	}
 	if application.Account != nil {
 		if err := f.UpsertBillingAccount(ctx, application.Account.OrganizationID, application.Account.DodoCustomerID, application.Account.BillingEmail, application.Account.Status); err != nil {
 			return false, err
 		}
-	}
-	var sourceSubscriptionID *uuid.UUID
-	if application.Subscription != nil {
-		subscription, err := f.UpsertBillingSubscription(ctx, *application.Subscription)
-		if err != nil {
-			return false, err
-		}
-		sourceSubscriptionID = &subscription.ID
 	}
 	if application.Entitlements != nil {
 		if !application.Entitlements.UseSubscriptionAsSource {

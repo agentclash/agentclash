@@ -468,7 +468,8 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 	subscriptionID := envelope.DataString("subscription_id", "id", "dodo_subscription_id")
 	customerID := envelope.DataString("customer_id", "dodo_customer_id")
 	productID := envelope.DataString("product_id", "dodo_product_id")
-	status := billingpkg.DodoStatusFromEvent(envelope.Type, envelope.DataString("status", "subscription_status"))
+	payloadStatus := envelope.DataString("status", "subscription_status")
+	status := billingpkg.DodoSubscriptionStatusFromEvent(envelope.Type, envelope.PayloadType(), payloadStatus)
 	seatQuantity := envelope.DataInt("quantity", "seat_quantity", "seats")
 
 	orgID, err := envelope.OrganizationID()
@@ -505,7 +506,9 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 	if len(addons) == 0 || string(addons) == "null" {
 		addons = []byte(`{}`)
 	}
-	eventTime := envelope.EventTimeValue(m.now().UTC())
+	// Do not use the webhook-timestamp header or the server clock here. Dodo
+	// stamps each delivery again, so neither one is the time of the event.
+	eventTime := eventInput.EventTimestamp
 	subscriptionInput := repository.BillingSubscriptionInput{
 		OrganizationID:          orgID,
 		DodoSubscriptionID:      subscriptionID,
@@ -513,7 +516,7 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 		DodoProductID:           productID,
 		PlanKey:                 mapping.PlanKey,
 		BillingPeriod:           mapping.BillingPeriod,
-		Status:                  status,
+		Status:                  string(status),
 		NextBillingDate:         envelope.DataTime("next_billing_date", "current_period_end"),
 		CancelAtNextBillingDate: envelope.DataBool("cancel_at_next_billing_date", "cancel_at_period_end"),
 		CancelledAt:             envelope.DataTime("cancelled_at", "canceled_at"),
@@ -521,7 +524,7 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 		TrialPeriodDays:         envelope.DataIntPtr("trial_period_days"),
 		SeatQuantity:            seatQuantity,
 		AddonQuantities:         addons,
-		LatestDodoEventAt:       &eventTime,
+		LatestDodoEventAt:       eventTime,
 	}
 
 	entitlements := billingpkg.DefaultEntitlements()
@@ -535,7 +538,7 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 		useSubscriptionAsSource = true
 		entitlementExpiresAt = subscriptionInput.ExpiresAt
 		entitlements.ExpiresAt = subscriptionInput.ExpiresAt
-	} else if billingpkg.DodoStatusIsEntitled(status) {
+	} else if status.Entitled() {
 		if err := billingpkg.ValidateSeatQuantity(plan, seatQuantity); err != nil {
 			return false, err
 		}
@@ -571,37 +574,60 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 			Status:         "active",
 		}
 	}
+	if status == billingpkg.SubscriptionStatusUnknown {
+		// Store the unknown status, but keep the current plan. A new Dodo
+		// value must not move an organization that pays to the free plan.
+		slog.Default().Warn("dodo webhook has an unknown subscription status; the entitlements stay the same",
+			"webhook_id", eventInput.WebhookID,
+			"event_type", envelope.Type,
+			"payload_type", envelope.PayloadType(),
+			"payload_status", payloadStatus,
+			"dodo_subscription_id", subscriptionID,
+			"organization_id", orgID,
+		)
+		application.Entitlements = nil
+	}
+	if eventTime == nil {
+		// The event-time guard cannot order an event with no time. The
+		// subscription upsert can insert a missing row, but it does not change
+		// a row. With no subscription ID, no row gives the order, so keep the
+		// current plan.
+		slog.Default().Warn("dodo webhook has no event time; it does not change an existing subscription",
+			"webhook_id", eventInput.WebhookID,
+			"event_type", envelope.Type,
+			"dodo_subscription_id", subscriptionID,
+			"organization_id", orgID,
+		)
+		if subscriptionID == "" {
+			application.Entitlements = nil
+		}
+	}
 	return m.repo.ApplyBillingWebhookEvent(ctx, eventInput, application)
 }
 
-func shouldExpireMaterializedEntitlement(status string, cancelAtNextBillingDate bool, expiresAt *time.Time) bool {
+func shouldExpireMaterializedEntitlement(status billingpkg.SubscriptionStatus, cancelAtNextBillingDate bool, expiresAt *time.Time) bool {
 	if expiresAt == nil {
 		return false
 	}
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case billingpkg.EntitlementStatusTrialing, billingpkg.EntitlementStatusExpired, billingpkg.EntitlementStatusInactive, "cancelled", "canceled", "failed", "on_hold":
+	switch status {
+	case billingpkg.SubscriptionStatusTrialing, billingpkg.SubscriptionStatusExpired, billingpkg.SubscriptionStatusCancelled, billingpkg.SubscriptionStatusFailed, billingpkg.SubscriptionStatusOnHold:
 		return true
 	default:
 		return cancelAtNextBillingDate
 	}
 }
 
-func shouldRetainPaidPlanInactive(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "on_hold", "failed", billingpkg.EntitlementStatusInactive:
-		return true
-	default:
-		return false
-	}
+// shouldRetainPaidPlanInactive keeps the paid plan, but inactive, for a
+// subscription that can come back after a payment.
+func shouldRetainPaidPlanInactive(status billingpkg.SubscriptionStatus) bool {
+	return status == billingpkg.SubscriptionStatusOnHold || status == billingpkg.SubscriptionStatusFailed
 }
 
-func entitlementStatusForDodoStatus(status string) string {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case billingpkg.EntitlementStatusTrialing:
+func entitlementStatusForDodoStatus(status billingpkg.SubscriptionStatus) string {
+	if status == billingpkg.SubscriptionStatusTrialing {
 		return billingpkg.EntitlementStatusTrialing
-	default:
-		return billingpkg.EntitlementStatusActive
 	}
+	return billingpkg.EntitlementStatusActive
 }
 
 func (m *BillingManager) createDodoCheckoutSession(ctx context.Context, caller Caller, _ uuid.UUID, intentID uuid.UUID, plan billingpkg.Plan, input CreateBillingCheckoutInput, metadata json.RawMessage) (string, string, error) {
@@ -797,25 +823,21 @@ func parseDodoWebhookEnvelope(rawBody []byte) (dodoWebhookEnvelope, error) {
 	return envelope, nil
 }
 
+// EventTime returns the Dodo event time from the body, or nil when the body
+// has no time that parses. Do not replace nil with the clock: the event-time
+// guard of UpsertBillingSubscription needs the real order of the events.
 func (e dodoWebhookEnvelope) EventTime() *time.Time {
-	value := e.EventTimeValue(time.Time{})
-	if value.IsZero() {
-		return nil
-	}
-	return &value
-}
-
-func (e dodoWebhookEnvelope) EventTimeValue(fallback time.Time) time.Time {
 	for _, raw := range []string{e.Timestamp, e.CreatedAt, e.DataString("timestamp", "created_at")} {
 		if raw == "" {
 			continue
 		}
 		parsed, err := time.Parse(time.RFC3339, raw)
 		if err == nil {
-			return parsed.UTC()
+			value := parsed.UTC()
+			return &value
 		}
 	}
-	return fallback
+	return nil
 }
 
 func (e dodoWebhookEnvelope) PayloadType() string {

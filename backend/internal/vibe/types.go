@@ -26,8 +26,28 @@ const (
 	Expired          Execution = "EXPIRED"
 )
 
+// terminalExecutions is the one owner of the terminal operation states.
+// Terminal() and terminalStates() read it. Do not write a terminal list in SQL.
+var terminalExecutions = [...]Execution{Completed, Partial, Failed, Cancelled, Expired}
+
 func (s Execution) Terminal() bool {
-	return s == Completed || s == Partial || s == Failed || s == Cancelled || s == Expired
+	for _, state := range terminalExecutions {
+		if s == state {
+			return true
+		}
+	}
+	return false
+}
+
+// terminalStates returns the terminal states for a text[] parameter
+// (state=ANY($n), or NOT (state=ANY($n)) for the states that are not terminal).
+// It returns a new slice for each call.
+func terminalStates() []string {
+	states := make([]string, len(terminalExecutions))
+	for i, state := range terminalExecutions {
+		states[i] = string(state)
+	}
+	return states
 }
 
 // busyStates returns the states that make a project busy, for a text[]
@@ -79,6 +99,26 @@ const (
 	Settled         BillingState = "SETTLED"
 	Released        BillingState = "RELEASED"
 )
+
+// Final reports a billing state that no write can leave. A late receipt or
+// response keeps its cost conflict in the attempt evidence. It does not
+// reopen the settled cost.
+func (b BillingState) Final() bool {
+	return b == Settled || b == Released
+}
+
+// CanTransitionBilling is the billing transition table. Submit inserts a
+// quote as UNRESERVED and a funded operation as RESERVED. RECONCILING can move
+// to RECONCILING, because settle runs again for each late receipt.
+func CanTransitionBilling(from, to BillingState) bool {
+	switch from {
+	case Unreserved:
+		return to == BillingReserved || to == Released
+	case BillingReserved, Reconciling:
+		return to == Reconciling || to == Settled || to == Released
+	}
+	return false
+}
 
 type Role string
 

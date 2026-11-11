@@ -293,6 +293,31 @@ func (q *Queries) CreateBillingTrialGrant(ctx context.Context, arg CreateBilling
 	return i, err
 }
 
+const expireStaleBillingCheckoutIntents = `-- name: ExpireStaleBillingCheckoutIntents :execrows
+UPDATE billing_checkout_intents
+SET status = 'expired'
+WHERE billing_checkout_intents.id IN (
+    SELECT stale.id
+    FROM billing_checkout_intents AS stale
+    WHERE stale.status = 'created'
+      AND stale.created_at <= $1::timestamptz
+    FOR UPDATE SKIP LOCKED
+)
+  AND billing_checkout_intents.status = 'created'
+`
+
+type ExpireStaleBillingCheckoutIntentsParams struct {
+	ExpireBefore pgtype.Timestamptz
+}
+
+func (q *Queries) ExpireStaleBillingCheckoutIntents(ctx context.Context, arg ExpireStaleBillingCheckoutIntentsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, expireStaleBillingCheckoutIntents, arg.ExpireBefore)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const findOrganizationByDodoSubscriptionOrCustomer = `-- name: FindOrganizationByDodoSubscriptionOrCustomer :one
 SELECT organization_id FROM (
     SELECT organization_id, 1 AS priority, latest_dodo_event_at AS event_at
@@ -631,7 +656,7 @@ const markBillingCheckoutIntentCompleted = `-- name: MarkBillingCheckoutIntentCo
 UPDATE billing_checkout_intents
 SET status = 'completed'
 WHERE id = $1
-  AND status <> 'completed'
+  AND status IN ('created', 'expired')
 `
 
 type MarkBillingCheckoutIntentCompletedParams struct {
@@ -744,14 +769,10 @@ ON CONFLICT (dodo_subscription_id) DO UPDATE SET
     trial_period_days = EXCLUDED.trial_period_days,
     seat_quantity = EXCLUDED.seat_quantity,
     addon_quantities = EXCLUDED.addon_quantities,
-    latest_dodo_event_at = COALESCE(
-        GREATEST(billing_subscriptions.latest_dodo_event_at, EXCLUDED.latest_dodo_event_at),
-        billing_subscriptions.latest_dodo_event_at,
-        EXCLUDED.latest_dodo_event_at
-    )
-WHERE billing_subscriptions.latest_dodo_event_at IS NULL
-   OR EXCLUDED.latest_dodo_event_at IS NULL
-   OR EXCLUDED.latest_dodo_event_at >= billing_subscriptions.latest_dodo_event_at
+    latest_dodo_event_at = EXCLUDED.latest_dodo_event_at
+WHERE EXCLUDED.latest_dodo_event_at IS NOT NULL
+  AND (billing_subscriptions.latest_dodo_event_at IS NULL
+       OR EXCLUDED.latest_dodo_event_at >= billing_subscriptions.latest_dodo_event_at)
 RETURNING
     id,
     organization_id,
@@ -791,6 +812,9 @@ type UpsertBillingSubscriptionParams struct {
 	LatestDodoEventAt       pgtype.Timestamptz
 }
 
+// Dodo owns the subscription transitions, so the guard on the old state is the
+// Dodo event time. An event with no time can insert a missing row, but it does
+// not update a row. An event that is older than the row does not update it.
 func (q *Queries) UpsertBillingSubscription(ctx context.Context, arg UpsertBillingSubscriptionParams) (BillingSubscription, error) {
 	row := q.db.QueryRow(ctx, upsertBillingSubscription,
 		arg.OrganizationID,
