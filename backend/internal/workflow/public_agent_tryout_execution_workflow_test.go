@@ -85,10 +85,8 @@ func TestPublicAgentTryoutWorkflowFailsTryoutWhenActivityFails(t *testing.T) {
 	if got := probe.cleanupTimeouts[0]; got != 30*time.Second {
 		t.Fatalf("cleanup StartToCloseTimeout = %s, want 30s", got)
 	}
-	// During a deploy, an old worker does not send heartbeats. A follow-up
-	// change sets the timeout.
-	if got := probe.executeTimeouts[0]; got != 0 {
-		t.Fatalf("execute HeartbeatTimeout = %s, want 0", got)
+	if got := probe.executeTimeouts[0]; got != publicTryoutHeartbeatTimeout {
+		t.Fatalf("execute HeartbeatTimeout = %s, want %s", got, publicTryoutHeartbeatTimeout)
 	}
 }
 
