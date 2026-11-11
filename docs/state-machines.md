@@ -74,6 +74,13 @@ Facts that the tables do not show:
   no accept phase, so nothing writes it.
 - A race standings entry becomes `submitted` on `system.output.finalized` or
   on `system.run.completed`. Native runs emit only the second event.
+- Three paths do not send their events through the standings recorder of the
+  worker. The API stores hosted events. A connector stores its events in one
+  transaction. A case fan-out run records no `system.run.*` event for a case.
+  For these paths, the run agent workflow writes the standings entry through
+  `workflow.update_race_standings`. No persisted event changes. The write is
+  best effort: a failure only logs a warning, and a cancel writes nothing. A
+  case fan-out agent is `submitted` if one or more cases passed.
 - If the worker of a public tryout stops, the workflow marks the tryout
   failed. The web app then stops its wait.
 - Vibe operations keep AWAITING_INPUT in the CHECK constraint, but
@@ -114,7 +121,6 @@ These gaps remain. Each needs an owner decision or a larger change.
 | `billing_subscriptions.status` | No CHECK constraint. A missing event time falls back to `now()`. |
 | `billing_checkout_intents.status` | Only completed is written, so an abandoned checkout stays created. |
 | `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
-| Race standings | Hosted events do not pass through the standings recorder of the worker, so hosted peers never update. A run with case fan-out emits no run-level event, so its agents never show as submitted. |
 | Public tryout | A message that arrives after the turn loop ends, but before the completed write, is accepted and never processed. |
 | Public tryout | After a worker crash, the tryout shows failed only when the activity times out (about 32 minutes). A follow-up sets a 60-second heartbeat timeout after this release deploys. |
 
