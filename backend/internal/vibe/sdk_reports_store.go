@@ -175,11 +175,16 @@ func (s *Store) ImportSDKReport(ctx context.Context, actor string, session uuid.
 		}
 		id := uuid.New()
 		ref := ResultRef{Kind: ResultSDKReport, ID: id}
-		out = SDKReport{ID: id, Binding: ProjectResultBinding{SessionID: session, ArtifactID: a.ID, ResultRef: ref, ChallengePackVersionID: in.Metadata.ChallengePackVersionID}, EvidenceMetadata: EvidenceMetadata{ResultRef: ref, EvidenceProvenance: EvidenceProvenance{Origin: OriginImported, Fingerprints: in.Metadata.Fingerprints, CaptureScope: in.Metadata.CaptureScope, ApplicationRevision: in.Metadata.ApplicationRevision}}, SourceKind: in.SourceKind, SourceSchemaVersion: 1, ExternalReportID: in.ExternalReportID, ContentHash: Hash([]byte(in.SourceJSON)), Size: len(in.SourceJSON), CreatedAt: timestamp(), Cases: in.Metadata.Cases}
+		out = SDKReport{ID: id, Binding: ProjectResultBinding{SessionID: session, ArtifactID: a.ID, ResultRef: ref, ChallengePackVersionID: in.Metadata.ChallengePackVersionID}, EvidenceMetadata: EvidenceMetadata{ResultRef: ref, EvidenceProvenance: EvidenceProvenance{Origin: OriginImported, Fingerprints: in.Metadata.Fingerprints, CaptureScope: in.Metadata.CaptureScope, ApplicationRevision: in.Metadata.ApplicationRevision}}, SourceKind: in.SourceKind, SourceSchemaVersion: in.SourceSchemaVersion, ExternalReportID: in.ExternalReportID, ContentHash: Hash([]byte(in.SourceJSON)), Size: len(in.SourceJSON), CreatedAt: timestamp(), Cases: in.Metadata.Cases}
 		if in.SourceKind == "eval_report" {
 			var doc map[string]json.RawMessage
 			_ = json.Unmarshal([]byte(in.SourceJSON), &doc)
 			out.Summary = doc["summary"]
+			if in.SourceSchemaVersion == 2 {
+				refund, _ := validateRefundReport(in.SourceJSON)
+				out.Diagnostics = refundDiagnostics(refund, in.Metadata)
+				out.SourceProvenance = refundProvenance(refund)
+			}
 		} else {
 			out.Diagnostics = []string{"This agent result has no imported grade."}
 		}

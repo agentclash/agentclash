@@ -20,11 +20,14 @@ const SDKReportCount = 100
 //go:embed sdk_schema/eval-report.schema.json
 var sdkReportSchema []byte
 
+//go:embed sdk_schema/refund-report-v2.schema.json
+var sdkRefundReportSchema []byte
+
 //go:embed sdk_schema/agent-result.schema.json
 var sdkAgentSchema []byte
 var sdkSchemas = sync.OnceValues(func() (map[string]*jsonschema.Resolved, error) {
 	out := map[string]*jsonschema.Resolved{}
-	for k, b := range map[string][]byte{"eval_report": sdkReportSchema, "agent_result": sdkAgentSchema} {
+	for k, b := range map[string][]byte{"eval_report": sdkReportSchema, "eval_report_v2": sdkRefundReportSchema, "agent_result": sdkAgentSchema} {
 		var s jsonschema.Schema
 		if err := json.Unmarshal(b, &s); err != nil {
 			return nil, err
@@ -73,13 +76,14 @@ type SDKReport struct {
 	Size                int                  `json:"size_bytes"`
 	CreatedAt           time.Time            `json:"created_at"`
 	Cases               []SDKCaseBinding     `json:"cases"`
+	SourceProvenance    json.RawMessage      `json:"source_provenance,omitempty"`
 	Summary             json.RawMessage      `json:"summary,omitempty"`
 	Diagnostics         []string             `json:"diagnostics,omitempty"`
 	SourceJSON          string               `json:"-"`
 }
 
 func invalidSDK() error {
-	return fault("invalid_import", "Use a bounded v1 SDK report or agent result with exact case bindings and capture metadata.")
+	return fault("invalid_import", "Use a bounded supported SDK report (eval_report v1/v2 or agent_result v1) with exact case bindings and capture metadata.")
 }
 func DecodeSDKReport(b []byte) (SDKReportImport, error) {
 	var in SDKReportImport
@@ -91,7 +95,7 @@ func DecodeSDKReport(b []byte) (SDKReportImport, error) {
 	}
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.DisallowUnknownFields()
-	if d.Decode(&in) != nil || in.EnvelopeVersion != 1 || in.SourceSchemaVersion != 1 || (in.SourceKind != "eval_report" && in.SourceKind != "agent_result") || in.Metadata.ArtifactID == uuid.Nil {
+	if d.Decode(&in) != nil || in.EnvelopeVersion != 1 || !supportedSDKFormat(in.SourceKind, in.SourceSchemaVersion) || in.Metadata.ArtifactID == uuid.Nil {
 		return in, invalidSDK()
 	}
 	// Typed decoding alone cannot distinguish omitted required nullable fields.
@@ -124,6 +128,9 @@ func DecodeSDKReport(b []byte) (SDKReportImport, error) {
 	}
 	l = LimitsFor(false)
 	l.FileBytes = SDKReportSourceBytes
+	if in.SourceSchemaVersion == 2 {
+		l.Depth = 20
+	}
 	if validateJSON([]byte(in.SourceJSON), l, true) != nil {
 		return in, invalidSDK()
 	}
@@ -135,8 +142,20 @@ func DecodeSDKReport(b []byte) (SDKReportImport, error) {
 	if err != nil {
 		return in, fault("unavailable", "SDK schemas are unavailable.")
 	}
-	if schemas[in.SourceKind].Validate(source) != nil {
+	schemaKey := in.SourceKind
+	if in.SourceSchemaVersion == 2 {
+		schemaKey = "eval_report_v2"
+	}
+	if schemas[schemaKey].Validate(source) != nil {
 		return in, invalidSDK()
+	}
+	if in.SourceSchemaVersion == 2 {
+		if !refundJSONKeys(source) {
+			return in, invalidSDK()
+		}
+		if _, err := validateRefundReport(in.SourceJSON); err != nil {
+			return in, err
+		}
 	}
 	byID := map[string]map[string]any{}
 	if in.SourceKind == "eval_report" {
@@ -155,6 +174,9 @@ func DecodeSDKReport(b []byte) (SDKReportImport, error) {
 				return in, invalidSDK()
 			}
 			agent, _ := c["agent_result"].(map[string]any)
+			if in.SourceSchemaVersion == 2 {
+				agent = nil
+			}
 			byID[id] = agent
 		}
 		if len(byID) != len(in.Metadata.Cases) {
@@ -197,4 +219,23 @@ func DecodeSDKReport(b []byte) (SDKReportImport, error) {
 		}
 	}
 	return in, nil
+}
+
+// Capability discovery is additive; absence on older servers means v1 only.
+type SDKImportFormat struct {
+	EnvelopeVersion     int    `json:"envelope_version"`
+	SourceKind          string `json:"source_kind"`
+	SourceSchemaVersion int    `json:"source_schema_version"`
+}
+
+func SDKImportFormats() []SDKImportFormat {
+	return []SDKImportFormat{{1, "eval_report", 1}, {1, "agent_result", 1}, {1, "eval_report", 2}}
+}
+func supportedSDKFormat(kind string, version int) bool {
+	for _, f := range SDKImportFormats() {
+		if f.SourceKind == kind && f.SourceSchemaVersion == version {
+			return true
+		}
+	}
+	return false
 }

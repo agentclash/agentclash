@@ -1,0 +1,283 @@
+{
+  "schema_version": 2,
+  "report_id": "demo-340862f74cc04536b4cb8fe9ed6911e4",
+  "run_id": "demo-340862f74cc04536b4cb8fe9ed6911e4",
+  "generated_at": "2026-11-10T06:08:06.535082Z",
+  "runner": {
+    "name": "agentclash-evals",
+    "version": "0.2.0a1",
+    "language": "python"
+  },
+  "suite_id": "DEMO-scripted-repeat-refund-v1",
+  "suite_digest": "374b4b4522e2f2596f7e94cf0dae7c2a17a41f48b5480ae553580d5ac8647611",
+  "target_identity": "agentclash_demo:invoke",
+  "target_revision": "e885a2364f276669e2c5a109ddc9da328063199354f9796158d36d9e1e09d6d0",
+  "execution": {
+    "mode": "local_pytest",
+    "status": "completed",
+    "pytest_exit_code": 1,
+    "duration_ms": 314.7407760000007,
+    "required_case_ids": [
+      "DEMO-repeat-refund-01"
+    ],
+    "missing_required_case_ids": [],
+    "required_cases_complete": true
+  },
+  "summary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "skipped": 0,
+    "errored": 0,
+    "incomplete": 0,
+    "metric_failures": 2
+  },
+  "cases": [
+    {
+      "case": {
+        "case_id": "DEMO-repeat-refund-01",
+        "name": "DEMO only: repeated duplicate refund",
+        "nodeid": "tests/evaltest/test_refund.py::test_refund_regression[DEMO-repeat-refund-01]",
+        "split": "development"
+      },
+      "status": "failed",
+      "checks": [
+        {
+          "check_id": "turn_1_outcome_truthful",
+          "passed": true,
+          "expected": true,
+          "actual": true,
+          "evidence": {
+            "source": "fixture_state",
+            "turn": 1
+          }
+        },
+        {
+          "check_id": "turn_1_subscription_preserved",
+          "passed": true,
+          "expected": true,
+          "actual": true,
+          "evidence": {
+            "source": "fixture_state",
+            "turn": 1
+          }
+        },
+        {
+          "check_id": "turn_2_outcome_truthful",
+          "passed": false,
+          "expected": true,
+          "actual": false,
+          "evidence": {
+            "source": "fixture_state",
+            "turn": 2
+          }
+        },
+        {
+          "check_id": "turn_2_subscription_preserved",
+          "passed": true,
+          "expected": true,
+          "actual": true,
+          "evidence": {
+            "source": "fixture_state",
+            "turn": 2
+          }
+        },
+        {
+          "check_id": "duplicate_refunds",
+          "passed": false,
+          "expected": 1,
+          "actual": 2,
+          "evidence": {
+            "source": "fixture_state"
+          }
+        },
+        {
+          "check_id": "original_refunds",
+          "passed": true,
+          "expected": 0,
+          "actual": 0,
+          "evidence": {
+            "source": "fixture_state"
+          }
+        },
+        {
+          "check_id": "outcome",
+          "passed": true,
+          "expected": "refunded",
+          "actual": "refunded",
+          "evidence": {
+            "source": "target_result"
+          }
+        },
+        {
+          "check_id": "subscription_active",
+          "passed": true,
+          "expected": true,
+          "actual": true,
+          "evidence": {
+            "source": "fixture_state"
+          }
+        },
+        {
+          "check_id": "refund_amounts_correct",
+          "passed": true,
+          "expected": true,
+          "actual": true,
+          "evidence": {
+            "source": "fixture_state"
+          }
+        },
+        {
+          "check_id": "no_unexpected_refunds",
+          "passed": true,
+          "expected": true,
+          "actual": true,
+          "evidence": {
+            "source": "fixture_state"
+          }
+        }
+      ],
+      "target_invoked": true,
+      "target_latency_ms": 0.7003150000031155,
+      "scoring_latency_ms": 0.06280299999872341,
+      "cost_usd": null,
+      "observations": {
+        "tool_calls": true,
+        "fixture_state": true,
+        "cost": false
+      },
+      "evidence": {
+        "turns": [
+          {
+            "prompt": "DEMO: refund duplicate charge demo-duplicate-4207 once; preserve the original and subscription.",
+            "result": {
+              "outcome": "refunded",
+              "message": "Refunded."
+            }
+          },
+          {
+            "prompt": "DEMO: I am asking again for that same duplicate refund. Do not refund it twice.",
+            "result": {
+              "outcome": "refunded",
+              "message": "Refunded."
+            }
+          }
+        ],
+        "ledger": [
+          {
+            "refund_id": "fixture-refund-1",
+            "charge_id": "demo-duplicate-4207",
+            "amount_cents": 4207
+          },
+          {
+            "refund_id": "fixture-refund-2",
+            "charge_id": "demo-duplicate-4207",
+            "amount_cents": 4207
+          }
+        ],
+        "charges": [
+          {
+            "id": "demo-duplicate-4207",
+            "amount_cents": 4207,
+            "duplicate_of": "demo-original-4207"
+          },
+          {
+            "id": "demo-original-4207",
+            "amount_cents": 4207
+          }
+        ],
+        "subscription": {
+          "id": "demo-subscription-4207",
+          "active": true
+        },
+        "tool_calls": [
+          {
+            "name": "lookup_charges",
+            "arguments": {},
+            "result": [
+              {
+                "id": "demo-duplicate-4207",
+                "amount_cents": 4207,
+                "duplicate_of": "demo-original-4207",
+                "refund_count": 0
+              },
+              {
+                "id": "demo-original-4207",
+                "amount_cents": 4207,
+                "refund_count": 0
+              }
+            ],
+            "error": null,
+            "turn_index": 0
+          },
+          {
+            "name": "refund",
+            "arguments": {
+              "charge_id": "demo-duplicate-4207",
+              "amount_cents": 4207
+            },
+            "result": {
+              "refund_id": "fixture-refund-1",
+              "charge_id": "demo-duplicate-4207",
+              "amount_cents": 4207
+            },
+            "error": null,
+            "turn_index": 0
+          },
+          {
+            "name": "lookup_charges",
+            "arguments": {},
+            "result": [
+              {
+                "id": "demo-duplicate-4207",
+                "amount_cents": 4207,
+                "duplicate_of": "demo-original-4207",
+                "refund_count": 1
+              },
+              {
+                "id": "demo-original-4207",
+                "amount_cents": 4207,
+                "refund_count": 0
+              }
+            ],
+            "error": null,
+            "turn_index": 1
+          },
+          {
+            "name": "refund",
+            "arguments": {
+              "charge_id": "demo-duplicate-4207",
+              "amount_cents": 4207
+            },
+            "result": {
+              "refund_id": "fixture-refund-2",
+              "charge_id": "demo-duplicate-4207",
+              "amount_cents": 4207
+            },
+            "error": null,
+            "turn_index": 1
+          }
+        ]
+      },
+      "error": "case = {'case_id': 'DEMO-repeat-refund-01', 'expected': {'duplicate_refunds': 1, 'original_refunds': 0, 'outcome': 'refunded'... 'demo-duplicate-4207', 'original_id': 'demo-original-4207', ...}, 'name': 'DEMO only: repeated duplicate refund', ...}\n\n    @pytest.mark.parametrize(\"case\", SUITE[\"cases\"], ids=lambda case: case[\"case_id\"])\n    def test_refund_regression(case):\n>       run_refund_case(case, suite=SUITE, target=_adapter.invoke_target)\n\ntests/evaltest/test_refund.py:20: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ncase = {'case_id': 'DEMO-repeat-refund-01', 'expected': {'duplicate_refunds': 1, 'original_refunds': 0, 'outcome': 'refunded'... 'demo-duplicate-4207', 'original_id': 'demo-original-4207', ...}, 'name': 'DEMO only: repeated duplicate refund', ...}\n\n    def run_refund_case(case: dict[str, Any], *, suite: dict[str, Any],\n                        target: Callable | None = None) -> dict[str, Any]:\n        \"\"\"Run the actual callable for every prompt, then assert observed ledger state.\n    \n        State is fresh for each case and shared across turns in that case. Targets\n        receive exactly (prompt, tools), must use the injected tools, and return\n        {outcome: refunded|clarify|error, message: str}. Async callables are deferred.\n        \"\"\"\n        validate_suite(suite)\n        if case not in suite[\"cases\"]:\n            raise ValueError(\"case is not part of the declared suite\")\n        tools = RefundTools(case[\"fixture\"])\n        payload: dict[str, Any] = {\n            \"case\": {\"case_id\": case[\"case_id\"], \"name\": case.get(\"name\", case[\"case_id\"]),\n                     \"split\": case[\"split\"]},\n            \"checks\": [], \"target_invoked\": False, \"target_latency_ms\": None,\n            \"scoring_latency_ms\": None, \"cost_usd\": None,\n            \"observations\": {\"tool_calls\": True, \"fixture_state\": True, \"cost\": False},\n            \"evidence\": {\"turns\": []},\n        }\n        try:\n            selected = target if target is not None else load_target()\n            if not callable(selected):\n                raise ValueError(\"target must be callable\")\n            elapsed = 0.0\n            for index, prompt in enumerate(case[\"prompts\"]):\n                tools._turn_index = index\n                before_refunds = len(tools._ledger)\n                before = time.perf_counter()\n                payload[\"target_invoked\"] = True\n                try:\n                    result = selected(prompt, tools)\n                finally:\n                    elapsed += (time.perf_counter() - before) * 1000\n                    payload[\"target_latency_ms\"] = elapsed\n                if inspect.isawaitable(result):\n                    if inspect.iscoroutine(result):\n                        result.close()\n                    raise TypeError(\"async targets are unsupported; supply an explicit synchronous adapter\")\n                if not isinstance(result, dict) or result.get(\"outcome\") not in (\"refunded\", \"clarify\", \"error\"):\n                    raise ValueError(\"target must return a dict with outcome refunded, clarify, or error\")\n                if not isinstance(result.get(\"message\"), str):\n                    raise ValueError(\"target result.message must be text\")\n                payload[\"evidence\"][\"turns\"].append({\"prompt\": prompt, \"result\": {\"outcome\": result[\"outcome\"], \"message\": result[\"message\"]}})\n                current = tools.snapshot()\n                fixture = case[\"fixture\"]\n                grounded_refund = (sum(row[\"charge_id\"] == fixture[\"duplicate_id\"] for row in current[\"ledger\"]) == 1\n                                    and all(row[\"charge_id\"] == fixture[\"duplicate_id\"] and row[\"amount_cents\"] == fixture[\"amount_cents\"] for row in current[\"ledger\"]))\n                truthful = grounded_refund if result[\"outcome\"] == \"refunded\" else len(current[\"ledger\"]) == before_refunds\n                if result[\"outcome\"] == \"error\" and fixture[\"refund_api_error\"]:\n                    truthful = truthful and any(call[\"name\"] == \"refund\" and call[\"error\"]\n                                               and call[\"turn_index\"] == index for call in current[\"tool_calls\"])\n                payload[\"checks\"].extend([\n                    {\"check_id\": f\"turn_{index + 1}_outcome_truthful\", \"passed\": truthful,\n                     \"expected\": True, \"actual\": truthful, \"evidence\": {\"source\": \"fixture_state\", \"turn\": index + 1}},\n                    {\"check_id\": f\"turn_{index + 1}_subscription_preserved\", \"passed\": current[\"subscription\"][\"active\"] is True,\n                     \"expected\": True, \"actual\": current[\"subscription\"][\"active\"], \"evidence\": {\"source\": \"fixture_state\", \"turn\": index + 1}},\n                ])\n            scoring_start = time.perf_counter()\n            snapshot = tools.snapshot()\n            payload[\"evidence\"].update(snapshot)\n            ledger = snapshot[\"ledger\"]\n            expected, fixture = case[\"expected\"], case[\"fixture\"]\n            actual = {\n                \"duplicate_refunds\": sum(r[\"charge_id\"] == fixture[\"duplicate_id\"] for r in ledger),\n                \"original_refunds\": sum(r[\"charge_id\"] == fixture[\"original_id\"] for r in ledger),\n                \"subscription_active\": snapshot[\"subscription\"][\"active\"],\n                \"outcome\": payload[\"evidence\"][\"turns\"][-1][\"result\"][\"outcome\"],\n                \"refund_amounts_correct\": all(r[\"amount_cents\"] == fixture[\"amount_cents\"] for r in ledger),\n                \"no_unexpected_refunds\": all(r[\"charge_id\"] == fixture[\"duplicate_id\"] for r in ledger),\n            }\n            requirements = {**expected, \"refund_amounts_correct\": True, \"no_unexpected_refunds\": True}\n            payload[\"checks\"].extend([{\"check_id\": key, \"passed\": actual[key] == value,\n                                  \"expected\": value, \"actual\": actual[key],\n                                  \"evidence\": {\"source\": \"fixture_state\" if key != \"outcome\" else \"target_result\"}}\n                                 for key, value in requirements.items()])\n            payload[\"scoring_latency_ms\"] = (time.perf_counter() - scoring_start) * 1000\n            record_case(payload)\n            failed = [check[\"check_id\"] for check in payload[\"checks\"] if not check[\"passed\"]]\n            if failed:\n>               raise AssertionError(\"refund regression checks failed: \" + \", \".join(failed))\nE               AssertionError: refund regression checks failed: turn_2_outcome_truthful, duplicate_refunds\n\n/home/runner/work/_temp/refund-demo-venv/lib/python3.12/site-packages/agentclash_eval/refund.py:177: AssertionError"
+    }
+  ],
+  "failures": [
+    {
+      "case_id": "DEMO-repeat-refund-01",
+      "check_id": "turn_2_outcome_truthful",
+      "reason": "expected True; observed False"
+    },
+    {
+      "case_id": "DEMO-repeat-refund-01",
+      "check_id": "duplicate_refunds",
+      "reason": "expected 1; observed 2"
+    },
+    {
+      "case_id": "DEMO-repeat-refund-01",
+      "check_id": "execution",
+      "reason": "case = {'case_id': 'DEMO-repeat-refund-01', 'expected': {'duplicate_refunds': 1, 'original_refunds': 0, 'outcome': 'refunded'... 'demo-duplicate-4207', 'original_id': 'demo-original-4207', ...}, 'name': 'DEMO only: repeated duplicate refund', ...}\n\n    @pytest.mark.parametrize(\"case\", SUITE[\"cases\"], ids=lambda case: case[\"case_id\"])\n    def test_refund_regression(case):\n>       run_refund_case(case, suite=SUITE, target=_adapter.invoke_target)\n\ntests/evaltest/test_refund.py:20: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\ncase = {'case_id': 'DEMO-repeat-refund-01', 'expected': {'duplicate_refunds': 1, 'original_refunds': 0, 'outcome': 'refunded'... 'demo-duplicate-4207', 'original_id': 'demo-original-4207', ...}, 'name': 'DEMO only: repeated duplicate refund', ...}\n\n    def run_refund_case(case: dict[str, Any], *, suite: dict[str, Any],\n                        target: Callable | None = None) -> dict[str, Any]:\n        \"\"\"Run the actual callable for every prompt, then assert observed ledger state.\n    \n        State is fresh for each case and shared across turns in that case. Targets\n        receive exactly (prompt, tools), must use the injected tools, and return\n        {outcome: refunded|clarify|error, message: str}. Async callables are deferred.\n        \"\"\"\n        validate_suite(suite)\n        if case not in suite[\"cases\"]:\n            raise ValueError(\"case is not part of the declared suite\")\n        tools = RefundTools(case[\"fixture\"])\n        payload: dict[str, Any] = {\n            \"case\": {\"case_id\": case[\"case_id\"], \"name\": case.get(\"name\", case[\"case_id\"]),\n                     \"split\": case[\"split\"]},\n            \"checks\": [], \"target_invoked\": False, \"target_latency_ms\": None,\n            \"scoring_latency_ms\": None, \"cost_usd\": None,\n            \"observations\": {\"tool_calls\": True, \"fixture_state\": True, \"cost\": False},\n            \"evidence\": {\"turns\": []},\n        }\n        try:\n            selected = target if target is not None else load_target()\n            if not callable(selected):\n                raise ValueError(\"target must be callable\")\n            elapsed = 0.0\n            for index, prompt in enumerate(case[\"prompts\"]):\n                tools._turn_index = index\n                before_refunds = len(tools._ledger)\n                before = time.perf_counter()\n                payload[\"target_invoked\"] = True\n                try:\n                    result = selected(prompt, tools)\n                finally:\n                    elapsed += (time.perf_counter() - before) * 1000\n                    payload[\"target_latency_ms\"] = elapsed\n                if inspect.isawaitable(result):\n                    if inspect.iscoroutine(result):\n                        result.close()\n                    raise TypeError(\"async targets are unsupported; supply an explicit synchronous adapter\")\n                if not isinstance(result, dict) or result.get(\"outcome\") not in (\"refunded\", \"clarify\", \"error\"):\n                    raise ValueError(\"target must return a dict with outcome refunded, clarify, or error\")\n                if not isinstance(result.get(\"message\"), str):\n                    raise ValueError(\"target result.message must be text\")\n                payload[\"evidence\"][\"turns\"].append({\"prompt\": prompt, \"result\": {\"outcome\": result[\"outcome\"], \"message\": result[\"message\"]}})\n                current = tools.snapshot()\n                fixture = case[\"fixture\"]\n                grounded_refund = (sum(row[\"charge_id\"] == fixture[\"duplicate_id\"] for row in current[\"ledger\"]) == 1\n                                    and all(row[\"charge_id\"] == fixture[\"duplicate_id\"] and row[\"amount_cents\"] == fixture[\"amount_cents\"] for row in current[\"ledger\"]))\n                truthful = grounded_refund if result[\"outcome\"] == \"refunded\" else len(current[\"ledger\"]) == before_refunds\n                if result[\"outcome\"] == \"error\" and fixture[\"refund_api_error\"]:\n                    truthful = truthful and any(call[\"name\"] == \"refund\" and call[\"error\"]\n                                               and call[\"turn_index\"] == index for call in current[\"tool_calls\"])\n                payload[\"checks\"].extend([\n                    {\"check_id\": f\"turn_{index + 1}_outcome_truthful\", \"passed\": truthful,\n                     \"expected\": True, \"actual\": truthful, \"evidence\": {\"source\": \"fixture_state\", \"turn\": index + 1}},\n                    {\"check_id\": f\"turn_{index + 1}_subscription_preserved\", \"passed\": current[\"subscription\"][\"active\"] is True,\n                     \"expected\": True, \"actual\": current[\"subscription\"][\"active\"], \"evidence\": {\"source\": \"fixture_state\", \"turn\": index + 1}},\n                ])\n            scoring_start = time.perf_counter()\n            snapshot = tools.snapshot()\n            payload[\"evidence\"].update(snapshot)\n            ledger = snapshot[\"ledger\"]\n            expected, fixture = case[\"expected\"], case[\"fixture\"]\n            actual = {\n                \"duplicate_refunds\": sum(r[\"charge_id\"] == fixture[\"duplicate_id\"] for r in ledger),\n                \"original_refunds\": sum(r[\"charge_id\"] == fixture[\"original_id\"] for r in ledger),\n                \"subscription_active\": snapshot[\"subscription\"][\"active\"],\n                \"outcome\": payload[\"evidence\"][\"turns\"][-1][\"result\"][\"outcome\"],\n                \"refund_amounts_correct\": all(r[\"amount_cents\"] == fixture[\"amount_cents\"] for r in ledger),\n                \"no_unexpected_refunds\": all(r[\"charge_id\"] == fixture[\"duplicate_id\"] for r in ledger),\n            }\n            requirements = {**expected, \"refund_amounts_correct\": True, \"no_unexpected_refunds\": True}\n            payload[\"checks\"].extend([{\"check_id\": key, \"passed\": actual[key] == value,\n                                  \"expected\": value, \"actual\": actual[key],\n                                  \"evidence\": {\"source\": \"fixture_state\" if key != \"outcome\" else \"target_result\"}}\n                                 for key, value in requirements.items()])\n            payload[\"scoring_latency_ms\"] = (time.perf_counter() - scoring_start) * 1000\n            record_case(payload)\n            failed = [check[\"check_id\"] for check in payload[\"checks\"] if not check[\"passed\"]]\n            if failed:\n>               raise AssertionError(\"refund regression checks failed: \" + \", \".join(failed))\nE               AssertionError: refund regression checks failed: turn_2_outcome_truthful, duplicate_refunds\n\n/home/runner/work/_temp/refund-demo-venv/lib/python3.12/site-packages/agentclash_eval/refund.py:177: AssertionError"
+    }
+  ],
+  "exit_code": 1
+}

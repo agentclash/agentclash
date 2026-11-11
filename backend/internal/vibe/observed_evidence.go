@@ -80,6 +80,9 @@ func finishObserved(out *ObservedEvidence) error {
 }
 func observedSDK(report SDKReport) (ObservedEvidence, error) {
 	out := ObservedEvidence{Binding: report.Binding, EvidenceMetadata: report.EvidenceMetadata, SourceHash: report.ContentHash, Status: "imported", Cases: []ObservedCase{}, Omissions: []string{"SDK grades, metadata and capture are imported claims; originals remain unchanged. Reference corpus is not observed retrieval."}}
+	if report.SourceSchemaVersion == 2 {
+		out.Omissions = append(out.Omissions, "Refund v2 checks are uploader-supplied fixture assertions, not AgentResult-v1 replies. Raw fixture/turn/tool evidence remains in the exact original; it is not normalized as hosted execution or retrieval.")
+	}
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(report.SourceJSON), &doc); err != nil {
 		return out, err
@@ -132,14 +135,18 @@ func observedSDK(report SDKReport) (ObservedEvidence, error) {
 		}
 		if report.SourceKind != "agent_result" {
 			_ = json.Unmarshal(value["status"], &c.Status)
+			metricKey := "metrics"
+			if report.SourceSchemaVersion == 2 {
+				metricKey = "checks"
+			}
 			var metrics []json.RawMessage
-			if v, ok := value["metrics"]; ok {
+			if v, ok := value[metricKey]; ok {
 				if err := json.Unmarshal(v, &metrics); err != nil {
 					return out, err
 				}
 			}
 			for j, metric := range metrics {
-				c.Entries = append(c.Entries, observedEntry(report.Binding.ResultRef, "", "grade", fmt.Sprintf("%s/metrics/%d", path, j), j, metric))
+				c.Entries = append(c.Entries, observedEntry(report.Binding.ResultRef, "", "grade", fmt.Sprintf("%s/%s/%d", path, metricKey, j), j, metric))
 			}
 			if v, ok := value["error"]; ok && string(v) != "null" {
 				c.Entries = append(c.Entries, observedEntry(report.Binding.ResultRef, "", "diagnostic", path+"/error", 0, v))
