@@ -32,6 +32,17 @@ type fakePublicTryoutRepo struct {
 	checkContext bool
 	// afterEvent, when set, runs after each recorded event.
 	afterEvent func(params repository.RecordAgentTryoutEventParams)
+	// turns is the queue of pending turns. Each claim takes the first one.
+	turns []repository.AgentTryoutTurn
+	// afterClaim, when set, runs after each claim that returns a turn.
+	afterClaim func(turn repository.AgentTryoutTurn)
+	// closeCalls counts the closes of the turn intake.
+	closeCalls int
+	// closeErr, when set, is the error that CloseAgentTryoutTurnIntake
+	// returns.
+	closeErr error
+	// dropped holds the turns that the close dropped.
+	dropped []repository.AgentTryoutTurn
 }
 
 func (f *fakePublicTryoutRepo) GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error) {
@@ -74,11 +85,42 @@ func (f *fakePublicTryoutRepo) RecordAgentTryoutEvent(ctx context.Context, param
 }
 
 func (f *fakePublicTryoutRepo) ClaimNextPendingAgentTryoutTurn(context.Context, uuid.UUID, time.Duration) (repository.AgentTryoutTurn, bool, error) {
-	return repository.AgentTryoutTurn{}, false, nil
+	if len(f.turns) == 0 {
+		return repository.AgentTryoutTurn{}, false, nil
+	}
+	turn := f.turns[0]
+	f.turns = f.turns[1:]
+	turn.Status = repository.AgentTryoutTurnStatusProcessing
+	if f.afterClaim != nil {
+		f.afterClaim(turn)
+	}
+	return turn, true, nil
 }
 
 func (f *fakePublicTryoutRepo) MarkAgentTryoutTurnProcessed(context.Context, int64) error {
 	return nil
+}
+
+// CloseAgentTryoutTurnIntake drops each queued turn, as the repository drops
+// each pending turn. A dropped end signal does not count.
+func (f *fakePublicTryoutRepo) CloseAgentTryoutTurnIntake(ctx context.Context, _ uuid.UUID) (int, error) {
+	if f.checkContext && ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
+	f.closeCalls++
+	if f.closeErr != nil {
+		return 0, f.closeErr
+	}
+	dropped := 0
+	for _, turn := range f.turns {
+		turn.Status = repository.AgentTryoutTurnStatusDropped
+		f.dropped = append(f.dropped, turn)
+		if turn.Role != "system_end" {
+			dropped++
+		}
+	}
+	f.turns = nil
+	return dropped, nil
 }
 
 func publicJudgeSpecSnapshot() json.RawMessage {

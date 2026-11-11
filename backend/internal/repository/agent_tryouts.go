@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -117,8 +118,11 @@ type AgentTryout struct {
 	ClaimedByUserID          *uuid.UUID
 	ClaimedAt                *time.Time
 	ExpiresAt                *time.Time
-	CreatedAt                time.Time
-	UpdatedAt                time.Time
+	// TurnsClosedAt is set when the worker closes the turn intake. After
+	// that, the tryout accepts no new turn.
+	TurnsClosedAt *time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 type AgentTryoutEvent struct {
@@ -137,15 +141,23 @@ const (
 	AgentTryoutTurnStatusPending    AgentTryoutTurnStatus = "pending"
 	AgentTryoutTurnStatusProcessing AgentTryoutTurnStatus = "processing"
 	AgentTryoutTurnStatusDone       AgentTryoutTurnStatus = "done"
+	// AgentTryoutTurnStatusDropped marks a turn that was still pending when
+	// the worker closed the turn intake. No session answers it.
+	AgentTryoutTurnStatusDropped AgentTryoutTurnStatus = "dropped"
 )
 
 // agentTryoutTurnTransitions lists the status changes a turn may make. Done
-// is terminal. A processing turn whose lease ran out is claimed again; that
-// is a write to the same status, not a transition.
+// and dropped are terminal. A processing turn whose lease ran out is claimed
+// again; that is a write to the same status, not a transition. Only a
+// pending turn can be dropped.
 var agentTryoutTurnTransitions = map[AgentTryoutTurnStatus]map[AgentTryoutTurnStatus]struct{}{
-	AgentTryoutTurnStatusPending:    {AgentTryoutTurnStatusProcessing: {}},
+	AgentTryoutTurnStatusPending: {
+		AgentTryoutTurnStatusProcessing: {},
+		AgentTryoutTurnStatusDropped:    {},
+	},
 	AgentTryoutTurnStatusProcessing: {AgentTryoutTurnStatusDone: {}},
 	AgentTryoutTurnStatusDone:       {},
+	AgentTryoutTurnStatusDropped:    {},
 }
 
 func (s AgentTryoutTurnStatus) Valid() bool {
@@ -161,6 +173,9 @@ func (s AgentTryoutTurnStatus) CanTransitionTo(next AgentTryoutTurnStatus) bool 
 	_, ok = nextStatuses[next]
 	return ok
 }
+
+// agentTryoutTurnRoleEnd is the role of the turn that the End button appends.
+const agentTryoutTurnRoleEnd = "system_end"
 
 type AgentTryoutTurn struct {
 	ID            int64
@@ -804,6 +819,7 @@ func mapAgentTryout(row repositorysqlc.AgentTryout) (AgentTryout, error) {
 		ClaimedByUserID:          cloneUUIDPtr(row.ClaimedByUserID),
 		ClaimedAt:                optionalTime(row.ClaimedAt),
 		ExpiresAt:                optionalTime(row.ExpiresAt),
+		TurnsClosedAt:            optionalTime(row.TurnsClosedAt),
 		CreatedAt:                createdAt,
 		UpdatedAt:                updatedAt,
 	}, nil
@@ -838,11 +854,74 @@ func (r *Repository) AppendAgentTryoutTurn(ctx context.Context, params AppendAge
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return AgentTryoutTurn{}, ErrAgentTryoutNotFound
+			return AgentTryoutTurn{}, r.classifyRefusedAgentTryoutTurn(ctx, params)
 		}
 		return AgentTryoutTurn{}, fmt.Errorf("append agent tryout turn: %w", err)
 	}
 	return mapAgentTryoutTurn(row), nil
+}
+
+// classifyRefusedAgentTryoutTurn finds why the append guard refused a turn.
+// The tryout can close or end between the check of the caller and the
+// append. For the owner, that refusal returns ErrAgentTryoutTurnsClosed.
+// Each other refusal (a missing tryout, a tryout of a workspace, a wrong
+// owner proof, an expired tryout) returns ErrAgentTryoutNotFound, as before,
+// so a caller that is not the owner learns nothing about the tryout.
+func (r *Repository) classifyRefusedAgentTryoutTurn(ctx context.Context, params AppendAgentTryoutTurnParams) error {
+	tryout, err := r.GetAgentTryoutByID(ctx, params.AgentTryoutID)
+	if err != nil {
+		return ErrAgentTryoutNotFound
+	}
+	owner := tryout.WorkspaceID == nil && tryout.OrganizationID == nil && tryout.ClaimedByUserID == nil &&
+		tryout.AnonymousOwnerProofHash != nil &&
+		subtle.ConstantTimeCompare([]byte(*tryout.AnonymousOwnerProofHash), []byte(params.OwnerProofHash)) == 1 &&
+		tryout.ExpiresAt != nil && tryout.ExpiresAt.After(time.Now())
+	if owner && (tryout.TurnsClosedAt != nil || tryout.Status.Terminal()) {
+		return ErrAgentTryoutTurnsClosed
+	}
+	return ErrAgentTryoutNotFound
+}
+
+// CloseAgentTryoutTurnIntake closes the turn intake of a tryout and marks
+// each pending turn as dropped, in one transaction. It returns the number of
+// dropped user turns. A dropped end signal does not count, because the user
+// expects no answer to it. A second call is safe: it keeps the first close
+// time and drops nothing.
+//
+// The close UPDATE locks the tryout row. AppendAgentTryoutTurn locks the same
+// row, so an append either commits before the close gets the lock, or waits
+// and then fails its turns_closed_at guard. The drop runs as a second
+// statement, so its snapshot sees each append that committed first.
+func (r *Repository) CloseAgentTryoutTurnIntake(ctx context.Context, tryoutID uuid.UUID) (int, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin close agent tryout turn intake: %w", err)
+	}
+	defer rollback(ctx, tx)
+	queries := r.queries.WithTx(tx)
+
+	closed, err := queries.CloseAgentTryoutTurnIntake(ctx, repositorysqlc.CloseAgentTryoutTurnIntakeParams{ID: tryoutID})
+	if err != nil {
+		return 0, fmt.Errorf("close agent tryout turn intake: %w", err)
+	}
+	if closed == 0 {
+		return 0, ErrAgentTryoutNotFound
+	}
+	rows, err := queries.DropPendingAgentTryoutTurns(ctx, repositorysqlc.DropPendingAgentTryoutTurnsParams{AgentTryoutID: tryoutID})
+	if err != nil {
+		return 0, fmt.Errorf("drop pending agent tryout turns: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit close agent tryout turn intake: %w", err)
+	}
+
+	dropped := 0
+	for _, row := range rows {
+		if row.Role != agentTryoutTurnRoleEnd {
+			dropped++
+		}
+	}
+	return dropped, nil
 }
 
 // ClaimNextPendingAgentTryoutTurn claims the oldest pending turn of a tryout

@@ -97,6 +97,7 @@ type AgentTryout struct {
 	ParentTryoutID           *uuid.UUID
 	SelectedHarnessKind      *string
 	AnonymousOwnerProofHash  *string
+	TurnsClosedAt            pgtype.Timestamptz
 }
 
 type AgentTryoutEvent struct {

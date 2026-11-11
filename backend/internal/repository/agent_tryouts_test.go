@@ -67,6 +67,11 @@ func TestAgentTryoutTurnStatusTransitions(t *testing.T) {
 		{AgentTryoutTurnStatusProcessing, AgentTryoutTurnStatusPending, false},
 		{AgentTryoutTurnStatusDone, AgentTryoutTurnStatusProcessing, false},
 		{AgentTryoutTurnStatusDone, AgentTryoutTurnStatusPending, false},
+		{AgentTryoutTurnStatusPending, AgentTryoutTurnStatusDropped, true},
+		{AgentTryoutTurnStatusProcessing, AgentTryoutTurnStatusDropped, false},
+		{AgentTryoutTurnStatusDropped, AgentTryoutTurnStatusPending, false},
+		{AgentTryoutTurnStatusDropped, AgentTryoutTurnStatusProcessing, false},
+		{AgentTryoutTurnStatusDone, AgentTryoutTurnStatusDropped, false},
 		{AgentTryoutTurnStatus("bogus"), AgentTryoutTurnStatusDone, false},
 	}
 	for _, tc := range tests {
@@ -76,5 +81,8 @@ func TestAgentTryoutTurnStatusTransitions(t *testing.T) {
 	}
 	if AgentTryoutTurnStatus("bogus").Valid() {
 		t.Error("unknown turn status reported valid")
+	}
+	if !AgentTryoutTurnStatusDropped.Valid() {
+		t.Error("dropped turn status reported invalid")
 	}
 }
