@@ -49,6 +49,7 @@ tests.
 | Device auth code | `backend/internal/repository/device_auth_status.go` | denied, expired, consumed | no |
 | Hosted run execution | `backend/internal/repository/hosted_run_status.go` | completed, failed, timed_out | no |
 | Connector dispatch | `backend/internal/repository/connector_dispatch_status.go` | completed, rejected, unknown | no |
+| Challenge pack draft | `backend/internal/repository/challenge_pack_draft_status.go` | published | no |
 | Race standings entry (Redis) | `backend/internal/racecontext/types.go` (`StandingsState`) | submitted, failed, timed_out | no |
 | Vibe operation | `backend/internal/vibe/types.go` (`CanTransition`) | COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED | no |
 
@@ -79,6 +80,11 @@ Facts that the tables do not show:
 - Vibe operations keep AWAITING_INPUT in the CHECK constraint, but
   `CanTransition` refuses it. The question flow uses the build phase
   `clarifying`.
+- A challenge pack draft publishes once. A published draft is final: an edit
+  or a second publish returns HTTP 409 (`challenge_pack_draft_published`) and
+  writes no version. To change a published pack, make a new draft from the
+  published version (edit-in-builder). A delete is still legal. `discarded` is
+  in the CHECK constraint, but nothing writes it.
 - Membership changes cascade from the organization to its workspaces in one
   transaction. A workspace membership can become active only while the
   organization membership is active or invited.
@@ -95,7 +101,6 @@ or a lease.
 | `dataset_generation_jobs.status` (queued, running, completed, failed) | completed and failed are final. A failed workflow start marks the job failed. |
 | `organization_github_installations.status` (active, suspended, deleted) | deleted is final. |
 | `agent_tryout_turns.status` (pending, processing, done) | A claim takes a 20-minute lease. A later claim takes a turn whose lease ran out. Only a processing turn becomes done. |
-| `challenge_pack_drafts.status` (draft, published, discarded) | The publish transaction writes published. |
 | `dataset_examples.status` (active, archived, muted) | An import or a promotion with a default status keeps an archived or muted example. |
 | `vibe_enquiries.status` | The review sweep skips a send with a live lease. A lost acceptance keeps its provider ID. |
 | `vibe_inputs.status` | Lease guards on extraction. The failure sweep runs before every claim. An expired input stays expired on delete. |
@@ -113,7 +118,6 @@ These gaps remain. Each needs an owner decision or a larger change.
 | Vibe build quota | `build_cycle.go` and `build_quota.go` leave PARTIAL out of the finished list, so a partial operation counts at its reserved calls. |
 | `billing_subscriptions.status` | No CHECK constraint. A missing event time falls back to `now()`. |
 | `billing_checkout_intents.status` | Only completed is written, so an abandoned checkout stays created. |
-| `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
 | Race standings | Hosted events do not pass through the standings recorder of the worker, so hosted peers never update. A run with case fan-out emits no run-level event, so its agents never show as submitted. |
 | Public tryout | A message that arrives after the turn loop ends, but before the completed write, is accepted and never processed. |
 | Public tryout | After a worker crash, the tryout shows failed only when the activity times out (about 32 minutes). A follow-up sets a 60-second heartbeat timeout after this release deploys. |

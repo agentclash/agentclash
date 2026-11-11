@@ -30,14 +30,14 @@ WHERE workspace_id = @workspace_id
 ORDER BY updated_at DESC, id DESC;
 
 -- name: PatchChallengePackDraft :one
+-- Only a draft in status draft takes edits. A published draft is final. The
+-- publish path writes the status (see challenge_pack_draft_status.go).
 UPDATE challenge_pack_drafts
 SET name = COALESCE(sqlc.narg('name'), name),
     execution_mode = COALESCE(sqlc.narg('execution_mode'), execution_mode),
-    composition = COALESCE(sqlc.narg('composition')::jsonb, composition),
-    challenge_pack_id = COALESCE(sqlc.narg('challenge_pack_id'), challenge_pack_id),
-    status = COALESCE(sqlc.narg('to_status')::text, status),
-    last_published_version_id = COALESCE(sqlc.narg('last_published_version_id'), last_published_version_id)
+    composition = COALESCE(sqlc.narg('composition')::jsonb, composition)
 WHERE id = @id
+  AND status = 'draft'
 RETURNING *;
 
 -- name: DeleteChallengePackDraft :exec

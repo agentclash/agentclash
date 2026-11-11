@@ -107,6 +107,14 @@ func (r *Repository) PublishChallengePackBundle(ctx context.Context, params Publ
 		_ = tx.Rollback(ctx)
 	}()
 
+	// A source draft publishes once. Lock it first, so a second publish of
+	// the same draft fails before it writes a pack or a version.
+	if params.Source != nil {
+		if err := lockPublishableChallengePackDraftTx(ctx, tx, params.Source.DraftID, params.WorkspaceID); err != nil {
+			return PublishedChallengePack{}, err
+		}
+	}
+
 	packID, err := resolveOrCreateChallengePack(ctx, tx, params.WorkspaceID, params.Bundle)
 	if err != nil {
 		return PublishedChallengePack{}, err
@@ -297,29 +305,6 @@ func (r *Repository) PublishChallengePackBundle(ctx context.Context, params Publ
 	}
 
 	return published, nil
-}
-
-// markChallengePackDraftPublishedTx links the source draft to the version it
-// just published, in the publish transaction, so a pack version never exists
-// without its draft bookkeeping. A draft may be published again (for
-// example with a new version number); each publish moves the link to the
-// newest version.
-func markChallengePackDraftPublishedTx(ctx context.Context, tx pgx.Tx, draftID, workspaceID, packID, versionID uuid.UUID) error {
-	tag, err := tx.Exec(ctx, `
-		UPDATE challenge_pack_drafts
-		SET status = 'published',
-			last_published_version_id = $3,
-			challenge_pack_id = $4
-		WHERE id = $1
-		  AND workspace_id = $2
-	`, draftID, workspaceID, versionID, packID)
-	if err != nil {
-		return fmt.Errorf("mark challenge pack draft published: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrChallengePackDraftNotFound
-	}
-	return nil
 }
 
 func resolveOrCreateChallengePack(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, bundle challengepack.Bundle) (uuid.UUID, error) {

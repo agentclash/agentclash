@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -9,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestRepositoryPublishChallengePackBundleMarksSourceDraftInSameTransaction(t *testing.T) {
+func TestRepositoryPublishChallengePackBundleMarksSourceDraftFinalInSameTransaction(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
 	fixture := seedFixture(t, ctx, db)
@@ -45,34 +46,110 @@ func TestRepositoryPublishChallengePackBundleMarksSourceDraftInSameTransaction(t
 		t.Fatalf("draft after publish = %#v, want published and linked to %s", published, first.ChallengePackVersionID)
 	}
 
-	// Publishing the same version again fails and leaves the draft linked to
-	// the version that exists.
-	if _, err := repo.PublishChallengePackBundle(ctx, repository.PublishChallengePackBundleParams{
-		Source:         source,
-		OrganizationID: fixture.organizationID,
-		WorkspaceID:    fixture.workspaceID,
-		Bundle:         bundle,
-	}); !errors.Is(err, repository.ErrChallengePackVersionExists) {
-		t.Fatalf("republish same version error = %v, want ErrChallengePackVersionExists", err)
+	// A published draft is final. A second publish fails before it writes a
+	// version, with the same version number or with a new one, and the draft
+	// stays linked to the first version.
+	for _, number := range []int32{bundle.Version.Number, bundle.Version.Number + 1} {
+		bundle.Version.Number = number
+		_, err := repo.PublishChallengePackBundle(ctx, repository.PublishChallengePackBundleParams{
+			Source:         source,
+			OrganizationID: fixture.organizationID,
+			WorkspaceID:    fixture.workspaceID,
+			Bundle:         bundle,
+		})
+		var final repository.ChallengePackDraftFinalError
+		if !errors.Is(err, repository.ErrInvalidTransition) || !errors.As(err, &final) || final.Status != repository.ChallengePackDraftStatusPublished {
+			t.Fatalf("republish version %d error = %v, want ChallengePackDraftFinalError", number, err)
+		}
 	}
-
-	// A draft may publish a new version; the link moves to it.
-	bundle.Version.Number = 2
-	second, err := repo.PublishChallengePackBundle(ctx, repository.PublishChallengePackBundleParams{
-		Source:         source,
-		OrganizationID: fixture.organizationID,
-		WorkspaceID:    fixture.workspaceID,
-		Bundle:         bundle,
-	})
-	if err != nil {
-		t.Fatalf("publish version 2 returned error: %v", err)
+	var versions int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM challenge_pack_versions WHERE challenge_pack_id = $1`, first.ChallengePackID).Scan(&versions); err != nil {
+		t.Fatalf("count versions: %v", err)
+	}
+	if versions != 1 {
+		t.Fatalf("pack versions = %d, want 1 after refused republish", versions)
 	}
 	relinked, err := repo.GetChallengePackDraftByID(ctx, draft.ID)
 	if err != nil {
 		t.Fatalf("GetChallengePackDraftByID returned error: %v", err)
 	}
-	if relinked.LastPublishedVersionID == nil || *relinked.LastPublishedVersionID != second.ChallengePackVersionID {
-		t.Fatalf("draft version link = %v, want %s", relinked.LastPublishedVersionID, second.ChallengePackVersionID)
+	if relinked.LastPublishedVersionID == nil || *relinked.LastPublishedVersionID != first.ChallengePackVersionID {
+		t.Fatalf("draft version link = %v, want %s", relinked.LastPublishedVersionID, first.ChallengePackVersionID)
+	}
+
+	// The status write outside of a publish uses the same guard.
+	if _, err := repo.MarkChallengePackDraftPublished(ctx, repository.MarkChallengePackDraftPublishedParams{
+		DraftID:                draft.ID,
+		WorkspaceID:            fixture.workspaceID,
+		ChallengePackID:        first.ChallengePackID,
+		ChallengePackVersionID: first.ChallengePackVersionID,
+	}); !errors.Is(err, repository.ErrInvalidTransition) {
+		t.Fatalf("MarkChallengePackDraftPublished on a published draft error = %v, want ErrInvalidTransition", err)
+	}
+}
+
+func TestRepositoryPatchChallengePackDraftRefusesPublishedDraft(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	draft, err := repo.CreateChallengePackDraft(ctx, repository.CreateChallengePackDraftParams{
+		WorkspaceID: fixture.workspaceID,
+		Name:        "Draft pack",
+		Composition: []byte(`{"pack":{"name":"before"}}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateChallengePackDraft returned error: %v", err)
+	}
+
+	rename := "Renamed draft"
+	renamed, err := repo.PatchChallengePackDraft(ctx, repository.PatchChallengePackDraftParams{ID: draft.ID, Name: &rename})
+	if err != nil {
+		t.Fatalf("PatchChallengePackDraft on a draft returned error: %v", err)
+	}
+	if renamed.Name != rename {
+		t.Fatalf("draft name = %q, want %q", renamed.Name, rename)
+	}
+
+	bundle := publishableChallengePackBundle("patch-final-pack-"+uuid.NewString(), "Patch Final Pack", "patch-final-v1")
+	if _, err := repo.PublishChallengePackBundle(ctx, repository.PublishChallengePackBundleParams{
+		Source:         &repository.PackPublicationSource{DraftID: draft.ID, Composition: []byte(`{}`)},
+		OrganizationID: fixture.organizationID,
+		WorkspaceID:    fixture.workspaceID,
+		Bundle:         bundle,
+	}); err != nil {
+		t.Fatalf("PublishChallengePackBundle returned error: %v", err)
+	}
+
+	late := "Changed after publish"
+	_, err = repo.PatchChallengePackDraft(ctx, repository.PatchChallengePackDraftParams{
+		ID:          draft.ID,
+		Name:        &late,
+		Composition: []byte(`{"pack":{"name":"after"}}`),
+	})
+	var final repository.ChallengePackDraftFinalError
+	if !errors.Is(err, repository.ErrInvalidTransition) || !errors.As(err, &final) || final.ID != draft.ID {
+		t.Fatalf("PatchChallengePackDraft on a published draft error = %v, want ChallengePackDraftFinalError", err)
+	}
+	stored, err := repo.GetChallengePackDraftByID(ctx, draft.ID)
+	if err != nil {
+		t.Fatalf("GetChallengePackDraftByID returned error: %v", err)
+	}
+	var storedComposition struct {
+		Pack struct {
+			Name string `json:"name"`
+		} `json:"pack"`
+	}
+	if err := json.Unmarshal(stored.Composition, &storedComposition); err != nil {
+		t.Fatalf("decode stored composition: %v", err)
+	}
+	if stored.Name != rename || storedComposition.Pack.Name != "before" {
+		t.Fatalf("published draft = name %q composition %s, want the content from before the publish", stored.Name, stored.Composition)
+	}
+
+	if _, err := repo.PatchChallengePackDraft(ctx, repository.PatchChallengePackDraftParams{ID: uuid.New(), Name: &late}); !errors.Is(err, repository.ErrChallengePackDraftNotFound) {
+		t.Fatalf("PatchChallengePackDraft on a missing draft error = %v, want ErrChallengePackDraftNotFound", err)
 	}
 }
 

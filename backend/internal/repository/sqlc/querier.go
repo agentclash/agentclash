@@ -204,6 +204,8 @@ type Querier interface {
 	// timed_out is the final status that binaries before migration 00090 wrote.
 	MarkHostedRunExecutionTimedOut(ctx context.Context, arg MarkHostedRunExecutionTimedOutParams) (HostedRunExecution, error)
 	NextDatasetVersionNumber(ctx context.Context, arg NextDatasetVersionNumberParams) (int32, error)
+	// Only a draft in status draft takes edits. A published draft is final. The
+	// publish path writes the status (see challenge_pack_draft_status.go).
 	PatchChallengePackDraft(ctx context.Context, arg PatchChallengePackDraftParams) (ChallengePackDraft, error)
 	PatchChallengePiece(ctx context.Context, arg PatchChallengePieceParams) (ChallengePiece, error)
 	PatchDataset(ctx context.Context, arg PatchDatasetParams) (Dataset, error)
