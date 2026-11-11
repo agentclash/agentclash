@@ -93,7 +93,8 @@ Facts that the tables do not show:
   best effort: a failure only logs a warning, and a cancel writes nothing. A
   case fan-out agent is `submitted` if one or more cases passed.
 - If the worker of a public tryout stops, the workflow marks the tryout
-  failed. The web app then stops its wait.
+  failed. The web app then stops its wait. The activity sends a heartbeat
+  each 10 seconds, so a crash shows in about 60 seconds.
 - Vibe operations keep AWAITING_INPUT in the CHECK constraint, but
   `CanTransition` refuses it. The question flow uses the build phase
   `clarifying`.
@@ -149,7 +150,6 @@ These gaps remain. Each needs an owner decision or a larger change.
 | `vibe_attempts.state` | A worker crash can leave an attempt in DISPATCHING. RECONCILED has two meanings. |
 | `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
 | Public tryout | A message that arrives after the turn loop ends, but before the completed write, is accepted and never processed. |
-| Public tryout | After a worker crash, the tryout shows failed only when the activity times out (about 32 minutes). A follow-up sets a 60-second heartbeat timeout after this release deploys. |
 
 The money paths (billing, `vibe_attempts`, the build quota) need an owner
 decision before a change. Do not add a guard there as a side change.
