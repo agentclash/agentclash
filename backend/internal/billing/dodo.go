@@ -69,36 +69,10 @@ func SubscriptionEntitlementsFromCatalog(input DodoSubscriptionInput, plans []Pl
 	return entitlements, nil
 }
 
+// DodoStatusIsEntitled reports whether a Dodo subscription status grants the
+// paid plan. It maps the value into the status set first.
 func DodoStatusIsEntitled(status string) bool {
-	switch normalizeStatus(status) {
-	case "active", "trialing", "renewed":
-		return true
-	default:
-		return false
-	}
-}
-
-func DodoStatusFromEvent(eventType string, payloadStatus string) string {
-	payloadStatus = normalizeStatus(payloadStatus)
-	if payloadStatus != "" {
-		return payloadStatus
-	}
-	switch normalizeStatus(eventType) {
-	case "subscription.active", "subscription.renewed", "subscription.updated", "subscription.plan_changed":
-		return "active"
-	case "subscription.on_hold":
-		return "on_hold"
-	case "payment.succeeded", "dunning.succeeded", "dunning.recovered":
-		return "active"
-	case "subscription.failed", "payment.failed", "dunning.failed", "dunning.exhausted":
-		return "failed"
-	case "subscription.cancelled":
-		return "cancelled"
-	case "subscription.expired":
-		return "expired"
-	default:
-		return "unknown"
-	}
+	return ParseDodoSubscriptionStatus(status).Entitled()
 }
 
 func normalizeStatus(value string) string {
