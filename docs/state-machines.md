@@ -78,8 +78,9 @@ Facts that the tables do not show:
   worker. The API stores hosted events. A connector stores its events in one
   transaction. A case fan-out run records no `system.run.*` event for a case.
   For these paths, the run agent workflow writes the standings entry through
-  `workflow.update_race_standings`. No persisted event changes. A case fan-out
-  agent is `submitted` if one or more cases passed.
+  `workflow.update_race_standings`. No persisted event changes. The write is
+  best effort: a failure only logs a warning, and a cancel writes nothing. A
+  case fan-out agent is `submitted` if one or more cases passed.
 - If the worker of a public tryout stops, the workflow marks the tryout
   failed. The web app then stops its wait.
 - Vibe operations keep AWAITING_INPUT in the CHECK constraint, but

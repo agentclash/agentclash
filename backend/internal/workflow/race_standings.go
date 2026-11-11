@@ -32,12 +32,18 @@ const (
 	// activity.
 	raceStandingsVersionChangeID = "race-standings-final-state"
 
-	raceStandingsActivityTimeout = 10 * time.Second
-	// In a rolling deploy, an old worker does not know the activity. A
-	// retry then goes to a new worker.
+	raceStandingsActivityTimeout = 5 * time.Second
+	// raceStandingsStoreTimeout is shorter than the activity timeout. So a
+	// slow store gives a store error, not an activity timeout and a retry.
+	raceStandingsStoreTimeout = 3 * time.Second
+	// A store error gets no retry, so a Redis failure costs one store call.
+	// The retries are for a failure before the store call: in a rolling
+	// deploy, an old worker does not know the activity, and a retry then
+	// goes to a new worker.
 	raceStandingsActivityMaxAttempts = 5
 
 	invalidRaceStandingsStateErrorType = "workflow.invalid_race_standings_state"
+	raceStandingsWriteFailedErrorType  = "workflow.race_standings_write_failed"
 )
 
 type UpdateRaceStandingsInput struct {
@@ -74,7 +80,12 @@ func (a *Activities) UpdateRaceStandings(ctx context.Context, input UpdateRaceSt
 	case racecontext.StandingsStateFailed, racecontext.StandingsStateTimedOut:
 		entry.FailedAt = &occurredAt
 	}
-	return store.Update(ctx, input.RunID, entry)
+	updateCtx, cancel := context.WithTimeout(ctx, raceStandingsStoreTimeout)
+	defer cancel()
+	if err := store.Update(updateCtx, input.RunID, entry); err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), raceStandingsWriteFailedErrorType, err)
+	}
+	return nil
 }
 
 // writeRaceStandings writes one standings state for the run agent when the

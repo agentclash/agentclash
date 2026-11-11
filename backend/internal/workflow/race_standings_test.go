@@ -27,19 +27,27 @@ import (
 // recordingStandingsStore applies racecontext.MergeEntry, the same as the
 // Redis store, and keeps the order of the written states.
 type recordingStandingsStore struct {
-	mu      sync.Mutex
-	runIDs  []uuid.UUID
-	states  []racecontext.StandingsState
-	entries map[uuid.UUID]racecontext.StandingsEntry
+	mu        sync.Mutex
+	runIDs    []uuid.UUID
+	states    []racecontext.StandingsState
+	entries   map[uuid.UUID]racecontext.StandingsEntry
+	deadlines []time.Time
+	err       error
 }
 
 func newRecordingStandingsStore() *recordingStandingsStore {
 	return &recordingStandingsStore{entries: map[uuid.UUID]racecontext.StandingsEntry{}}
 }
 
-func (s *recordingStandingsStore) Update(_ context.Context, runID uuid.UUID, update racecontext.StandingsEntry) error {
+func (s *recordingStandingsStore) Update(ctx context.Context, runID uuid.UUID, update racecontext.StandingsEntry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if deadline, ok := ctx.Deadline(); ok {
+		s.deadlines = append(s.deadlines, deadline)
+	}
+	if s.err != nil {
+		return s.err
+	}
 	s.runIDs = append(s.runIDs, runID)
 	s.states = append(s.states, update.State)
 	s.entries[update.RunAgentID] = racecontext.MergeEntry(s.entries[update.RunAgentID], update)
@@ -141,6 +149,38 @@ func TestUpdateRaceStandingsRejectsAnUnknownState(t *testing.T) {
 	}
 	if got := store.writtenStates(); len(got) != 0 {
 		t.Fatalf("store got %v, want no write", got)
+	}
+}
+
+// A store failure must not get a retry, and the store call must stop before
+// the activity timeout. So a Redis failure costs one store call.
+func TestUpdateRaceStandingsStoreFailureIsNotRetried(t *testing.T) {
+	store := newRecordingStandingsStore()
+	store.err = errors.New("redis unavailable")
+	activities := NewActivities(newFakeRunRepository(domain.Run{}), FakeWorkHooks{StandingsStore: store})
+
+	err := activities.UpdateRaceStandings(context.Background(), UpdateRaceStandingsInput{
+		RunID:      uuid.New(),
+		RunAgentID: uuid.New(),
+		State:      racecontext.StandingsStateSubmitted,
+	})
+	end := time.Now()
+
+	if !hasApplicationErrorType(err, raceStandingsWriteFailedErrorType) {
+		t.Fatalf("error = %v, want %s", err, raceStandingsWriteFailedErrorType)
+	}
+	var applicationErr *temporal.ApplicationError
+	if !errors.As(err, &applicationErr) || !applicationErr.NonRetryable() {
+		t.Fatalf("error = %v, want a non-retryable application error", err)
+	}
+	if len(store.deadlines) != 1 {
+		t.Fatalf("store calls with a deadline = %d, want 1", len(store.deadlines))
+	}
+	if limit := end.Add(raceStandingsStoreTimeout); store.deadlines[0].After(limit) {
+		t.Fatalf("store deadline %s is after %s", store.deadlines[0], limit)
+	}
+	if raceStandingsStoreTimeout >= raceStandingsActivityTimeout {
+		t.Fatalf("store timeout %s must be shorter than the activity timeout %s", raceStandingsStoreTimeout, raceStandingsActivityTimeout)
 	}
 }
 
@@ -330,6 +370,20 @@ func TestRunAgentWorkflowHostedRaceStandingsStartFailure(t *testing.T) {
 		t.Fatal("failed start was reported successful")
 	}
 	assertStandingsStates(t, store, racecontext.StandingsStateFailed)
+}
+
+// A cancel writes no final state. The API cancels the full run, so the peers
+// stop too.
+func TestRunAgentWorkflowHostedRaceStandingsCancelWritesNoFinalState(t *testing.T) {
+	_, env, input, store := newHostedRaceEnv(t, true, FakeWorkHooks{})
+	env.RegisterDelayedCallback(env.CancelWorkflow, fakeStageDelay/2)
+
+	env.ExecuteWorkflow(RunAgentWorkflow, input)
+
+	if err := env.GetWorkflowError(); !isWorkflowCanceled(err) {
+		t.Fatalf("workflow error = %v, want a cancel", err)
+	}
+	assertStandingsStates(t, store, racecontext.StandingsStateRunning)
 }
 
 func TestRunAgentWorkflowHostedWithoutRaceContextWritesNoStandings(t *testing.T) {
