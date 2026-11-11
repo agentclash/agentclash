@@ -633,8 +633,10 @@ func moveBilling(ctx context.Context, tx pgx.Tx, id uuid.UUID, from, to BillingS
 	return nil
 }
 
-// settle retains the entire operation hold while any attempt is uncertain,
-// even after cancellation or a worker crash. It never releases by TTL.
+// settle keeps the full operation hold while the cost of an attempt is not
+// known, also after a stop or a worker crash. settle has no time limit. The
+// attempt sweep (sweepAttempts) gives an assumed cost to an attempt that has
+// no cost after AttemptChargeAfter, and then calls settle.
 // SETTLED and RELEASED are final. A late receipt or response with a
 // conflicting cost keeps the conflict in the attempt evidence, and its
 // caller freezes the funding accounts. settle does not reopen the cost.

@@ -117,7 +117,7 @@ func populateProgress(ctx context.Context, tx pgx.Tx, v *Session) error {
 	}
 	// One bounded metadata query for the whole session. Do not load raw evidence,
 	// provider responses or prompts into the repeatedly transmitted snapshot.
-	rows, err := tx.Query(ctx, `SELECT a.operation_id,a.step_key,a.role,a.created_at,a.completed_at,a.actual_cost IS NULL,(a.state <> 'RECONCILED' OR a.error IS NOT NULL),a.model,a.usage,a.actual_cost,COALESCE(o.input#>>'{cycle,id}','')
+	rows, err := tx.Query(ctx, `SELECT a.operation_id,a.step_key,a.role,a.created_at,a.completed_at,a.actual_cost IS NULL,(a.state <> 'RECONCILED' OR a.error IS NOT NULL) AND a.reconciliation_evidence->>'abandoned' IS DISTINCT FROM 'true',a.model,a.usage,a.actual_cost,COALESCE(o.input#>>'{cycle,id}','')
 	 FROM vibe_attempts a JOIN vibe_operations o ON o.id=a.operation_id WHERE o.session_id=$1 ORDER BY a.created_at,a.id`, v.ID)
 	if err != nil {
 		return err
@@ -167,6 +167,8 @@ func populateProgress(ctx context.Context, tx pgx.Tx, v *Session) error {
 		}
 		// Cost reconciliation after a worker crash cannot tell us when the
 		// model step ended. Omit that duration instead of reporting billing lag.
+		// The sweep writes completed_at of an abandoned attempt. That time is
+		// the sweep time, not the end of the step, thus omit it too.
 		if end != nil && timed {
 			o.Diagnostics.StageMillis[phase] += max(end.Sub(start).Milliseconds(), 0)
 		}

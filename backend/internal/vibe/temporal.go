@@ -22,7 +22,9 @@ const faultFinalizerVersion = "vibe-specific-operation-faults"
 func OperationWorkflow(ctx workflow.Context, id string) error {
 	// The only activity allowed to make paid calls NEVER retries. DB-only
 	// finalization may retry; it cannot issue provider requests.
-	paid := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: 16 * time.Minute, ScheduleToStartTimeout: 5 * time.Minute, RetryPolicy: &temporal.RetryPolicy{MaximumAttempts: 1}})
+	// AttemptAbandonAfter is longer than paidActivityTimeout. Do not make
+	// this timeout longer than the abandon age.
+	paid := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{StartToCloseTimeout: paidActivityTimeout, ScheduleToStartTimeout: 5 * time.Minute, RetryPolicy: &temporal.RetryPolicy{MaximumAttempts: 1}})
 	err := workflow.ExecuteActivity(paid, "vibe.execute", id).Get(paid, nil)
 	code := ""
 	if err != nil {
