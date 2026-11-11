@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/agentclash/agentclash/backend/internal/vibe/inputs"
 	"github.com/agentclash/agentclash/backend/internal/vibe/interaction"
 	"github.com/agentclash/agentclash/runtime/provider"
@@ -382,9 +383,16 @@ func enqueue(ctx context.Context, tx pgx.Tx, o *Operation) error {
 	if err := transition(ctx, tx, o.ID, Queued); err != nil {
 		return err
 	}
+	// Submit inserts a funded operation as RESERVED. Only an approved quote
+	// moves from UNRESERVED here.
+	if o.Billing != BillingReserved {
+		if err := moveBilling(ctx, tx, o.ID, o.Billing, BillingReserved, nil, nil); err != nil {
+			return err
+		}
+	}
 	o.State = Queued
 	o.Billing = BillingReserved
-	if _, err := tx.Exec(ctx, "UPDATE vibe_operations SET state=$2,billing=$3,deadline=$4,queued_at=now() WHERE id=$1", o.ID, o.State, o.Billing, o.Deadline); err != nil {
+	if _, err := tx.Exec(ctx, "UPDATE vibe_operations SET state=$2,deadline=$3,queued_at=now() WHERE id=$1", o.ID, o.State, o.Deadline); err != nil {
 		return err
 	}
 	_, err := tx.Exec(ctx, "INSERT INTO vibe_outbox(operation_id) VALUES($1) ON CONFLICT DO NOTHING", o.ID)
@@ -608,11 +616,38 @@ func (s *Store) Stop(ctx context.Context, actor string, id uuid.UUID) error {
 	return s.syncBuildResult(ctx, id)
 }
 
+// moveBilling writes one billing move. It checks CanTransitionBilling in Go
+// and guards the old state in SQL. If the guard matches no row, it returns an
+// error, and the transaction rolls back.
+func moveBilling(ctx context.Context, tx pgx.Tx, id uuid.UUID, from, to BillingState, actual *int64, issue *Fault) error {
+	if !CanTransitionBilling(from, to) {
+		return fault("invalid_state", fmt.Sprintf("Operation billing cannot move from %s to %s.", from, to))
+	}
+	tag, err := tx.Exec(ctx, "UPDATE vibe_operations SET billing=$3,actual_cost=$4,error=COALESCE($5,error) WHERE id=$1 AND billing=$2", id, from, to, actual, nullableJSON(issue))
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return fault("invalid_state", fmt.Sprintf("Operation billing is no longer %s.", from))
+	}
+	return nil
+}
+
 // settle keeps the full operation hold while the cost of an attempt is not
 // known, also after a stop or a worker crash. settle has no time limit. The
 // attempt sweep (sweepAttempts) gives an assumed cost to an attempt that has
 // no cost after AttemptChargeAfter, and then calls settle.
+// SETTLED and RELEASED are final. A late receipt or response with a
+// conflicting cost keeps the conflict in the attempt evidence, and its
+// caller freezes the funding accounts. settle does not reopen the cost.
 func settle(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
+	var from BillingState
+	if err := tx.QueryRow(ctx, "SELECT billing FROM vibe_operations WHERE id=$1 FOR UPDATE", id).Scan(&from); err != nil {
+		return err
+	}
+	if from.Final() {
+		return nil
+	}
 	var actual, uncertain int64
 	var unknown int
 	if err := tx.QueryRow(ctx, "SELECT COALESCE(sum(actual_cost),0),COALESCE(sum(max_cost) FILTER(WHERE actual_cost IS NULL),0),count(*) FILTER(WHERE actual_cost IS NULL OR reconciliation_evidence->>'conflict'='true') FROM vibe_attempts WHERE operation_id=$1", id).Scan(&actual, &uncertain, &unknown); err != nil {
@@ -643,8 +678,7 @@ func settle(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
 	// Until every attempt is accounted, retain the entire operation reservation.
 	// This is conservative and makes multiple reconciliation callbacks idempotent.
 	if unknown > 0 {
-		_, err = tx.Exec(ctx, "UPDATE vibe_operations SET billing='RECONCILING',actual_cost=NULL WHERE id=$1", id)
-		return err
+		return moveBilling(ctx, tx, id, from, Reconciling, nil, nil)
 	}
 	ids := make([]string, 0, len(holds))
 	for _, h := range holds {
@@ -659,8 +693,7 @@ func settle(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
 			if err != nil {
 				return err
 			}
-			_, err = tx.Exec(ctx, "UPDATE vibe_operations SET billing='RECONCILING',error=$2 WHERE id=$1", id, raw(&Fault{Code: "accounting_bound_exceeded", Message: "Provider usage exceeded its approved ceiling; accounting requires review."}))
-			return err
+			return moveBilling(ctx, tx, id, from, Reconciling, nil, &Fault{Code: "accounting_bound_exceeded", Message: "Provider usage exceeded its approved ceiling; accounting requires review."})
 		}
 		if _, err = tx.Exec(ctx, "UPDATE vibe_accounts SET held=held-$2,balance=balance-$3 WHERE id=$1", h.id, h.amount, actual); err != nil {
 			return err
@@ -673,8 +706,7 @@ func settle(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
 	if actual == 0 {
 		state = Released
 	}
-	_, err = tx.Exec(ctx, "UPDATE vibe_operations SET billing=$2,actual_cost=$3 WHERE id=$1", id, state, actual)
-	return err
+	return moveBilling(ctx, tx, id, from, state, &actual, nil)
 }
 
 func (s *Store) Balance(ctx context.Context, account string) (int64, int64, error) {
