@@ -30,10 +30,10 @@ func checkInitialBuildQuota(ctx context.Context, q dbQuery, session, exclude uui
 	var checks, calls, exploration int
 	var pending bool
 	err := q.QueryRow(ctx, `SELECT count(*) FILTER(WHERE o.kind='check'),
-	 COALESCE(sum(CASE WHEN o.state IN ('COMPLETED','FAILED','CANCELLED','EXPIRED') THEN o.model_calls ELSE (o.input->>'calls')::int END),0),
-	 COALESCE(sum(CASE WHEN o.state IN ('COMPLETED','FAILED','CANCELLED','EXPIRED') THEN o.model_calls ELSE (o.input->>'calls')::int END) FILTER(WHERE o.kind NOT IN ('check','retest')),0)
+	 COALESCE(sum(CASE WHEN o.state=ANY($3) THEN o.model_calls ELSE (o.input->>'calls')::int END),0),
+	 COALESCE(sum(CASE WHEN o.state=ANY($3) THEN o.model_calls ELSE (o.input->>'calls')::int END) FILTER(WHERE o.kind NOT IN ('check','retest')),0)
 	 FROM vibe_operations o JOIN vibe_sessions s ON s.id=o.session_id
-	 WHERE o.id<>$2 AND o.input->>'anonymous'='true' AND s.trial_key=(SELECT trial_key FROM vibe_sessions WHERE id=$1)`, session, exclude).Scan(&checks, &calls, &exploration)
+	 WHERE o.id<>$2 AND o.input->>'anonymous'='true' AND s.trial_key=(SELECT trial_key FROM vibe_sessions WHERE id=$1)`, session, exclude, terminalStates()).Scan(&checks, &calls, &exploration)
 	if err != nil {
 		return err
 	}

@@ -50,7 +50,7 @@ tests.
 | Hosted run execution | `backend/internal/repository/hosted_run_status.go` | completed, failed, timed_out | no |
 | Connector dispatch | `backend/internal/repository/connector_dispatch_status.go` | completed, rejected, unknown | no |
 | Race standings entry (Redis) | `backend/internal/racecontext/types.go` (`StandingsState`) | submitted, failed, timed_out | no |
-| Vibe operation | `backend/internal/vibe/types.go` (`CanTransition`) | COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED | no |
+| Vibe operation | `backend/internal/vibe/types.go` (`CanTransition`, `terminalStates`) | COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED | no |
 
 The tables in `runtime/domain` are published to the CLI and the web app. The
 tables in the backend module are not published, because no client polls them
@@ -74,6 +74,13 @@ Facts that the tables do not show:
   no accept phase, so nothing writes it.
 - A race standings entry becomes `submitted` on `system.output.finalized` or
   on `system.run.completed`. Native runs emit only the second event.
+- Three paths do not send their events through the standings recorder of the
+  worker. The API stores hosted events. A connector stores its events in one
+  transaction. A case fan-out run records no `system.run.*` event for a case.
+  For these paths, the run agent workflow writes the standings entry through
+  `workflow.update_race_standings`. No persisted event changes. The write is
+  best effort: a failure only logs a warning, and a cancel writes nothing. A
+  case fan-out agent is `submitted` if one or more cases passed.
 - If the worker of a public tryout stops, the workflow marks the tryout
   failed. The web app then stops its wait.
 - When the turn loop of a public tryout ends, the worker sets
@@ -84,6 +91,11 @@ Facts that the tables do not show:
 - Vibe operations keep AWAITING_INPUT in the CHECK constraint, but
   `CanTransition` refuses it. The question flow uses the build phase
   `clarifying`.
+- Vibe SQL gets the terminal operation states from `terminalStates()` as a
+  `text[]` parameter. Do not write the terminal states as a list in SQL.
+- The vibe build quota (the cycle total and the guest trial) counts a terminal
+  operation, also a PARTIAL one, at its `model_calls`. It counts each other
+  operation at the calls that it reserved (`input.calls`).
 - Membership changes cascade from the organization to its workspaces in one
   transaction. A workspace membership can become active only while the
   organization membership is active or invited.
@@ -115,11 +127,9 @@ These gaps remain. Each needs an owner decision or a larger change.
 |---|---|
 | `vibe_operations.billing` | A later cost conflict moves a settled operation back to RECONCILING and freezes the account for review. Confirm that this is the intended review flow. |
 | `vibe_attempts.state` | A worker crash can leave an attempt in DISPATCHING. RECONCILED has two meanings. |
-| Vibe build quota | `build_cycle.go` and `build_quota.go` leave PARTIAL out of the finished list, so a partial operation counts at its reserved calls. |
 | `billing_subscriptions.status` | No CHECK constraint. A missing event time falls back to `now()`. |
 | `billing_checkout_intents.status` | Only completed is written, so an abandoned checkout stays created. |
 | `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
-| Race standings | Hosted events do not pass through the standings recorder of the worker, so hosted peers never update. A run with case fan-out emits no run-level event, so its agents never show as submitted. |
 | Public tryout | After a worker crash, the tryout shows failed only when the activity times out (about 32 minutes). A follow-up sets a 60-second heartbeat timeout after this release deploys. |
 
 The money paths (billing, `vibe_attempts`, the build quota) need an owner
