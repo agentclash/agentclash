@@ -236,6 +236,9 @@ type Querier interface {
 	UpdateScanFindingStatus(ctx context.Context, arg UpdateScanFindingStatusParams) (ScanFinding, error)
 	UpdateVibeEvalDraft(ctx context.Context, arg UpdateVibeEvalDraftParams) (VibeEvalDraft, error)
 	UpsertBillingAccount(ctx context.Context, arg UpsertBillingAccountParams) error
+	// Dodo owns the subscription transitions, so the guard on the old state is the
+	// Dodo event time. An event with no time can insert a missing row, but it does
+	// not update a row. An event that is older than the row does not update it.
 	UpsertBillingSubscription(ctx context.Context, arg UpsertBillingSubscriptionParams) (BillingSubscription, error)
 	UpsertCaseResult(ctx context.Context, arg UpsertCaseResultParams) (CaseResult, error)
 	UpsertCrossRunComparison(ctx context.Context, arg UpsertCrossRunComparisonParams) (RunComparison, error)
