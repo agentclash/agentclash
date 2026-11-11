@@ -902,6 +902,7 @@ func builderRequestContext(w http.ResponseWriter, r *http.Request) (Caller, uuid
 func handleChallengePackBuilderError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var builderValidation ChallengePackBuilderValidationError
 	var authoringValidation ChallengePackAuthoringValidationError
+	var draftFinal repository.ChallengePackDraftFinalError
 	switch {
 	case errors.Is(err, errChallengePackBuilderUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "challenge pack builder is not configured")
@@ -923,7 +924,7 @@ func handleChallengePackBuilderError(w http.ResponseWriter, logger *slog.Logger,
 		writeError(w, http.StatusConflict, "challenge_pack_version_exists", "a pack version with this number already exists")
 	case errors.Is(err, repository.ErrChallengePackMetadataConflict):
 		writeError(w, http.StatusConflict, "challenge_pack_metadata_conflict", "pack metadata conflicts with an existing pack")
-	case errors.Is(err, repository.ErrInvalidTransition):
+	case errors.As(err, &draftFinal):
 		writeError(w, http.StatusConflict, "challenge_pack_draft_published", "This draft is published and cannot change. Open the published pack in the builder to make a new draft.")
 	default:
 		logger.Error("challenge pack builder operation failed", "error", err)
