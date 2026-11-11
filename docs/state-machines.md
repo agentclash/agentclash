@@ -49,6 +49,7 @@ tests.
 | Device auth code | `backend/internal/repository/device_auth_status.go` | denied, expired, consumed | no |
 | Hosted run execution | `backend/internal/repository/hosted_run_status.go` | completed, failed, timed_out | no |
 | Connector dispatch | `backend/internal/repository/connector_dispatch_status.go` | completed, rejected, unknown | no |
+| Billing subscription | `backend/internal/billing/subscription_status.go` and the event-time guard in `UpsertBillingSubscription` | none (Dodo owns the transitions) | no |
 | Race standings entry (Redis) | `backend/internal/racecontext/types.go` (`StandingsState`) | submitted, failed, timed_out | no |
 | Vibe operation | `backend/internal/vibe/types.go` (`CanTransition`) | COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED | no |
 
@@ -82,6 +83,20 @@ Facts that the tables do not show:
 - Membership changes cascade from the organization to its workspaces in one
   transaction. A workspace membership can become active only while the
   organization membership is active or invited.
+- A billing subscription has no transition table, because Dodo owns its
+  transitions. The webhook stores the status that Dodo sends. The guard on
+  the old state is the Dodo event time: an older event does not change the
+  row.
+- A Dodo event with no time can insert a missing subscription row, but it
+  does not change a row. The webhook stores the event and logs a warning. If
+  the event also has no subscription ID, it does not change the
+  entitlements.
+- Only a subscription payload gives the subscription status. For a payment
+  or dunning event, the event type gives the status. For example,
+  `payment.succeeded` gives `active`.
+- A Dodo status that is not in the set becomes `unknown`. The webhook logs a
+  warning and keeps the current entitlements. `renewed` becomes `active`, and
+  `canceled` becomes `cancelled`.
 
 ## Guarded lifecycles
 
@@ -111,7 +126,6 @@ These gaps remain. Each needs an owner decision or a larger change.
 | `vibe_operations.billing` | A later cost conflict moves a settled operation back to RECONCILING and freezes the account for review. Confirm that this is the intended review flow. |
 | `vibe_attempts.state` | A worker crash can leave an attempt in DISPATCHING. RECONCILED has two meanings. |
 | Vibe build quota | `build_cycle.go` and `build_quota.go` leave PARTIAL out of the finished list, so a partial operation counts at its reserved calls. |
-| `billing_subscriptions.status` | No CHECK constraint. A missing event time falls back to `now()`. |
 | `billing_checkout_intents.status` | Only completed is written, so an abandoned checkout stays created. |
 | `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
 | Race standings | Hosted events do not pass through the standings recorder of the worker, so hosted peers never update. A run with case fan-out emits no run-level event, so its agents never show as submitted. |
