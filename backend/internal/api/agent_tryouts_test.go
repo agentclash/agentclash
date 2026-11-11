@@ -1638,6 +1638,36 @@ func TestSubmitAnonymousTryoutTurnValidatesAndAppends(t *testing.T) {
 	}
 }
 
+func TestSubmitAnonymousTryoutTurnRefusesEndedTryout(t *testing.T) {
+	proofHash := hashTryoutProof(strings.Repeat("A", 43))
+	ctx := context.WithValue(context.Background(), tryoutProofContextKey{}, proofHash)
+	expires := time.Now().Add(time.Hour)
+	for _, status := range []repository.AgentTryoutStatus{
+		repository.AgentTryoutStatusFailed,
+		repository.AgentTryoutStatusCompleted,
+		repository.AgentTryoutStatusCancelled,
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+			manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+			id := uuid.New()
+			repo.tryouts[id] = repository.AgentTryout{ID: id, Status: status, AnonymousOwnerProofHash: &proofHash, ExpiresAt: &expires}
+
+			// The worker marked the tryout ended. No session claims a new
+			// turn, so the API refuses it.
+			for _, input := range []SubmitAgentTryoutTurnInput{{Message: "are you there?"}, {End: true}} {
+				err := manager.SubmitAnonymousTryoutTurn(ctx, id, input)
+				if !errors.Is(err, ErrInvalidAgentTryoutInput) {
+					t.Fatalf("turn %#v error = %v, want ErrInvalidAgentTryoutInput", input, err)
+				}
+			}
+			if len(repo.tryoutTurns) != 0 {
+				t.Fatalf("turns appended = %d, want 0 for a %s tryout", len(repo.tryoutTurns), status)
+			}
+		})
+	}
+}
+
 func (s *fakeAgentTryoutService) CreateWorkspaceTryout(context.Context, Caller, CreateWorkspaceAgentTryoutInput) (repository.AgentTryout, error) {
 	return repository.AgentTryout{}, nil
 }

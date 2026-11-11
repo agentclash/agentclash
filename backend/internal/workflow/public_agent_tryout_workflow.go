@@ -9,6 +9,7 @@ import (
 	"io"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -18,26 +19,129 @@ import (
 	"github.com/agentclash/agentclash/runtime/sandbox"
 	"github.com/agentclash/agentclash/runtime/scoring"
 	"github.com/google/uuid"
+	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/temporal"
 	sdkworkflow "go.temporal.io/sdk/workflow"
 )
 
-const executePublicAgentTryoutActivityName = "workflow.execute_public_agent_tryout"
+const (
+	executePublicAgentTryoutActivityName = "workflow.execute_public_agent_tryout"
+	failPublicAgentTryoutActivityName    = "workflow.fail_public_agent_tryout"
+
+	// publicTryoutFailOnActivityErrorVersionChangeID gates the failure
+	// cleanup. A history from before this change has no marker, so its
+	// replay keeps the old behavior.
+	publicTryoutFailOnActivityErrorVersionChangeID = "public-tryout-fail-on-activity-error"
+
+	// publicTryoutHeartbeatInterval is the time between two heartbeats of
+	// the tryout activity.
+	publicTryoutHeartbeatInterval = 10 * time.Second
+	// publicTryoutFailureWriteTimeout limits the failure write of the
+	// activity. The write also runs after the activity context is cancelled.
+	publicTryoutFailureWriteTimeout = 5 * time.Second
+)
+
+// failPublicAgentTryoutActivityOptions apply to the failure cleanup. During
+// a deploy, old and new workers run at the same time. An old worker can
+// refuse the task because it does not know the activity. A retry then goes
+// to a new worker. A repeat is safe because the cleanup reads the tryout
+// first and the write is conditional.
+var failPublicAgentTryoutActivityOptions = sdkworkflow.ActivityOptions{
+	StartToCloseTimeout: 30 * time.Second,
+	RetryPolicy: &temporal.RetryPolicy{
+		InitialInterval:    time.Second,
+		BackoffCoefficient: 2,
+		MaximumInterval:    30 * time.Second,
+		MaximumAttempts:    10,
+	},
+}
 
 type ExecutePublicAgentTryoutInput struct {
 	TryoutID uuid.UUID `json:"tryout_id"`
 }
 
+type FailPublicAgentTryoutInput struct {
+	TryoutID uuid.UUID `json:"tryout_id"`
+}
+
 func PublicAgentTryoutExecutionWorkflow(ctx sdkworkflow.Context, input PublicAgentTryoutExecutionWorkflowInput) error {
-	ctx = sdkworkflow.WithActivityOptions(ctx, agentHarnessExecutionActivityOptions(defaultAgentHarnessTimeoutSeconds))
-	return sdkworkflow.ExecuteActivity(ctx, executePublicAgentTryoutActivityName, ExecutePublicAgentTryoutInput{
+	executeCtx := sdkworkflow.WithActivityOptions(ctx, agentHarnessExecutionActivityOptions(defaultAgentHarnessTimeoutSeconds))
+	err := sdkworkflow.ExecuteActivity(executeCtx, executePublicAgentTryoutActivityName, ExecutePublicAgentTryoutInput{
 		TryoutID: input.TryoutID,
-	}).Get(ctx, nil)
+	}).Get(executeCtx, nil)
+	if err == nil || temporal.IsCanceledError(err) {
+		return err
+	}
+	// The activity can stop before it writes a final status, for example
+	// after a worker crash or a timeout. Then the tryout stays active, and
+	// the web shows "Working" with no end. The cleanup ends the tryout.
+	if sdkworkflow.GetVersion(ctx, publicTryoutFailOnActivityErrorVersionChangeID, sdkworkflow.DefaultVersion, 1) == sdkworkflow.DefaultVersion {
+		return err
+	}
+	return failPublicAgentTryout(ctx, input.TryoutID, err)
+}
+
+// failPublicAgentTryout runs the failure cleanup and then returns the cause.
+// The cleanup runs on a disconnected context, so a cancel of the workflow
+// does not stop it.
+func failPublicAgentTryout(ctx sdkworkflow.Context, tryoutID uuid.UUID, cause error) error {
+	disconnectedCtx, _ := sdkworkflow.NewDisconnectedContext(ctx)
+	disconnectedCtx = sdkworkflow.WithActivityOptions(disconnectedCtx, failPublicAgentTryoutActivityOptions)
+	_ = sdkworkflow.ExecuteActivity(disconnectedCtx, failPublicAgentTryoutActivityName, FailPublicAgentTryoutInput{
+		TryoutID: tryoutID,
+	}).Get(disconnectedCtx, nil)
+	return cause
+}
+
+// FailPublicAgentTryout marks a public tryout failed after its execution
+// activity stopped with an error. It does not change a final tryout. The
+// read is necessary because AllowsWrite permits a write from failed to
+// failed. Without the read, a repeat rewrites the summary and records a
+// second event.
+func (a *Activities) FailPublicAgentTryout(ctx context.Context, input FailPublicAgentTryoutInput) error {
+	if a.publicTryoutRepo == nil {
+		return ErrAgentHarnessRepositoryMissing
+	}
+	current, err := a.publicTryoutRepo.GetAgentTryoutByID(ctx, input.TryoutID)
+	if errors.Is(err, repository.ErrAgentTryoutNotFound) {
+		return nil
+	}
+	if err != nil {
+		return wrapActivityError(err)
+	}
+	// The public workflow does not own a workspace tryout. A final tryout
+	// keeps its status, its summary and its events.
+	if current.WorkspaceID != nil || current.Status.Terminal() {
+		return nil
+	}
+	redaction := repository.AgentTryoutRedactionNotRequired
+	_, err = a.publicTryoutRepo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
+		ID:              current.ID,
+		Status:          repository.AgentTryoutStatusFailed,
+		ExpectedStatus:  &current.Status,
+		Summary:         publicTryoutFailedSummary(),
+		RedactionStatus: &redaction,
+	})
+	if publicTryoutWriteRefused(err) {
+		// Another writer changed the tryout after the read.
+		return nil
+	}
+	if err != nil {
+		return wrapActivityError(err)
+	}
+	return wrapActivityError(a.recordPublicTryoutEvent(ctx, current.ID, runevents.EventTypeSystemRunFailed, map[string]any{
+		"status": "failed",
+	}))
 }
 
 func (a *Activities) ExecutePublicAgentTryout(ctx context.Context, input ExecutePublicAgentTryoutInput) error {
 	if a.publicTryoutRepo == nil {
 		return ErrAgentHarnessRepositoryMissing
 	}
+	stopHeartbeat := startPublicTryoutHeartbeat(ctx, publicTryoutHeartbeatInterval, func() {
+		recordPublicTryoutHeartbeat(ctx)
+	})
+	defer stopHeartbeat()
 
 	started := time.Now().UTC()
 	tryout, err := a.publicTryoutRepo.GetAgentTryoutByID(ctx, input.TryoutID)
@@ -67,7 +171,11 @@ func (a *Activities) ExecutePublicAgentTryout(ctx context.Context, input Execute
 	outputs, err := a.executePublicTryoutSandbox(ctx, tryout)
 	if err != nil {
 		if !publicTryoutWriteRefused(err) {
-			a.markPublicTryoutFailed(ctx, tryout.ID, started)
+			// A graceful worker stop cancels ctx. The failure write uses a
+			// context that is not cancelled, so the write still occurs.
+			failCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), publicTryoutFailureWriteTimeout)
+			a.markPublicTryoutFailed(failCtx, tryout.ID, started)
+			cancel()
 		}
 		return wrapActivityError(err)
 	}
@@ -129,7 +237,7 @@ func (a *Activities) markPublicTryoutFailed(ctx context.Context, tryoutID uuid.U
 		ID:              tryoutID,
 		Status:          repository.AgentTryoutStatusFailed,
 		ExpectedStatus:  &running,
-		Summary:         publicTryoutSummary("failed", "Hosted public tryout failed. Please try another task or sign in to keep working."),
+		Summary:         publicTryoutFailedSummary(),
 		LatencyMS:       int64Ptr(time.Since(started).Milliseconds()),
 		RedactionStatus: &redaction,
 	})
@@ -141,10 +249,54 @@ func (a *Activities) markPublicTryoutFailed(ctx context.Context, tryoutID uuid.U
 	})
 }
 
+// publicTryoutFailedSummary is the summary of a failed public tryout.
+func publicTryoutFailedSummary() json.RawMessage {
+	return publicTryoutSummary("failed", "Hosted public tryout failed. Please try another task or sign in to keep working.")
+}
+
 // publicTryoutWriteRefused reports whether a tryout status write was refused
 // because the tryout is terminal or changed under the activity.
 func publicTryoutWriteRefused(err error) bool {
 	return errors.Is(err, repository.ErrInvalidTransition) || errors.Is(err, repository.ErrTransitionConflict)
+}
+
+// startPublicTryoutHeartbeat calls beat at each interval until stop is
+// called or ctx is done. stop waits for the goroutine to end, so no beat
+// occurs after stop returns.
+func startPublicTryoutHeartbeat(ctx context.Context, interval time.Duration, beat func()) (stop func()) {
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				beat()
+			}
+		}
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() { close(done) })
+		wg.Wait()
+	}
+}
+
+// recordPublicTryoutHeartbeat sends a heartbeat for the tryout activity.
+// The SDK panics on a context that is not an activity context. The recover
+// stops that panic.
+func recordPublicTryoutHeartbeat(ctx context.Context) {
+	defer func() {
+		_ = recover()
+	}()
+	activity.RecordHeartbeat(ctx)
 }
 
 // Interactive session tuning. The sandbox is kept alive while the user chats;

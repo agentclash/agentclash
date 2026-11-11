@@ -27,8 +27,10 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/converter"
+	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 )
 
@@ -94,15 +96,46 @@ func TestConnectorHostedEventsDeduplicatePersistently(t *testing.T) {
 
 type connectorTestSignaler struct {
 	fail  bool
+	err   error
 	calls int
 }
 
 func (s *connectorTestSignaler) SignalRunAgentWorkflow(context.Context, uuid.UUID, uuid.UUID, hostedruns.Event) error {
 	s.calls++
+	if s.err != nil {
+		return s.err
+	}
 	if s.fail {
 		return errors.New("notification unavailable")
 	}
 	return nil
+}
+
+// A closed workflow cannot get the signal. The notification is delivered, so
+// it does not stay at the head of the pending queue.
+func TestConnectorClosedWorkflowNotificationIsDelivered(t *testing.T) {
+	ctx := context.Background()
+	db := connectorTestDB(t)
+	f := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	if _, err := repo.CreateHostedRunExecution(ctx, repository.CreateHostedRunExecutionParams{RunID: f.runID, RunAgentID: f.primaryRunAgentID, EndpointURL: "https://example.com", TraceLevel: "black_box", DeadlineAt: time.Now().Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := repo.ClaimHostedRunDispatch(ctx, f.primaryRunAgentID); err != nil || !ok {
+		t.Fatalf("claim=%v %v", ok, err)
+	}
+	status := hostedruns.FinalStatusCompleted
+	event := hostedruns.Event{EventID: "closed-done", RunAgentID: f.primaryRunAgentID, ExternalRunID: "remote", EventType: hostedruns.EventTypeRunFinished, FinalStatus: &status, Output: json.RawMessage(`"done"`), OccurredAt: time.Now().UTC()}
+	token, _ := hostedruns.NewCallbackTokenSigner("test").Sign(f.runID, f.primaryRunAgentID)
+	signaler := &connectorTestSignaler{err: serviceerror.NewNotFound("workflow execution already completed")}
+	manager := api.NewHostedRunIngestionManager(repo, "test", signaler, nil, slog.Default())
+	if err := manager.IngestEvent(ctx, f.runID, token, event); err != nil {
+		t.Fatalf("callback for a closed workflow failed: %v", err)
+	}
+	pending, err := repo.PendingHostedNotifications(ctx)
+	if err != nil || len(pending) != 0 || signaler.calls != 1 {
+		t.Fatalf("pending=%d signals=%d err=%v, want 0 pending after one signal", len(pending), signaler.calls, err)
+	}
 }
 func TestConnectorCallbackBindsBeforeAcceptance(t *testing.T) {
 	ctx := context.Background()
@@ -228,7 +261,15 @@ func TestConnectorLateStartFailureCannotEraseTerminalCallback(t *testing.T) {
 	token, _ := hostedruns.NewCallbackTokenSigner("test").Sign(f.runID, f.primaryRunAgentID)
 	signaler := &connectorTestSignaler{fail: true}
 	manager := api.NewHostedRunIngestionManager(repo, "test", signaler, nil, slog.Default())
-	if err = manager.IngestEvent(ctx, f.runID, token, event); err == nil {
+	// The callback is durable before the signal, so a signal failure does
+	// not fail the callback. The notification stays pending.
+	if err = manager.IngestEvent(ctx, f.runID, token, event); err != nil {
+		t.Fatalf("committed callback returned the signal failure: %v", err)
+	}
+	if pending, err := repo.PendingHostedNotifications(ctx); err != nil || len(pending) != 1 {
+		t.Fatalf("pending notifications=%d err=%v, want 1", len(pending), err)
+	}
+	if err = manager.DeliverPending(ctx); err == nil {
 		t.Fatal("expected notification failure")
 	}
 	// A fresh manager retries only persisted notification after the callback has committed.
@@ -241,7 +282,9 @@ func TestConnectorLateStartFailureCannotEraseTerminalCallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows, _ := repo.ListRunEventsByRunAgentID(ctx, f.primaryRunAgentID)
-	if len(rows) != 1 || signaler.calls != 2 {
+	// Two failed signals (the callback and the first retry), then one
+	// delivered signal. The duplicate callback signals nothing.
+	if len(rows) != 1 || signaler.calls != 3 {
 		t.Fatalf("dedup/retry evidence=%d signals=%d", len(rows), signaler.calls)
 	}
 	got, err := repo.MarkHostedRunExecutionFailed(ctx, repository.MarkHostedRunExecutionFailedParams{RunAgentID: f.primaryRunAgentID, ErrorMessage: "late start error"})
@@ -396,8 +439,14 @@ func TestConnectorHTTPDispatchUsesCanonicalCasesAndDurableReplay(t *testing.T) {
 	}
 	var requests atomic.Int64
 	var loseResponse atomic.Bool
+	var responseStatus atomic.Int64
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
+		if status := responseStatus.Load(); status != 0 {
+			w.WriteHeader(int(status))
+			io.WriteString(w, `{"error":"remote-body-detail"}`)
+			return
+		}
 		if loseResponse.Load() {
 			conn, _, err := w.(http.Hijacker).Hijack()
 			if err != nil {
@@ -463,11 +512,96 @@ func TestConnectorHTTPDispatchUsesCanonicalCasesAndDurableReplay(t *testing.T) {
 	if requests.Load() != 3 {
 		t.Fatalf("unknown execution automatically retried: requests=%d", requests.Load())
 	}
+	loseResponse.Store(false)
+
+	// A refusal status proves that the remote did not run the case. The
+	// dispatch is rejected, the error has the status, and a second call
+	// sends nothing.
+	responseStatus.Store(http.StatusUnauthorized)
+	refusedContext := connectorRunContext(t, ctx, repo, params)
+	for attempt := 1; attempt <= 2; attempt++ {
+		err = invoker.InvokeConnector(ctx, refusedContext)
+		if !errors.Is(err, repository.ErrConnectorRejected) || errors.Is(err, repository.ErrConnectorOutcomeUnknown) || !strings.Contains(err.Error(), "401") {
+			t.Fatalf("attempt %d: refused outcome=%v", attempt, err)
+		}
+		if strings.Contains(err.Error(), "remote-body-detail") || strings.Contains(err.Error(), "local-fixture-token") {
+			t.Fatalf("attempt %d: response body or secret in error: %v", attempt, err)
+		}
+		var appErr *temporal.ApplicationError
+		if !errors.As(err, &appErr) || !appErr.NonRetryable() {
+			t.Fatalf("attempt %d: refused outcome is retryable: %v", attempt, err)
+		}
+	}
+	if requests.Load() != 4 {
+		t.Fatalf("refused execution sent again: requests=%d", requests.Load())
+	}
+	assertConnectorDispatch(t, ctx, db, refusedContext.RunAgent.ID, "rejected", map[string]any{"reason": "refused", "status": float64(401)})
+
+	// A 503 can come from a remote that started the work, so the outcome
+	// stays unknown.
+	responseStatus.Store(http.StatusServiceUnavailable)
+	unavailableContext := connectorRunContext(t, ctx, repo, params)
+	for attempt := 1; attempt <= 2; attempt++ {
+		if err = invoker.InvokeConnector(ctx, unavailableContext); !errors.Is(err, repository.ErrConnectorOutcomeUnknown) || errors.Is(err, repository.ErrConnectorRejected) {
+			t.Fatalf("attempt %d: 503 outcome=%v", attempt, err)
+		}
+	}
+	if requests.Load() != 5 {
+		t.Fatalf("unknown 503 execution sent again: requests=%d", requests.Load())
+	}
+	assertConnectorDispatch(t, ctx, db, unavailableContext.RunAgent.ID, "unknown", nil)
+	responseStatus.Store(0)
+
 	if err = repo.RevokeConnector(ctx, f.workspaceID, binding.SnapshotID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = repo.CreateQueuedRun(ctx, params); !errors.Is(err, repository.ErrConnectorUnapproved) {
 		t.Fatalf("revoked canonical run admitted: %v", err)
+	}
+}
+
+func connectorRunContext(t *testing.T, ctx context.Context, repo *repository.Repository, params repository.CreateQueuedRunParams) repository.RunAgentExecutionContext {
+	t.Helper()
+	run, err := repo.CreateQueuedRun(ctx, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := repo.GetRunAgentExecutionContextByID(ctx, run.RunAgents[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+// assertConnectorDispatch reads the one dispatch of the run agent. The first
+// case that fails stops the run agent, so only one dispatch exists.
+func assertConnectorDispatch(t *testing.T, ctx context.Context, db *pgxpool.Pool, runAgentID uuid.UUID, wantState string, wantResponse map[string]any) {
+	t.Helper()
+	var state string
+	var raw []byte
+	if err := db.QueryRow(ctx, `SELECT state,response FROM connector_dispatches WHERE run_agent_id=$1`, runAgentID).Scan(&state, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if state != wantState {
+		t.Fatalf("dispatch state=%s, want %s", state, wantState)
+	}
+	if wantResponse == nil {
+		if raw != nil {
+			t.Fatalf("dispatch response=%s, want none", raw)
+		}
+		return
+	}
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("dispatch response=%s: %v", raw, err)
+	}
+	if len(got) != len(wantResponse) {
+		t.Fatalf("dispatch response=%s, want only %v", raw, wantResponse)
+	}
+	for key, want := range wantResponse {
+		if got[key] != want {
+			t.Fatalf("dispatch response=%s, want %v", raw, wantResponse)
+		}
 	}
 }
 

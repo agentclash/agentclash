@@ -17,7 +17,6 @@ export function conversationActivity(operation: Operation, testJourney?: boolean
   if (operation.state === "AWAITING_APPROVAL") return describe("Review the cost before continuing.");
   if (operation.state === "CANCELLING") return describe("Stopping…");
   if (operation.state === "QUEUED") return describe("Waiting to start…");
-  if (operation.state === "AWAITING_INPUT") return describe("One detail is needed to continue.");
   if (operation.state === "FINALIZING") return describe("Saving your results…");
   const progress = operation.progress;
   if (progress && operation.state === "RUNNING") {
@@ -121,7 +120,7 @@ export function ProgressStrip({ operation, total, pendingLabel, testJourney, bui
   const currentStage = furthest.cycle === build?.cycle_id ? Math.max(stage, furthest.stage) : stage;
   const start = Date.parse(startedAt || operation?.created_at || "");
   const elapsed = Number.isFinite(start) ? Math.max(0, Math.floor((now - start) / 1000)) : undefined;
-  const paused = build?.phase === "clarifying" || operation?.state === "AWAITING_INPUT";
+  const paused = build?.phase === "clarifying";
   const staged = building && (paused || operation?.conversation_decision?.intent === "prepare_tests" || operation?.kind === "check" || operation?.kind === "retest");
   const completed = Math.min(operation?.progress?.completed_cases || 0, total);
   const counting = !pendingLabel && operation?.state === "RUNNING" && total > 0;

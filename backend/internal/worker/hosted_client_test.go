@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/agentclash/agentclash/runtime/connectors"
 	"io"
@@ -217,4 +218,94 @@ func TestHostedConnectorRevalidatesApprovalAfterDNSBeforeCredentialSend(t *testi
 	if err == nil || calls != 0 {
 		t.Fatalf("revoked approval sent credential: calls=%d err=%v", calls, err)
 	}
+	if !errors.Is(err, connectors.ErrNotSent) || !errors.Is(err, repository.ErrConnectorUnapproved) {
+		t.Fatalf("err=%v, want a NotSentError for the revoked approval", err)
+	}
+}
+
+// A failure before the send is a NotSentError. errors.Is still finds the
+// sentinel of the cause, and the text does not change.
+func TestHostedConnectorRevokedApprovalIsNotSent(t *testing.T) {
+	calls := 0
+	c := localHostedClient(t, func(*http.Request) (*http.Response, error) {
+		calls++
+		return jsonResponse(`{"accepted":true,"external_run_id":"should-not-send"}`), nil
+	})
+	c.credentials = &revocableCredentials{revoked: true}
+	_, err := c.Start(context.Background(), workflowpkg.HostedRunStartInput{ExecutionContext: hostedExecutionContextFixture(uuid.New(), uuid.New(), uuid.New(), "https://example.com"), TraceLevel: hostedruns.TraceLevelBlackBox, TaskPayload: []byte(`{}`), DeadlineAt: time.Now().Add(time.Minute)})
+	if err == nil || calls != 0 {
+		t.Fatalf("revoked approval sent the request: calls=%d err=%v", calls, err)
+	}
+	var notSent *connectors.NotSentError
+	if !errors.As(err, &notSent) || !errors.Is(err, connectors.ErrNotSent) {
+		t.Fatalf("err=%T %v is not a NotSentError", err, err)
+	}
+	if !errors.Is(err, repository.ErrConnectorUnapproved) || err.Error() != repository.ErrConnectorUnapproved.Error() {
+		t.Fatalf("sentinel or text lost: %v", err)
+	}
+	if reason, _, ok := connectors.Rejection(err); !ok || reason != connectors.RejectionNotSent {
+		t.Fatalf("rejection=%q %v", reason, ok)
+	}
+}
+
+func TestHostedConnectorFailuresBeforeSendAreNotSent(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		client func(*testing.T) HostedRunClient
+		trace  string
+	}{
+		{name: "no_approval_source", client: func(t *testing.T) HostedRunClient {
+			return NewHostedRunClient(http.DefaultClient, "https://callback.example.com", "test-secret")
+		}},
+		{name: "not_hosted_adapter", client: func(t *testing.T) HostedRunClient {
+			return NewHostedRunClient(http.DefaultClient, "https://callback.example.com", "test-secret").WithConnectorRepository(httpJSONCredentials{})
+		}},
+		{name: "private_target", client: func(t *testing.T) HostedRunClient {
+			return NewHostedRunClient(http.DefaultClient, "https://callback.example.com", "test-secret").WithConnectorRepository(hostedCredentials{endpoint: "http://127.0.0.1:8080"})
+		}},
+		{name: "invalid_request", trace: "not-a-trace-level", client: func(t *testing.T) HostedRunClient {
+			return localHostedClient(t, func(*http.Request) (*http.Response, error) {
+				t.Error("invalid request was sent")
+				return jsonResponse(`{}`), nil
+			})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			trace := hostedruns.TraceLevelBlackBox
+			if tc.trace != "" {
+				trace = tc.trace
+			}
+			_, err := tc.client(t).Start(context.Background(), workflowpkg.HostedRunStartInput{ExecutionContext: hostedExecutionContextFixture(uuid.New(), uuid.New(), uuid.New(), "https://example.com"), TraceLevel: trace, TaskPayload: []byte(`{}`), DeadlineAt: time.Now().Add(time.Minute)})
+			if reason, _, ok := connectors.Rejection(err); !ok || reason != connectors.RejectionNotSent {
+				t.Fatalf("err=%v is not typed as not sent", err)
+			}
+		})
+	}
+}
+
+// A refusal status proves that the remote did not start the run. A 409 can
+// come from a remote that already has the run, so its outcome stays unknown.
+func TestHostedConnectorStartStatusOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		status  int
+		refused bool
+	}{{401, true}, {403, true}, {422, true}, {429, true}, {409, false}, {408, false}, {503, false}} {
+		client := localHostedClient(t, func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: tc.status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"detail":"remote-body"}`))}, nil
+		})
+		_, err := client.Start(context.Background(), workflowpkg.HostedRunStartInput{ExecutionContext: hostedExecutionContextFixture(uuid.New(), uuid.New(), uuid.New(), "https://example.com"), TraceLevel: hostedruns.TraceLevelBlackBox, TaskPayload: []byte(`{}`), DeadlineAt: time.Now().Add(time.Minute)})
+		if err == nil || strings.Contains(err.Error(), "remote-body") {
+			t.Fatalf("status %d: err=%v", tc.status, err)
+		}
+		reason, status, ok := connectors.Rejection(err)
+		if ok != tc.refused || tc.refused && (reason != connectors.RejectionRefused || status != tc.status) {
+			t.Fatalf("status %d: rejection=%q %d %v, want refused=%v", tc.status, reason, status, ok, tc.refused)
+		}
+	}
+}
+
+type httpJSONCredentials struct{}
+
+func (httpJSONCredentials) ResolveApprovedConnector(_ context.Context, snapshot, workspace uuid.UUID) (connectors.Binding, string, error) {
+	return connectors.Binding{SnapshotID: snapshot, WorkspaceID: workspace, Config: connectors.Config{Adapter: connectors.HTTPJSON, EndpointURL: "https://example.com", Auth: "bearer", SecretKey: "APP_TOKEN", TimeoutSeconds: 30}}, "fixture-app-secret", nil
 }

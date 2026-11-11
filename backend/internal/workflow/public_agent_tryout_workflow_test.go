@@ -23,13 +23,36 @@ type fakePublicTryoutRepo struct {
 	updates []repository.UpdateAgentTryoutStatusParams
 	// updateErr, when set, decides the result of each status write.
 	updateErr func(params repository.UpdateAgentTryoutStatusParams) error
+	// tryout, when set, is the row that GetAgentTryoutByID returns.
+	tryout *repository.AgentTryout
+	// getErr, when set, is the error that GetAgentTryoutByID returns.
+	getErr error
+	// checkContext makes each call fail on a cancelled context, as a
+	// database call does.
+	checkContext bool
+	// afterEvent, when set, runs after each recorded event.
+	afterEvent func(params repository.RecordAgentTryoutEventParams)
 }
 
-func (f *fakePublicTryoutRepo) GetAgentTryoutByID(_ context.Context, id uuid.UUID) (repository.AgentTryout, error) {
+func (f *fakePublicTryoutRepo) GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error) {
+	if f.checkContext && ctx.Err() != nil {
+		return repository.AgentTryout{}, ctx.Err()
+	}
+	if f.getErr != nil {
+		return repository.AgentTryout{}, f.getErr
+	}
+	if f.tryout != nil {
+		row := *f.tryout
+		row.ID = id
+		return row, nil
+	}
 	return repository.AgentTryout{ID: id}, nil
 }
 
-func (f *fakePublicTryoutRepo) UpdateAgentTryoutStatus(_ context.Context, params repository.UpdateAgentTryoutStatusParams) (repository.AgentTryout, error) {
+func (f *fakePublicTryoutRepo) UpdateAgentTryoutStatus(ctx context.Context, params repository.UpdateAgentTryoutStatusParams) (repository.AgentTryout, error) {
+	if f.checkContext && ctx.Err() != nil {
+		return repository.AgentTryout{}, ctx.Err()
+	}
 	f.updates = append(f.updates, params)
 	if f.updateErr != nil {
 		if err := f.updateErr(params); err != nil {
@@ -39,8 +62,14 @@ func (f *fakePublicTryoutRepo) UpdateAgentTryoutStatus(_ context.Context, params
 	return repository.AgentTryout{ID: params.ID, Status: params.Status}, nil
 }
 
-func (f *fakePublicTryoutRepo) RecordAgentTryoutEvent(_ context.Context, params repository.RecordAgentTryoutEventParams) (repository.AgentTryoutEvent, error) {
+func (f *fakePublicTryoutRepo) RecordAgentTryoutEvent(ctx context.Context, params repository.RecordAgentTryoutEventParams) (repository.AgentTryoutEvent, error) {
+	if f.checkContext && ctx.Err() != nil {
+		return repository.AgentTryoutEvent{}, ctx.Err()
+	}
 	f.events = append(f.events, params)
+	if f.afterEvent != nil {
+		f.afterEvent(params)
+	}
 	return repository.AgentTryoutEvent{}, nil
 }
 

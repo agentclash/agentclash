@@ -972,12 +972,41 @@ func TestMarkHostedRunTimedOut(t *testing.T) {
 	}
 	activities := NewActivities(repo, FakeWorkHooks{})
 
-	err := activities.MarkHostedRunTimedOut(context.Background(), MarkHostedRunTimedOutInput{
+	result, err := activities.MarkHostedRunTimedOut(context.Background(), MarkHostedRunTimedOutInput{
 		RunAgentID:   runAgentID,
 		ErrorMessage: "deadline exceeded",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != repository.HostedRunExecutionStatusUnknown || result.ErrorMessage == nil || *result.ErrorMessage != "deadline exceeded" {
+		t.Fatalf("result=%+v, want unknown with the deadline message", result)
+	}
+}
+
+// A terminal callback committed before the timeout write. The write does not
+// change the row, and the result gives the committed status.
+func TestMarkHostedRunTimedOutReturnsCommittedCallback(t *testing.T) {
+	remoteMessage := "remote failed"
+	for _, tc := range []struct {
+		status  repository.HostedRunExecutionStatus
+		message *string
+	}{
+		{status: repository.HostedRunExecutionStatusCompleted},
+		{status: repository.HostedRunExecutionStatusFailed, message: &remoteMessage},
+	} {
+		runID, runAgentID := uuid.New(), uuid.New()
+		repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusRunning), fixtureRunAgent(runID, runAgentID, 0))
+		repo.hostedExecutions[runAgentID] = repository.HostedRunExecution{RunAgentID: runAgentID, Status: tc.status, ErrorMessage: tc.message}
+		activities := NewActivities(repo, FakeWorkHooks{})
+
+		result, err := activities.MarkHostedRunTimedOut(context.Background(), MarkHostedRunTimedOutInput{RunAgentID: runAgentID, ErrorMessage: "deadline exceeded"})
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", tc.status, err)
+		}
+		if result.Status != tc.status || (tc.message == nil) != (result.ErrorMessage == nil) || tc.message != nil && *result.ErrorMessage != *tc.message {
+			t.Fatalf("%s: result=%+v, want the committed row", tc.status, result)
+		}
 	}
 }
 

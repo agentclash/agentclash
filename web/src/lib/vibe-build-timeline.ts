@@ -84,7 +84,6 @@ export function buildProgress(operation: Operation) {
   const intent = operation.conversation_decision?.intent;
   if (operation.state === "CANCELLING") return "Stopping…";
   if (operation.state === "AWAITING_APPROVAL") return "Review the cost before continuing.";
-  if (operation.state === "AWAITING_INPUT") return "One detail is needed to continue.";
   if (operation.state === "QUEUED") return message ? "Thinking…" : "Waiting to start…";
   if (operation.state === "FINALIZING") return message ? "Saving your reply…" : "Saving your results…";
   if (terminal(operation.state)) return undefined;
@@ -127,7 +126,7 @@ export function buildStageIndex(operation?: Operation, phase?: string) {
 }
 
 export function buildStageLabel(operation?: Operation, phase?: string) {
-  if (phase === "clarifying" || operation?.state === "AWAITING_INPUT") return "Needs your answer";
+  if (phase === "clarifying") return "Needs your answer";
   const stage = buildStageIndex(operation, phase);
   return stage === 3 ? `Run tests (${operation?.progress?.completed_cases || 0} of ${operation?.progress?.total_cases || 3})` : buildStages[stage];
 }

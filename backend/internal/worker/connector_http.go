@@ -7,6 +7,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/connectors"
 	"github.com/google/uuid"
+	"go.temporal.io/sdk/temporal"
 	"time"
 )
 
@@ -15,8 +16,14 @@ type ConnectorExecutionRepository interface {
 	ConnectorDeadline(context.Context, uuid.UUID, time.Time) (time.Time, error)
 	ClaimConnectorDispatch(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string, string, []byte, time.Time) (repository.ConnectorDispatch, bool, error)
 	CommitConnectorResponse(context.Context, uuid.UUID, json.RawMessage) error
+	RejectConnectorDispatch(context.Context, uuid.UUID, repository.ConnectorRejection) error
 	UnknownConnectorDispatch(context.Context, uuid.UUID) error
 }
+
+// ConnectorRejectedErrorType is the Temporal error type of a dispatch that the
+// remote did not run.
+const ConnectorRejectedErrorType = "repository.ErrConnectorRejected"
+
 type HTTPJSONInvoker struct {
 	Repository ConnectorExecutionRepository
 	Client     connectors.Client
@@ -60,8 +67,13 @@ func (i HTTPJSONInvoker) InvokeConnector(ctx context.Context, e repository.RunAg
 			return err
 		}
 		if !claimed {
-			if dispatch.State == "completed" {
+			switch dispatch.State {
+			case repository.ConnectorDispatchStateCompleted:
 				continue
+			case repository.ConnectorDispatchStateRejected:
+				// The remote did not run the case. Give the stored reason
+				// again, and send nothing.
+				return connectorRejected(repository.StoredConnectorRejection(dispatch.Response))
 			}
 			return repository.ErrConnectorOutcomeUnknown
 		}
@@ -73,6 +85,17 @@ func (i HTTPJSONInvoker) InvokeConnector(ctx context.Context, e repository.RunAg
 		output, err := transport.InvokeHTTPJSON(ctx, binding.Config, secret, item.Payload, dispatch.DeadlineAt)
 		persist, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 		if err != nil {
+			// A request that was not sent, or a refusal status, proves that
+			// the remote did not run the case. Each other failure leaves the
+			// outcome unknown.
+			if rejected, ok := repository.ConnectorRejectionFor(err); ok {
+				markErr := i.Repository.RejectConnectorDispatch(persist, dispatch.ID, rejected.Rejection)
+				cancel()
+				if markErr != nil {
+					return markErr
+				}
+				return connectorRejected(rejected)
+			}
 			markErr := i.Repository.UnknownConnectorDispatch(persist, dispatch.ID)
 			cancel()
 			if markErr != nil {
@@ -87,4 +110,11 @@ func (i HTTPJSONInvoker) InvokeConnector(ctx context.Context, e repository.RunAg
 		}
 	}
 	return nil
+}
+
+// connectorRejected makes the rejection a non-retryable Temporal error. The
+// message has the real reason, and errors.Is still finds
+// repository.ErrConnectorRejected.
+func connectorRejected(rejected *repository.ConnectorRejectedError) error {
+	return temporal.NewNonRetryableApplicationError(rejected.Error(), ConnectorRejectedErrorType, rejected)
 }

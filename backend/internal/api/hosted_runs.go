@@ -116,7 +116,16 @@ func (m *HostedRunIngestionManager) IngestEvent(ctx context.Context, runID uuid.
 	}
 
 	if isHostedRunTerminalEvent(event) {
-		return m.DeliverPending(ctx)
+		// The callback is durable before the signal, so a delivery error
+		// does not fail the callback. The notification stays pending, and
+		// RunDelivery tries again each second.
+		if deliveryErr := m.DeliverPending(ctx); deliveryErr != nil {
+			m.logger.Warn("hosted notification delivery pending",
+				"run_id", runID,
+				"run_agent_id", event.RunAgentID,
+				"error", deliveryErr,
+			)
+		}
 	}
 	return nil
 }
@@ -261,8 +270,13 @@ func (m *HostedRunIngestionManager) DeliverPending(ctx context.Context) error {
 			return errors.New("hosted workflow signaler unavailable")
 		}
 		if err = m.signaler.SignalRunAgentWorkflow(ctx, n.RunID, n.RunAgentID, n.Event); err != nil {
-			deliveryErrors = append(deliveryErrors, err)
-			continue
+			// A NotFound error means that the workflow is closed. No
+			// workflow waits for the signal, so the notification is
+			// delivered. Each other error keeps it pending.
+			if !isTemporalNotFound(err) {
+				deliveryErrors = append(deliveryErrors, err)
+				continue
+			}
 		}
 		if err = m.repo.MarkHostedNotificationDelivered(ctx, n.RunAgentID); err != nil {
 			deliveryErrors = append(deliveryErrors, err)

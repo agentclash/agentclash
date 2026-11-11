@@ -48,6 +48,7 @@ tests.
 | Workspace membership | `backend/internal/repository/membership_status.go` | none (re-invite moves archived to invited) | no |
 | Device auth code | `backend/internal/repository/device_auth_status.go` | denied, expired, consumed | no |
 | Hosted run execution | `backend/internal/repository/hosted_run_status.go` | completed, failed, timed_out | no |
+| Connector dispatch | `backend/internal/repository/connector_dispatch_status.go` | completed, rejected, unknown | no |
 | Race standings entry (Redis) | `backend/internal/racecontext/types.go` (`StandingsState`) | submitted, failed, timed_out | no |
 | Vibe operation | `backend/internal/vibe/types.go` (`CanTransition`) | COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED | no |
 
@@ -64,6 +65,20 @@ Facts that the tables do not show:
 - A hosted run execution in `unknown` has an outcome that nobody knows. An
   owner must reconcile it. A callback that arrives after the wait ended is
   kept as evidence and does not change the status.
+- When a callback and the deadline timer of a hosted run race, the first write
+  to the execution row wins. The run agent follows the status of that row.
+- A connector call or a hosted start that fails before the send, or that gets
+  a definite refusal (for example HTTP 401), fails at once with its real
+  reason. Other failures, for example HTTP 409, 5xx or a lost response, stay
+  `unknown`. `accepted` is in the CHECK constraint, but a synchronous call has
+  no accept phase, so nothing writes it.
+- A race standings entry becomes `submitted` on `system.output.finalized` or
+  on `system.run.completed`. Native runs emit only the second event.
+- If the worker of a public tryout stops, the workflow marks the tryout
+  failed. The web app then stops its wait.
+- Vibe operations keep AWAITING_INPUT in the CHECK constraint, but
+  `CanTransition` refuses it. The question flow uses the build phase
+  `clarifying`.
 - Membership changes cascade from the organization to its workspaces in one
   transaction. A workspace membership can become active only while the
   organization membership is active or invited.
@@ -99,11 +114,9 @@ These gaps remain. Each needs an owner decision or a larger change.
 | `billing_subscriptions.status` | No CHECK constraint. A missing event time falls back to `now()`. |
 | `billing_checkout_intents.status` | Only completed is written, so an abandoned checkout stays created. |
 | `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
-| `connector_dispatches.state` | accepted and rejected are in the CHECK constraint but never written. |
-| Hosted run execution | A callback that commits just before the deadline timer fires can leave the execution completed while the run agent fails. |
-| Race standings | Native runs never emit `system.output.finalized`, so native peers never show as submitted. |
-| `agent_tryout_turns` | A reclaimed turn waits for the next session of the same tryout. |
-| Vibe operation | Nothing writes AWAITING_INPUT, but the web app has branches for it. |
+| Race standings | Hosted events do not pass through the standings recorder of the worker, so hosted peers never update. A run with case fan-out emits no run-level event, so its agents never show as submitted. |
+| Public tryout | A message that arrives after the turn loop ends, but before the completed write, is accepted and never processed. |
+| Public tryout | After a worker crash, the tryout shows failed only when the activity times out (about 32 minutes). A follow-up sets a 60-second heartbeat timeout after this release deploys. |
 
 The money paths (billing, `vibe_attempts`, the build quota) need an owner
 decision before a change. Do not add a guard there as a side change.

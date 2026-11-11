@@ -25,31 +25,33 @@ type Client struct {
 }
 
 func (c Client) DoJSON(ctx context.Context, endpoint, auth, secret string, payload []byte, deadline time.Time) ([]byte, error) {
+	// Each failure before client.Do is a NotSentError: the remote did not
+	// get the request.
 	if len(payload) > MaxBodyBytes {
-		return nil, errors.New("connector request exceeds 1 MiB")
+		return nil, notSent(errors.New("connector request exceeds 1 MiB"))
 	}
 	if deadline.IsZero() || !deadline.After(time.Now()) {
-		return nil, errors.New("connector deadline elapsed")
+		return nil, notSent(errors.New("connector deadline elapsed"))
 	}
 	ctx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	client, err := provider.ConnectorHTTPClient(ctx, endpoint, c.HTTP, c.Resolver, c.Dialer)
 	if err != nil {
-		return nil, err
+		return nil, notSent(err)
 	}
 	if c.ResolveSecret != nil {
 		secret, err = c.ResolveSecret(ctx)
 		if err != nil {
-			return nil, err
+			return nil, notSent(err)
 		}
 	}
 
 	if len(secret) == 0 || len(secret) > 65536 || strings.ContainsAny(secret, "\r\n") {
-		return nil, errors.New("invalid workspace credential")
+		return nil, notSent(errors.New("invalid workspace credential"))
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return nil, errors.New("invalid connector request")
+		return nil, notSent(errors.New("invalid connector request"))
 	}
 	req.Header.Set("Content-Type", "application/json")
 	switch auth {
@@ -58,7 +60,7 @@ func (c Client) DoJSON(ctx context.Context, endpoint, auth, secret string, paylo
 	case "api_key":
 		req.Header.Set("X-API-Key", secret)
 	default:
-		return nil, errors.New("unsupported connector authentication")
+		return nil, notSent(errors.New("unsupported connector authentication"))
 	}
 	response, err := client.Do(req)
 	if err != nil {
@@ -66,7 +68,13 @@ func (c Client) DoJSON(ctx context.Context, endpoint, auth, secret string, paylo
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, errors.New("connector returned a non-success response; execution outcome is unknown")
+		// A refusal status proves that the remote did not start the work.
+		// Each other status keeps the outcome unknown. The error never
+		// holds the response body.
+		if IsRefusedStatus(response.StatusCode) {
+			return nil, &RefusedError{Status: response.StatusCode}
+		}
+		return nil, errors.New(errNonSuccessText)
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, MaxBodyBytes+1))
 	if err != nil {
@@ -80,7 +88,7 @@ func (c Client) DoJSON(ctx context.Context, endpoint, auth, secret string, paylo
 func (c Client) InvokeHTTPJSON(ctx context.Context, config Config, secret string, payload json.RawMessage, deadline time.Time) (json.RawMessage, error) {
 	body, err := config.Request(payload)
 	if err != nil {
-		return nil, err
+		return nil, notSent(err)
 	}
 	response, err := c.DoJSON(ctx, config.EndpointURL, config.Auth, secret, body, deadline)
 	if err != nil {

@@ -7,8 +7,12 @@ import (
 	"log/slog"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/engine"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/worker"
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/google/uuid"
 )
@@ -94,6 +98,12 @@ func TestStandingsRecorderRoutesEventTypes(t *testing.T) {
 		{
 			name:      "output.finalized → submitted",
 			eventType: runevents.EventTypeSystemOutputFinalized,
+			wantStore: true,
+			wantState: StandingsStateSubmitted,
+		},
+		{
+			name:      "run.completed → submitted",
+			eventType: runevents.EventTypeSystemRunCompleted,
 			wantStore: true,
 			wantState: StandingsStateSubmitted,
 		},
@@ -296,5 +306,165 @@ func TestDecodeStandingsHashFieldRejectsCorruptFields(t *testing.T) {
 				t.Errorf("ok = %v, want %v", ok, tc.ok)
 			}
 		})
+	}
+}
+
+// The merge rules of the store set the result of a sequence of terminal
+// events. The test uses the Redis store, because the Redis store applies
+// racecontext.MergeEntry.
+func TestStandingsRecorderTerminalEventSequences(t *testing.T) {
+	startedAt := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
+	finalizedAt := startedAt.Add(time.Minute)
+	completedAt := startedAt.Add(2 * time.Minute)
+	failedAt := startedAt.Add(3 * time.Minute)
+	timeoutPayload, _ := json.Marshal(map[string]any{"stop_reason": "timeout"})
+
+	type step struct {
+		eventType  runevents.Type
+		occurredAt time.Time
+		payload    json.RawMessage
+	}
+	cases := []struct {
+		name            string
+		steps           []step
+		wantState       StandingsState
+		wantSubmittedAt *time.Time
+		wantFailedAt    *time.Time
+	}{
+		{
+			name: "run.completed alone gives submitted",
+			steps: []step{
+				{eventType: runevents.EventTypeSystemRunStarted, occurredAt: startedAt},
+				{eventType: runevents.EventTypeSystemRunCompleted, occurredAt: completedAt},
+			},
+			wantState:       StandingsStateSubmitted,
+			wantSubmittedAt: &completedAt,
+		},
+		{
+			name: "output.finalized then run.completed keeps the first submitted time",
+			steps: []step{
+				{eventType: runevents.EventTypeSystemRunStarted, occurredAt: startedAt},
+				{eventType: runevents.EventTypeSystemOutputFinalized, occurredAt: finalizedAt},
+				{eventType: runevents.EventTypeSystemRunCompleted, occurredAt: completedAt},
+			},
+			wantState:       StandingsStateSubmitted,
+			wantSubmittedAt: &finalizedAt,
+		},
+		{
+			name: "run.completed after run.failed stays failed",
+			steps: []step{
+				{eventType: runevents.EventTypeSystemRunStarted, occurredAt: startedAt},
+				{eventType: runevents.EventTypeSystemRunFailed, occurredAt: failedAt},
+				{eventType: runevents.EventTypeSystemRunCompleted, occurredAt: completedAt},
+			},
+			wantState:    StandingsStateFailed,
+			wantFailedAt: &failedAt,
+		},
+		{
+			name: "run.completed after a timeout stays timed_out",
+			steps: []step{
+				{eventType: runevents.EventTypeSystemRunStarted, occurredAt: startedAt},
+				{eventType: runevents.EventTypeSystemRunFailed, occurredAt: failedAt, payload: timeoutPayload},
+				{eventType: runevents.EventTypeSystemRunCompleted, occurredAt: completedAt},
+			},
+			wantState:    StandingsStateTimedOut,
+			wantFailedAt: &failedAt,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store, _ := newTestStandingsStore(t)
+			recorder := NewStandingsRecorder(&fakeRecorder{}, store, slog.Default())
+			ctx := context.Background()
+			runID := uuid.New()
+			agentID := uuid.New()
+
+			for _, s := range tc.steps {
+				env := runevents.Envelope{
+					RunID:      runID,
+					RunAgentID: agentID,
+					EventType:  s.eventType,
+					OccurredAt: s.occurredAt,
+					Payload:    s.payload,
+				}
+				if _, err := recorder.RecordRunEvent(ctx, repository.RecordRunEventParams{Event: env}); err != nil {
+					t.Fatalf("record %s: %v", s.eventType, err)
+				}
+			}
+
+			snapshot, err := store.Snapshot(ctx, runID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			entry := snapshot[agentID]
+			if entry.State != tc.wantState {
+				t.Fatalf("state = %q, want %q", entry.State, tc.wantState)
+			}
+			assertStandingsTime(t, "submitted_at", entry.SubmittedAt, tc.wantSubmittedAt)
+			assertStandingsTime(t, "failed_at", entry.FailedAt, tc.wantFailedAt)
+		})
+	}
+}
+
+// A native run agent records system.run.completed and not
+// system.output.finalized. When it finishes, its peers must see it as
+// submitted. They must not see it as running until Redis deletes the hash.
+func TestNativeObserverRunCompleteMarksStandingsSubmitted(t *testing.T) {
+	store, _ := newTestStandingsStore(t)
+	recorder := NewStandingsRecorder(&fakeRecorder{}, store, slog.Default())
+	ctx := context.Background()
+	runID := uuid.New()
+	agentID := uuid.New()
+
+	observer, err := worker.NewNativeRunEventObserverFactory(recorder)(repository.RunAgentExecutionContext{
+		Run:      domain.Run{ID: runID},
+		RunAgent: domain.RunAgent{ID: agentID, RunID: runID},
+	})
+	if err != nil {
+		t.Fatalf("build native observer: %v", err)
+	}
+	if err := observer.OnStepStart(ctx, 2); err != nil {
+		t.Fatalf("OnStepStart: %v", err)
+	}
+	if err := observer.OnRunComplete(ctx, engine.Result{
+		FinalOutput: "done",
+		StopReason:  engine.StopReasonCompleted,
+		StepCount:   2,
+	}); err != nil {
+		t.Fatalf("OnRunComplete: %v", err)
+	}
+
+	snapshot, err := store.Snapshot(ctx, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := snapshot[agentID]
+	if !ok {
+		t.Fatalf("no standings entry for run agent %s", agentID)
+	}
+	if entry.State != StandingsStateSubmitted {
+		t.Fatalf("state = %q, want %q", entry.State, StandingsStateSubmitted)
+	}
+	if entry.SubmittedAt == nil {
+		t.Fatal("submitted_at is not set")
+	}
+	if entry.StartedAt == nil {
+		t.Fatal("started_at is not set")
+	}
+	if entry.Step != 2 {
+		t.Fatalf("step = %d, want 2", entry.Step)
+	}
+}
+
+func assertStandingsTime(t *testing.T, name string, got, want *time.Time) {
+	t.Helper()
+	switch {
+	case want == nil && got != nil:
+		t.Fatalf("%s = %s, want not set", name, got)
+	case want != nil && got == nil:
+		t.Fatalf("%s is not set, want %s", name, want)
+	case want != nil && !got.Equal(*want):
+		t.Fatalf("%s = %s, want %s", name, got, want)
 	}
 }

@@ -94,7 +94,11 @@ func standingsUpdateFor(env runevents.Envelope) (StandingsEntry, bool) {
 			TokensUsed: tokens,
 		}, true
 
-	case runevents.EventTypeSystemOutputFinalized:
+	// A native run agent records system.run.completed and not
+	// system.output.finalized. Thus both events set the submitted state.
+	// When both events occur, MergeEntry keeps the first submitted time.
+	// MergeEntry also keeps a failed or timed_out entry final.
+	case runevents.EventTypeSystemOutputFinalized, runevents.EventTypeSystemRunCompleted:
 		now := env.OccurredAt
 		if now.IsZero() {
 			now = time.Now().UTC()

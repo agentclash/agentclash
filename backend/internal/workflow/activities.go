@@ -187,6 +187,15 @@ type MarkHostedRunTimedOutInput struct {
 	ErrorMessage string    `json:"error_message"`
 }
 
+// MarkHostedRunTimedOutResult is the hosted execution row after the timeout
+// write. When a terminal callback committed first, the timeout write does not
+// change the row, and Status is completed or failed. A worker from before
+// this field returns no result, so Status is empty.
+type MarkHostedRunTimedOutResult struct {
+	Status       repository.HostedRunExecutionStatus `json:"status"`
+	ErrorMessage *string                             `json:"error_message,omitempty"`
+}
+
 type BuildRunAgentReplayInput struct {
 	RunAgentID uuid.UUID `json:"run_agent_id"`
 }
@@ -502,6 +511,27 @@ func (a *Activities) StartHostedRun(ctx context.Context, input StartHostedRunInp
 	if err != nil {
 		persist, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 		defer cancel()
+		// A start that was not sent, or that the remote refused, cannot have
+		// started the remote run. Fail the execution now, and do not wait
+		// for the callback deadline.
+		if rejected, ok := repository.ConnectorRejectionFor(err); ok {
+			latest, markErr := a.repo.MarkHostedRunExecutionFailed(persist, repository.MarkHostedRunExecutionFailedParams{
+				RunAgentID:   input.RunAgentID,
+				ErrorMessage: rejected.Error(),
+			})
+			if markErr != nil {
+				return StartHostedRunResult{}, fmt.Errorf("%w; additionally failed to persist hosted rejection: %v", rejected, markErr)
+			}
+			// A terminal callback committed first. Keep its result.
+			if latest.Status != repository.HostedRunExecutionStatusFailed {
+				result.Completed = latest.Status == repository.HostedRunExecutionStatusCompleted
+				if latest.ExternalRunID != nil {
+					result.ExternalRunID = *latest.ExternalRunID
+				}
+				return result, nil
+			}
+			return StartHostedRunResult{}, rejected
+		}
 		if markErr := a.repo.MarkHostedRunUnknown(persist, input.RunAgentID); markErr != nil {
 			return result, markErr
 		}
@@ -558,12 +588,18 @@ func (a *Activities) StartHostedRun(ctx context.Context, input StartHostedRunInp
 	}, nil
 }
 
-func (a *Activities) MarkHostedRunTimedOut(ctx context.Context, input MarkHostedRunTimedOutInput) error {
-	_, err := a.repo.MarkHostedRunExecutionTimedOut(ctx, repository.MarkHostedRunExecutionTimedOutParams{
+func (a *Activities) MarkHostedRunTimedOut(ctx context.Context, input MarkHostedRunTimedOutInput) (MarkHostedRunTimedOutResult, error) {
+	execution, err := a.repo.MarkHostedRunExecutionTimedOut(ctx, repository.MarkHostedRunExecutionTimedOutParams{
 		RunAgentID:   input.RunAgentID,
 		ErrorMessage: input.ErrorMessage,
 	})
-	return wrapActivityError(err)
+	if err != nil {
+		return MarkHostedRunTimedOutResult{}, wrapActivityError(err)
+	}
+	return MarkHostedRunTimedOutResult{
+		Status:       execution.Status,
+		ErrorMessage: cloneStringPtr(execution.ErrorMessage),
+	}, nil
 }
 
 func (a *Activities) BuildRunAgentReplay(ctx context.Context, input BuildRunAgentReplayInput) (repository.RunAgentReplay, error) {
