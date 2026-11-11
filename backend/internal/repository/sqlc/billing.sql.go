@@ -293,6 +293,31 @@ func (q *Queries) CreateBillingTrialGrant(ctx context.Context, arg CreateBilling
 	return i, err
 }
 
+const expireStaleBillingCheckoutIntents = `-- name: ExpireStaleBillingCheckoutIntents :execrows
+UPDATE billing_checkout_intents
+SET status = 'expired'
+WHERE billing_checkout_intents.id IN (
+    SELECT stale.id
+    FROM billing_checkout_intents AS stale
+    WHERE stale.status = 'created'
+      AND stale.created_at <= $1::timestamptz
+    FOR UPDATE SKIP LOCKED
+)
+  AND billing_checkout_intents.status = 'created'
+`
+
+type ExpireStaleBillingCheckoutIntentsParams struct {
+	ExpireBefore pgtype.Timestamptz
+}
+
+func (q *Queries) ExpireStaleBillingCheckoutIntents(ctx context.Context, arg ExpireStaleBillingCheckoutIntentsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, expireStaleBillingCheckoutIntents, arg.ExpireBefore)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const findOrganizationByDodoSubscriptionOrCustomer = `-- name: FindOrganizationByDodoSubscriptionOrCustomer :one
 SELECT organization_id FROM (
     SELECT organization_id, 1 AS priority, latest_dodo_event_at AS event_at
@@ -631,7 +656,7 @@ const markBillingCheckoutIntentCompleted = `-- name: MarkBillingCheckoutIntentCo
 UPDATE billing_checkout_intents
 SET status = 'completed'
 WHERE id = $1
-  AND status <> 'completed'
+  AND status IN ('created', 'expired')
 `
 
 type MarkBillingCheckoutIntentCompletedParams struct {

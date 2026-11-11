@@ -2537,6 +2537,8 @@ export interface BillingAccount {
   updated_at: string;
 }
 
+export type BillingCheckoutIntentStatus = "created" | "completed" | "expired";
+
 export interface BillingCheckoutIntent {
   id: string;
   organization_id: string;
@@ -2546,7 +2548,7 @@ export interface BillingCheckoutIntent {
   return_url: string;
   checkout_url: string;
   dodo_checkout_session_id?: string;
-  status: string;
+  status: BillingCheckoutIntentStatus;
   metadata: unknown;
   created_at: string;
   updated_at: string;
