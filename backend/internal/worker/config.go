@@ -36,6 +36,9 @@ const (
 	// Anonymous agent tryouts carry an expires_at (default 24h, cleared on
 	// claim). The retention reaper sweeps expired, unclaimed tryouts hourly.
 	defaultAgentTryoutRetentionReaperInterval = time.Hour
+	// A created checkout intent expires 24 hours after created_at. The
+	// reaper sweeps abandoned checkout intents hourly.
+	defaultBillingCheckoutIntentReaperInterval = time.Hour
 
 	defaultMaxConcurrentActivities    = 100
 	defaultMaxConcurrentWorkflowTasks = 100
@@ -65,6 +68,9 @@ type Config struct {
 	CleanupTimeout               time.Duration
 	OrphanRunReaperInterval      time.Duration
 	OrphanRunReaperThreshold     time.Duration
+
+	// BillingCheckoutIntentReaperInterval is the sweep interval (0 = off).
+	BillingCheckoutIntentReaperInterval time.Duration
 
 	AgentTryoutRetentionReaperInterval time.Duration
 	AgentTryoutHosted                  workflow.PublicAgentTryoutConfig
@@ -192,6 +198,10 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, err
 	}
 	agentTryoutRetentionReaperInterval, err := durationEnvOrDefaultAllowZero("WORKER_AGENT_TRYOUT_RETENTION_REAPER_INTERVAL", defaultAgentTryoutRetentionReaperInterval)
+	if err != nil {
+		return Config{}, err
+	}
+	billingCheckoutIntentReaperInterval, err := durationEnvOrDefaultAllowZero("WORKER_BILLING_CHECKOUT_INTENT_REAPER_INTERVAL", defaultBillingCheckoutIntentReaperInterval)
 	if err != nil {
 		return Config{}, err
 	}
@@ -412,6 +422,8 @@ func LoadConfigFromEnv() (Config, error) {
 		CleanupTimeout:               cleanupTimeout,
 		OrphanRunReaperInterval:      orphanRunReaperInterval,
 		OrphanRunReaperThreshold:     orphanRunReaperThreshold,
+
+		BillingCheckoutIntentReaperInterval: billingCheckoutIntentReaperInterval,
 
 		AgentTryoutRetentionReaperInterval: agentTryoutRetentionReaperInterval,
 		AgentTryoutHosted: workflow.PublicAgentTryoutConfig{

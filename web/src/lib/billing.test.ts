@@ -65,6 +65,10 @@ describe("checkoutReturnState", () => {
     expect(checkoutReturnState(true, "created", true)).toBe("stalled");
   });
 
+  it("is stalled at once for an expired intent, so the page does not poll", () => {
+    expect(checkoutReturnState(true, "expired", false)).toBe("stalled");
+  });
+
   it("is synced once the intent is completed, even after a timeout", () => {
     expect(checkoutReturnState(true, "completed", false)).toBe("synced");
     expect(checkoutReturnState(true, "completed", true)).toBe("synced");

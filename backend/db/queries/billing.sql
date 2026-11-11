@@ -144,7 +144,19 @@ RETURNING
 UPDATE billing_checkout_intents
 SET status = 'completed'
 WHERE id = @id
-  AND status <> 'completed';
+  AND status IN ('created', 'expired');
+
+-- name: ExpireStaleBillingCheckoutIntents :execrows
+UPDATE billing_checkout_intents
+SET status = 'expired'
+WHERE billing_checkout_intents.id IN (
+    SELECT stale.id
+    FROM billing_checkout_intents AS stale
+    WHERE stale.status = 'created'
+      AND stale.created_at <= sqlc.arg('expire_before')::timestamptz
+    FOR UPDATE SKIP LOCKED
+)
+  AND billing_checkout_intents.status = 'created';
 
 -- name: GetLatestBillingCheckoutIntentByOrganizationID :one
 SELECT

@@ -268,6 +268,7 @@ func run() (exitCode int) {
 	vibeService := &vibe.Service{Store: vibeStore, Config: vibeConfig, Gate: vibe.Gate{Redis: redisClient}, Compiler: api.VibePackCompiler{}}
 	background := []workerapp.OrphanRunReaper{
 		orphanRunReaper, agentTryoutRetentionReaper, stallReaper,
+		workerapp.NewRepositoryBillingCheckoutIntentReaper(repo, cfg.BillingCheckoutIntentReaperInterval, logger),
 		workerapp.BackgroundTask(func(ctx context.Context) { vibeStore.Inputs.Run(ctx, logger) }),
 		workerapp.BackgroundTask(func(ctx context.Context) { vibeStore.ProjectCleanupLoop(ctx, logger) }),
 		workerapp.BackgroundTask(func(ctx context.Context) { enquiries.FromEnv(db).Run(ctx, logger) }),
@@ -286,6 +287,7 @@ func run() (exitCode int) {
 		PromptEvalInvoker:  promptEvalInvoker,
 		ResponsesInvoker:   responsesInvoker,
 		MultiTurnInvoker:   multiTurnInvoker,
+		StandingsStore:     standingsStore,
 	}, artifactStore, vibeRunner, productAnalytics)
 
 	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, background...); err != nil {
