@@ -50,6 +50,7 @@ tests.
 | Billing checkout intent | `backend/internal/repository/billing_checkout_intent_status.go` | completed | no |
 | Hosted run execution | `backend/internal/repository/hosted_run_status.go` | completed, failed, timed_out | no |
 | Connector dispatch | `backend/internal/repository/connector_dispatch_status.go` | completed, rejected, unknown | no |
+| Billing subscription | `backend/internal/billing/subscription_status.go` and the event-time guard in `UpsertBillingSubscription` | none (Dodo owns the transitions) | no |
 | Race standings entry (Redis) | `backend/internal/racecontext/types.go` (`StandingsState`) | submitted, failed, timed_out | no |
 | Vibe operation | `backend/internal/vibe/types.go` (`CanTransition`, `terminalStates`) | COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED | no |
 | Vibe operation billing | `backend/internal/vibe/types.go` (`CanTransitionBilling`) | SETTLED, RELEASED | no |
@@ -94,7 +95,8 @@ Facts that the tables do not show:
   best effort: a failure only logs a warning, and a cancel writes nothing. A
   case fan-out agent is `submitted` if one or more cases passed.
 - If the worker of a public tryout stops, the workflow marks the tryout
-  failed. The web app then stops its wait.
+  failed. The web app then stops its wait. The activity sends a heartbeat
+  each 10 seconds, so a crash shows in about 60 seconds.
 - Vibe operations keep AWAITING_INPUT in the CHECK constraint, but
   `CanTransition` refuses it. The question flow uses the build phase
   `clarifying`.
@@ -115,6 +117,20 @@ Facts that the tables do not show:
 - Membership changes cascade from the organization to its workspaces in one
   transaction. A workspace membership can become active only while the
   organization membership is active or invited.
+- A billing subscription has no transition table, because Dodo owns its
+  transitions. The webhook stores the status that Dodo sends. The guard on
+  the old state is the Dodo event time: an older event does not change the
+  row.
+- A Dodo event with no time can insert a missing subscription row, but it
+  does not change a row. The webhook stores the event and logs a warning. If
+  the event also has no subscription ID, it does not change the
+  entitlements.
+- Only a subscription payload gives the subscription status. For a payment
+  or dunning event, the event type gives the status. For example,
+  `payment.succeeded` gives `active`.
+- A Dodo status that is not in the set becomes `unknown`. The webhook logs a
+  warning and keeps the current entitlements. `renewed` becomes `active`, and
+  `canceled` becomes `cancelled`.
 
 ### Vibe attempt
 
@@ -174,10 +190,8 @@ These gaps remain. Each needs an owner decision or a larger change.
 
 | Area | Gap |
 |---|---|
-| `billing_subscriptions.status` | No CHECK constraint. A missing event time falls back to `now()`. |
 | `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
 | Public tryout | A message that arrives after the turn loop ends, but before the completed write, is accepted and never processed. |
-| Public tryout | After a worker crash, the tryout shows failed only when the activity times out (about 32 minutes). A follow-up sets a 60-second heartbeat timeout after this release deploys. |
 
 ## Add or change a lifecycle
 
