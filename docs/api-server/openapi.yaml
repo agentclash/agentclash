@@ -10199,7 +10199,14 @@ components:
           type: string
         status:
           type: string
-          enum: [created, pending, completed, cancelled, expired]
+          enum: [created, completed, expired]
+          description: >-
+            `created` means that the checkout is open. `expired` means that
+            no payment arrived in the 24 hours after `created_at`; a worker
+            sweep writes it every hour. A late payment still moves an
+            `expired` intent to `completed`. `completed` means that a verified
+            Dodo webhook named this checkout. It does not prove a successful
+            payment. Read `entitlements` for the plan state.
         metadata:
           type: object
           additionalProperties: true
