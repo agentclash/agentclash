@@ -70,6 +70,7 @@ type Querier interface {
 	CreateVibeEvalConversation(ctx context.Context, arg CreateVibeEvalConversationParams) (VibeEvalConversation, error)
 	CreateVibeEvalDraft(ctx context.Context, arg CreateVibeEvalDraftParams) (VibeEvalDraft, error)
 	DeleteChallengePackDraft(ctx context.Context, arg DeleteChallengePackDraftParams) error
+	ExpireStaleBillingCheckoutIntents(ctx context.Context, arg ExpireStaleBillingCheckoutIntentsParams) (int64, error)
 	FindOrganizationByDodoSubscriptionOrCustomer(ctx context.Context, arg FindOrganizationByDodoSubscriptionOrCustomerParams) (uuid.UUID, error)
 	FinishBillingWebhookEvent(ctx context.Context, arg FinishBillingWebhookEventParams) (int64, error)
 	GetAgentBuildByID(ctx context.Context, arg GetAgentBuildByIDParams) (AgentBuild, error)
