@@ -101,6 +101,7 @@ func registerExecutionActivities(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.PrepareExecutionLane, sdkactivity.RegisterOptions{Name: prepareLaneActivityName})
 	registrar.RegisterActivityWithOptions(activities.StartHostedRun, sdkactivity.RegisterOptions{Name: startHostedRunActivityName})
 	registrar.RegisterActivityWithOptions(activities.MarkHostedRunTimedOut, sdkactivity.RegisterOptions{Name: markHostedRunTimedOutActivityName})
+	registrar.RegisterActivityWithOptions(activities.UpdateRaceStandings, sdkactivity.RegisterOptions{Name: updateRaceStandingsActivityName})
 	registrar.RegisterActivityWithOptions(activities.ExecuteNativeModelStep, sdkactivity.RegisterOptions{Name: executeNativeModelStepActivityName})
 	registrar.RegisterActivityWithOptions(activities.ExecuteRunAgentCase, sdkactivity.RegisterOptions{Name: executeRunAgentCaseActivityName})
 	registrar.RegisterActivityWithOptions(activities.ExecutePromptEvalStep, sdkactivity.RegisterOptions{Name: executePromptEvalStepActivityName})

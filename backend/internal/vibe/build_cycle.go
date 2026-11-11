@@ -339,7 +339,7 @@ func admitBuildCycle(ctx context.Context, tx pgx.Tx, v Session, sub Submission, 
 		return err
 	}
 	var calls int
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(CASE WHEN o.state IN ('COMPLETED','FAILED','CANCELLED','EXPIRED') THEN o.model_calls ELSE (o.input->>'calls')::int END),0) FROM vibe_cycle_steps s JOIN vibe_operations o ON o.id=s.operation_id WHERE s.cycle_id=$1`, p.Cycle.ID).Scan(&calls); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(CASE WHEN o.state=ANY($2) THEN o.model_calls ELSE (o.input->>'calls')::int END),0) FROM vibe_cycle_steps s JOIN vibe_operations o ON o.id=s.operation_id WHERE s.cycle_id=$1`, p.Cycle.ID, terminalStates()).Scan(&calls); err != nil {
 		return err
 	}
 	if calls+p.Calls > q.MaxCalls {

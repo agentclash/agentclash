@@ -194,6 +194,9 @@ func executeNativeCasesBounded(
 	}
 
 	results := make([]ExecuteRunAgentCaseResult, len(caseKeys))
+	// caseTimedOut records the cases that failed with a timeout. It stays in
+	// the workflow, so the activity result does not change.
+	caseTimedOut := make([]bool, len(caseKeys))
 	pending := make(map[sdkworkflow.Future]pendingCase, maxInFlight)
 	nextIndex := 0
 
@@ -253,6 +256,7 @@ func executeNativeCasesBounded(
 						Success:      false,
 						ErrorMessage: err.Error(),
 					}
+					caseTimedOut[pc.index] = isRaceTimeoutError(err)
 					return
 				}
 				result.CaseKey = pc.key
@@ -275,17 +279,25 @@ func executeNativeCasesBounded(
 	// Partial-failure: never fail the run-agent for individual case errors.
 	// Callers transition to Evaluating; scoring produces EvaluationStatusPartial
 	// when evidence is incomplete.
-	succeeded := 0
-	for _, r := range results {
+	succeeded, timedOut := 0, 0
+	for i, r := range results {
 		if r.Success {
 			succeeded++
+		} else if caseTimedOut[i] {
+			timedOut++
 		}
 	}
+	failed := len(results) - succeeded
 	sdkworkflow.GetLogger(ctx).Info("case fan-out completed",
 		"run_agent_id", input.RunAgentID.String(),
 		"total_cases", len(results),
 		"succeeded", succeeded,
-		"failed", len(results)-succeeded,
+		"failed", failed,
+		"timed_out", timedOut,
 	)
+	// The observer records no system.run.* event for a case, because replay
+	// and analytics read those events as the state of the run agent. So the
+	// workflow writes one final standings state for the run agent here.
+	writeRaceStandings(ctx, input, executionContext, caseFanoutStandingsState(succeeded, failed, timedOut))
 	return nil
 }
