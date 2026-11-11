@@ -286,6 +286,7 @@ func run() (exitCode int) {
 		PromptEvalInvoker:  promptEvalInvoker,
 		ResponsesInvoker:   responsesInvoker,
 		MultiTurnInvoker:   multiTurnInvoker,
+		StandingsStore:     standingsStore,
 	}, artifactStore, vibeRunner, productAnalytics)
 
 	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, background...); err != nil {
