@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -206,6 +207,11 @@ func tryoutEventSummary(t runevents.Type, facts map[string]any) string {
 		return "Run completed"
 	case runevents.EventTypeSystemRunFailed:
 		return "Run failed"
+	case workflow.PublicTryoutEventTypeTurnsDropped:
+		// The timeline shows each unknown type as an activity row. The text
+		// must not contain "final" or "fail": the web timeline gives those
+		// words a special title.
+		return "The session closed before your last message. The agent did not answer it."
 	default:
 		return string(t)
 	}

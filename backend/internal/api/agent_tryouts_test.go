@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -1155,6 +1156,7 @@ type fakeAgentTryoutRepository struct {
 	runEvents          []repository.RunEvent
 	tryoutEvents       []repository.AgentTryoutEvent
 	tryoutTurns        []repository.AgentTryoutTurn
+	appendTurnErr      error
 	runEventsErr       error
 	artifacts          []repository.Artifact
 	artifactsErr       error
@@ -1223,6 +1225,9 @@ func (r *fakeAgentTryoutRepository) RecordAgentTryoutEvent(_ context.Context, pa
 }
 
 func (r *fakeAgentTryoutRepository) AppendAgentTryoutTurn(_ context.Context, params repository.AppendAgentTryoutTurnParams) (repository.AgentTryoutTurn, error) {
+	if r.appendTurnErr != nil {
+		return repository.AgentTryoutTurn{}, r.appendTurnErr
+	}
 	turn := repository.AgentTryoutTurn{
 		ID:            int64(len(r.tryoutTurns) + 1),
 		AgentTryoutID: params.AgentTryoutID,
@@ -1635,6 +1640,71 @@ func TestSubmitAnonymousTryoutTurnValidatesAndAppends(t *testing.T) {
 	repo.tryouts[wsID] = repository.AgentTryout{ID: wsID, WorkspaceID: &workspace, Status: repository.AgentTryoutStatusRunning}
 	if err := manager.SubmitAnonymousTryoutTurn(ctx, wsID, SubmitAgentTryoutTurnInput{Message: "x"}); err == nil {
 		t.Fatal("expected workspace-owned tryout to be rejected on public turn path")
+	}
+}
+
+// TestSubmitAnonymousTryoutTurnRefusesClosedIntake covers issue 1389. The
+// worker closed the turn intake when its turn loop ended, but the tryout is
+// still running while the judge scores it. A message gets a clear refusal,
+// and an end signal succeeds because nothing is left to end.
+func TestSubmitAnonymousTryoutTurnRefusesClosedIntake(t *testing.T) {
+	proofHash := hashTryoutProof(strings.Repeat("A", 43))
+	ctx := context.WithValue(context.Background(), tryoutProofContextKey{}, proofHash)
+	expires := time.Now().Add(time.Hour)
+	closedAt := time.Now()
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+	id := uuid.New()
+	repo.tryouts[id] = repository.AgentTryout{ID: id, Status: repository.AgentTryoutStatusRunning, AnonymousOwnerProofHash: &proofHash, ExpiresAt: &expires, TurnsClosedAt: &closedAt}
+
+	if err := manager.SubmitAnonymousTryoutTurn(ctx, id, SubmitAgentTryoutTurnInput{Message: "one more thing"}); !errors.Is(err, repository.ErrAgentTryoutTurnsClosed) {
+		t.Fatalf("message error = %v, want ErrAgentTryoutTurnsClosed", err)
+	}
+	if err := manager.SubmitAnonymousTryoutTurn(ctx, id, SubmitAgentTryoutTurnInput{End: true}); err != nil {
+		t.Fatalf("end error = %v, want nil", err)
+	}
+	if len(repo.tryoutTurns) != 0 {
+		t.Fatalf("turns appended = %d, want 0 after the intake closed", len(repo.tryoutTurns))
+	}
+}
+
+// The intake can close between the read of the manager and the append. The
+// repository then refuses the turn.
+func TestSubmitAnonymousTryoutTurnHandlesIntakeClosedDuringAppend(t *testing.T) {
+	proofHash := hashTryoutProof(strings.Repeat("A", 43))
+	ctx := context.WithValue(context.Background(), tryoutProofContextKey{}, proofHash)
+	expires := time.Now().Add(time.Hour)
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	repo.appendTurnErr = repository.ErrAgentTryoutTurnsClosed
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+	id := uuid.New()
+	repo.tryouts[id] = repository.AgentTryout{ID: id, Status: repository.AgentTryoutStatusRunning, AnonymousOwnerProofHash: &proofHash, ExpiresAt: &expires}
+
+	if err := manager.SubmitAnonymousTryoutTurn(ctx, id, SubmitAgentTryoutTurnInput{Message: "one more thing"}); !errors.Is(err, repository.ErrAgentTryoutTurnsClosed) {
+		t.Fatalf("message error = %v, want ErrAgentTryoutTurnsClosed", err)
+	}
+	if err := manager.SubmitAnonymousTryoutTurn(ctx, id, SubmitAgentTryoutTurnInput{End: true}); err != nil {
+		t.Fatalf("end error = %v, want nil", err)
+	}
+}
+
+func TestWriteAgentTryoutErrorMapsClosedIntakeToConflict(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeAgentTryoutError(recorder, slog.New(slog.NewTextHandler(io.Discard, nil)), repository.ErrAgentTryoutTurnsClosed)
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", recorder.Code)
+	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if body.Error.Code != "agent_tryout_session_closed" || !strings.Contains(body.Error.Message, "session closed before this message") {
+		t.Fatalf("error body = %+v, want agent_tryout_session_closed with a clear message", body.Error)
 	}
 }
 

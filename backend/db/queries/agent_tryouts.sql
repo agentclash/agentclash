@@ -148,6 +148,9 @@ WITH owned_tryout AS (
       AND organization_id IS NULL AND claimed_by_user_id IS NULL
       AND anonymous_owner_proof_hash = @owner_proof_hash::text
       AND expires_at > CURRENT_TIMESTAMP AND status IN ('queued', 'running')
+      -- The worker closes the intake when its turn loop ends. No session
+      -- would answer a later turn.
+      AND turns_closed_at IS NULL
     FOR UPDATE
 ), next_turn AS (
     SELECT COALESCE(MAX(turn_index), -1) + 1 AS turn_index
@@ -205,6 +208,26 @@ WHERE id = @id
 SELECT status
 FROM agent_tryout_turns
 WHERE id = @id;
+
+-- name: CloseAgentTryoutTurnIntake :execrows
+-- Closes the turn intake. The UPDATE locks the tryout row, so an append that
+-- holds the row lock commits first, and a later append fails its guard.
+UPDATE agent_tryouts
+SET turns_closed_at = COALESCE(turns_closed_at, now())
+WHERE id = @id;
+
+-- name: DropPendingAgentTryoutTurns :many
+-- Run this after CloseAgentTryoutTurnIntake, in the same transaction but as a
+-- separate statement. The new statement snapshot then sees each append that
+-- committed while the close waited for the row lock. A pending end signal
+-- is dropped too: the session already ended.
+UPDATE agent_tryout_turns
+SET status = 'dropped',
+    processed_at = now(),
+    lease_until = NULL
+WHERE agent_tryout_id = @agent_tryout_id
+  AND status = 'pending'
+RETURNING *;
 
 -- name: CountPendingAgentTryoutTurns :one
 SELECT COUNT(*)

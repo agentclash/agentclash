@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"path"
 	"strings"
 	"sync"
@@ -44,7 +45,15 @@ const (
 	// publicTryoutFailureWriteTimeout limits the failure write of the
 	// activity. The write also runs after the activity context is cancelled.
 	publicTryoutFailureWriteTimeout = 5 * time.Second
+	// publicTryoutIntakeCloseTimeout limits the close of the turn intake.
+	// The close also runs after the activity context is cancelled.
+	publicTryoutIntakeCloseTimeout = 5 * time.Second
 )
+
+// PublicTryoutEventTypeTurnsDropped is the tryout event that the worker
+// records when it closes the turn intake and drops at least one user turn.
+// The API shows it in the timeline, so the user knows why no answer came.
+const PublicTryoutEventTypeTurnsDropped runevents.Type = "tryout.turns.dropped"
 
 // failPublicAgentTryoutActivityOptions apply to the failure cleanup. During
 // a deploy, old and new workers run at the same time. An old worker can
@@ -353,6 +362,11 @@ func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repo
 
 	sessionCap := publicTryoutSessionCap
 
+	// No session answers a turn after this function returns. Close the
+	// intake on each exit, so that the API refuses a later message and each
+	// turn that is still pending becomes dropped.
+	defer a.closePublicTryoutTurnIntake(ctx, tryout.ID)
+
 	runAgentID := uuid.New()
 	session, err := a.sandboxProvider.Create(ctx, sandbox.CreateRequest{
 		RunID:      tryout.ID,
@@ -441,6 +455,28 @@ func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repo
 		return nil, err
 	}
 	return outputs, nil
+}
+
+// closePublicTryoutTurnIntake closes the turn intake of a tryout and drops
+// each pending turn. It runs also after the activity context is cancelled.
+// A failed close does not fail the session, because the outputs are
+// complete. A late message then stays pending, as before this close existed.
+func (a *Activities) closePublicTryoutTurnIntake(ctx context.Context, tryoutID uuid.UUID) {
+	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), publicTryoutIntakeCloseTimeout)
+	defer cancel()
+	dropped, err := a.publicTryoutRepo.CloseAgentTryoutTurnIntake(closeCtx, tryoutID)
+	if err != nil {
+		slog.Warn("public tryout turn intake did not close", "tryout_id", tryoutID, "error", err)
+		return
+	}
+	if dropped == 0 {
+		return
+	}
+	if err := a.recordPublicTryoutEvent(closeCtx, tryoutID, PublicTryoutEventTypeTurnsDropped, map[string]any{
+		"status": "dropped",
+	}); err != nil {
+		slog.Warn("public tryout dropped-turn event not recorded", "tryout_id", tryoutID, "error", err)
+	}
 }
 
 // runPublicTryoutTurn executes one agent turn in the live sandbox, streaming the
