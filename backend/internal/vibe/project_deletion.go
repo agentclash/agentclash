@@ -85,7 +85,7 @@ func (s *Store) deleteProject(ctx context.Context, actor string, id uuid.UUID, r
 		if !retiring && v.Document.Evaluation == nil {
 			return fault("invalid_request", "Delete a selected evaluation, not its shared chat container.")
 		}
-		rows, e := tx.Query(ctx, `SELECT id FROM vibe_operations WHERE session_id=$1 AND state NOT IN ('COMPLETED','PARTIAL','FAILED','CANCELLED','EXPIRED') ORDER BY id FOR UPDATE`, id)
+		rows, e := tx.Query(ctx, `SELECT id FROM vibe_operations WHERE session_id=$1 AND NOT (state=ANY($2)) ORDER BY id FOR UPDATE`, id, terminalStates())
 		if e != nil {
 			return e
 		}

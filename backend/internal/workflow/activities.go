@@ -10,6 +10,7 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/engine"
 	"github.com/agentclash/agentclash/backend/internal/productanalytics"
+	"github.com/agentclash/agentclash/backend/internal/racecontext"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/runtime/domain"
@@ -76,6 +77,9 @@ type FakeWorkHooks struct {
 	PromptEvalInvoker  PromptEvalInvoker
 	ResponsesInvoker   ResponsesInvoker
 	MultiTurnInvoker   MultiTurnInvoker
+	// StandingsStore gets the race standings writes of the run agent
+	// workflow. A nil store means no write.
+	StandingsStore racecontext.Store
 }
 
 type ResponsesInvoker interface {

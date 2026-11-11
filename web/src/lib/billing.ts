@@ -1,5 +1,8 @@
 import { ApiError } from "@/lib/api/errors";
-import type { EffectiveEntitlements } from "@/lib/api/types";
+import type {
+  BillingCheckoutIntentStatus,
+  EffectiveEntitlements,
+} from "@/lib/api/types";
 
 const planLabels: Record<string, string> = {
   free: "Free",
@@ -46,20 +49,24 @@ export const CHECKOUT_POLL_INTERVAL_MS = 4000;
 export const CHECKOUT_POLL_MAX_MS = 2 * 60 * 1000;
 
 /**
- * State of the banner shown after a Dodo checkout returns. The backend only
- * ever marks an intent completed, so an abandoned checkout stays pending
- * forever. Polling stops after CHECKOUT_POLL_MAX_MS and the banner moves to
- * "stalled", where the user can refresh by hand.
+ * State of the banner shown after a Dodo checkout returns. A worker sweep
+ * marks a checkout intent expired 24 hours after it was created. Until then,
+ * an abandoned checkout stays created. Polling stops after
+ * CHECKOUT_POLL_MAX_MS and the banner moves to "stalled", where the user can
+ * refresh by hand. An expired intent is "stalled" at once, with no polling. A
+ * late payment can still complete an expired intent, so a refresh can show
+ * "synced".
  */
 export type CheckoutReturnState = "none" | "pending" | "stalled" | "synced";
 
 export function checkoutReturnState(
   returned: boolean,
-  intentStatus: string | undefined,
+  intentStatus: BillingCheckoutIntentStatus | undefined,
   pollTimedOut: boolean,
 ): CheckoutReturnState {
   if (!returned) return "none";
   if (intentStatus === "completed") return "synced";
+  if (intentStatus === "expired") return "stalled";
   return pollTimedOut ? "stalled" : "pending";
 }
 
