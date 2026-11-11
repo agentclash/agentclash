@@ -100,6 +100,26 @@ const (
 	Released        BillingState = "RELEASED"
 )
 
+// Final reports a billing state that no write can leave. A late receipt or
+// response keeps its cost conflict in the attempt evidence. It does not
+// reopen the settled cost.
+func (b BillingState) Final() bool {
+	return b == Settled || b == Released
+}
+
+// CanTransitionBilling is the billing transition table. Submit inserts a
+// quote as UNRESERVED and a funded operation as RESERVED. RECONCILING can move
+// to RECONCILING, because settle runs again for each late receipt.
+func CanTransitionBilling(from, to BillingState) bool {
+	switch from {
+	case Unreserved:
+		return to == BillingReserved || to == Released
+	case BillingReserved, Reconciling:
+		return to == Reconciling || to == Settled || to == Released
+	}
+	return false
+}
+
 type Role string
 
 const (
