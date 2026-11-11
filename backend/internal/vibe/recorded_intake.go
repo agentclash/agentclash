@@ -63,7 +63,7 @@ func (s *Service) addRecordedEvidence(ctx context.Context, actor string, initial
 			return fault("revision_conflict", "Reload the project before saving these replies.")
 		}
 		var busy bool
-		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state NOT IN ('COMPLETED','PARTIAL','FAILED','CANCELLED','EXPIRED'))", v.ID).Scan(&busy); err != nil {
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND NOT (state=ANY($2)))", v.ID, terminalStates()).Scan(&busy); err != nil {
 			return err
 		}
 		if busy {
