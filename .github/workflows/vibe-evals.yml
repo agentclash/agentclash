@@ -42,6 +42,8 @@ on:
       - 'backend/internal/workflow/**'
       - 'backend/internal/api/challenge_pack_generate_contract.go'
       - 'backend/internal/api/billing*'
+      - 'backend/internal/repository/billing*'
+      - 'backend/db/queries/billing.sql'
       - 'backend/internal/api/config.go'
       - 'backend/internal/api/cors.go'
       - 'backend/internal/api/server.go'
@@ -127,7 +129,7 @@ jobs:
         run: python3 scripts/vibe/fixture.py -- go -C backend test -race ./internal/enquiries ./internal/vibe/inputs ./internal/worker -count=1
       - name: Canonical connector and native owners on an owned child database
         run: |
-          python3 scripts/vibe/fixture.py --database-env DATABASE_URL --label task7 -- go -C backend test -race ./internal/repository -run 'EvalSession|TestConnector|GetRunAgentExecutionContext|WorkspaceSecret|CreateQueuedRun|CreateEvalSessionWithQueuedRuns|ListActiveAgentDeployments|Regression|ReleaseGate|CIProfile' -count=1
+          python3 scripts/vibe/fixture.py --database-env DATABASE_URL --label task7 -- go -C backend test -race ./internal/repository -run 'EvalSession|TestConnector|GetRunAgentExecutionContext|WorkspaceSecret|CreateQueuedRun|CreateEvalSessionWithQueuedRuns|ListActiveAgentDeployments|Regression|ReleaseGate|CIProfile|TestRepositoryBilling' -count=1
           python3 scripts/vibe/fixture.py -- go -C backend test -race ./internal/api ./internal/engine ./internal/workflow ./internal/worker -run 'EvalSession|EvalSet|EvaluateLLMJudges|PromptEval|NativeExecutor|Connector|Hosted|RunCreation|CreateRun|AgentBuild|AgentDeployment|AuthorizeWorkspaceAction|WorkspaceSecret|Healthz|NativeModel|QuickCreateAgent|ExecuteNative' -count=1
       - name: Shared provider and scoring regressions
         working-directory: runtime

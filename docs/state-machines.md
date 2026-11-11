@@ -47,8 +47,10 @@ tests.
 | Organization membership | `backend/internal/repository/membership_status.go` | none (re-invite moves archived to invited) | no |
 | Workspace membership | `backend/internal/repository/membership_status.go` | none (re-invite moves archived to invited) | no |
 | Device auth code | `backend/internal/repository/device_auth_status.go` | denied, expired, consumed | no |
+| Billing checkout intent | `backend/internal/repository/billing_checkout_intent_status.go` | completed | no |
 | Hosted run execution | `backend/internal/repository/hosted_run_status.go` | completed, failed, timed_out | no |
 | Connector dispatch | `backend/internal/repository/connector_dispatch_status.go` | completed, rejected, unknown | no |
+| Billing subscription | `backend/internal/billing/subscription_status.go` and the event-time guard in `UpsertBillingSubscription` | none (Dodo owns the transitions) | no |
 | Race standings entry (Redis) | `backend/internal/racecontext/types.go` (`StandingsState`) | submitted, failed, timed_out | no |
 | Vibe operation | `backend/internal/vibe/types.go` (`CanTransition`, `terminalStates`) | COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED | no |
 
@@ -62,6 +64,15 @@ Facts that the tables do not show:
   their last status. To know when a run ends, follow the run status.
 - `budget_exceeded` ends an eval set before it finishes. The CLI exits with
   code 1 for it.
+- A billing checkout intent expires 24 hours after `created_at`. This is the
+  default lifetime of a Dodo checkout session. An hourly worker sweep writes
+  `expired`. `WORKER_BILLING_CHECKOUT_INTENT_REAPER_INTERVAL=0` stops the
+  sweep.
+- A late payment still completes an expired checkout intent. `completed`
+  means that a verified Dodo webhook named the checkout. It does not prove a
+  payment.
+- A repeat complete of a checkout intent is a no-op, not a 409. A 409 would
+  roll back the subscription and entitlement writes of the same webhook.
 - A hosted run execution in `unknown` has an outcome that nobody knows. An
   owner must reconcile it. A callback that arrives after the wait ended is
   kept as evidence and does not change the status.
@@ -82,7 +93,8 @@ Facts that the tables do not show:
   best effort: a failure only logs a warning, and a cancel writes nothing. A
   case fan-out agent is `submitted` if one or more cases passed.
 - If the worker of a public tryout stops, the workflow marks the tryout
-  failed. The web app then stops its wait.
+  failed. The web app then stops its wait. The activity sends a heartbeat
+  each 10 seconds, so a crash shows in about 60 seconds.
 - When the turn loop of a public tryout ends, the worker sets
   `agent_tryouts.turns_closed_at`. The tryout stays `running` while the judge
   scores it, but the API refuses a new message with HTTP 409
@@ -99,6 +111,20 @@ Facts that the tables do not show:
 - Membership changes cascade from the organization to its workspaces in one
   transaction. A workspace membership can become active only while the
   organization membership is active or invited.
+- A billing subscription has no transition table, because Dodo owns its
+  transitions. The webhook stores the status that Dodo sends. The guard on
+  the old state is the Dodo event time: an older event does not change the
+  row.
+- A Dodo event with no time can insert a missing subscription row, but it
+  does not change a row. The webhook stores the event and logs a warning. If
+  the event also has no subscription ID, it does not change the
+  entitlements.
+- Only a subscription payload gives the subscription status. For a payment
+  or dunning event, the event type gives the status. For example,
+  `payment.succeeded` gives `active`.
+- A Dodo status that is not in the set becomes `unknown`. The webhook logs a
+  warning and keeps the current entitlements. `renewed` becomes `active`, and
+  `canceled` becomes `cancelled`.
 
 ## Guarded lifecycles
 
@@ -127,10 +153,7 @@ These gaps remain. Each needs an owner decision or a larger change.
 |---|---|
 | `vibe_operations.billing` | A later cost conflict moves a settled operation back to RECONCILING and freezes the account for review. Confirm that this is the intended review flow. |
 | `vibe_attempts.state` | A worker crash can leave an attempt in DISPATCHING. RECONCILED has two meanings. |
-| `billing_subscriptions.status` | No CHECK constraint. A missing event time falls back to `now()`. |
-| `billing_checkout_intents.status` | Only completed is written, so an abandoned checkout stays created. |
 | `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
-| Public tryout | After a worker crash, the tryout shows failed only when the activity times out (about 32 minutes). A follow-up sets a 60-second heartbeat timeout after this release deploys. |
 
 The money paths (billing, `vibe_attempts`, the build quota) need an owner
 decision before a change. Do not add a guard there as a side change.

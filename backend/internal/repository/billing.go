@@ -365,7 +365,15 @@ func (r *Repository) UpsertBillingSubscription(ctx context.Context, input Billin
 	return subscription, err
 }
 
+// upsertBillingSubscription writes the status that Dodo sent. Dodo owns the
+// transitions, so there is no transition table. The query applies an event
+// only if the event is not older than the row. An event with no time can insert
+// a missing row, but it does not update a row. The bool result is false when
+// the query did not write the row.
 func upsertBillingSubscription(ctx context.Context, queries *repositorysqlc.Queries, input BillingSubscriptionInput) (BillingSubscription, bool, error) {
+	if !billing.SubscriptionStatus(input.Status).Valid() {
+		return BillingSubscription{}, false, fmt.Errorf("upsert billing subscription: %w: %q", billing.ErrInvalidSubscriptionStatus, input.Status)
+	}
 	addons := normalizeJSON(input.AddonQuantities)
 	subscriptionRow, err := queries.UpsertBillingSubscription(ctx, repositorysqlc.UpsertBillingSubscriptionParams{
 		OrganizationID:          input.OrganizationID,

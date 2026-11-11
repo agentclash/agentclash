@@ -37,6 +37,11 @@ const (
 	// publicTryoutHeartbeatInterval is the time between two heartbeats of
 	// the tryout activity.
 	publicTryoutHeartbeatInterval = 10 * time.Second
+	// publicTryoutHeartbeatTimeout is the time that Temporal waits for a
+	// heartbeat. After a worker crash, the activity times out after this
+	// time, and the cleanup marks the tryout failed. Without it, the crash
+	// shows only when StartToCloseTimeout ends (about 32 minutes).
+	publicTryoutHeartbeatTimeout = 60 * time.Second
 	// publicTryoutFailureWriteTimeout limits the failure write of the
 	// activity. The write also runs after the activity context is cancelled.
 	publicTryoutFailureWriteTimeout = 5 * time.Second
@@ -65,6 +70,15 @@ var failPublicAgentTryoutActivityOptions = sdkworkflow.ActivityOptions{
 	},
 }
 
+// publicAgentTryoutExecuteActivityOptions add the heartbeat timeout to the
+// options of an agent harness execution. Each worker that runs this code
+// also sends a heartbeat each publicTryoutHeartbeatInterval.
+func publicAgentTryoutExecuteActivityOptions() sdkworkflow.ActivityOptions {
+	options := agentHarnessExecutionActivityOptions(defaultAgentHarnessTimeoutSeconds)
+	options.HeartbeatTimeout = publicTryoutHeartbeatTimeout
+	return options
+}
+
 type ExecutePublicAgentTryoutInput struct {
 	TryoutID uuid.UUID `json:"tryout_id"`
 }
@@ -74,7 +88,7 @@ type FailPublicAgentTryoutInput struct {
 }
 
 func PublicAgentTryoutExecutionWorkflow(ctx sdkworkflow.Context, input PublicAgentTryoutExecutionWorkflowInput) error {
-	executeCtx := sdkworkflow.WithActivityOptions(ctx, agentHarnessExecutionActivityOptions(defaultAgentHarnessTimeoutSeconds))
+	executeCtx := sdkworkflow.WithActivityOptions(ctx, publicAgentTryoutExecuteActivityOptions())
 	err := sdkworkflow.ExecuteActivity(executeCtx, executePublicAgentTryoutActivityName, ExecutePublicAgentTryoutInput{
 		TryoutID: input.TryoutID,
 	}).Get(executeCtx, nil)
