@@ -77,6 +77,9 @@ func (f *fakeBuilderHydrateRepository) ListChallengePackDrafts(context.Context, 
 func (f *fakeBuilderHydrateRepository) PatchChallengePackDraft(context.Context, repository.PatchChallengePackDraftParams) (repository.ChallengePackDraft, error) {
 	return repository.ChallengePackDraft{}, errBuilderHydrateNotImpl
 }
+func (f *fakeBuilderHydrateRepository) MarkChallengePackDraftPublished(context.Context, repository.MarkChallengePackDraftPublishedParams) (repository.ChallengePackDraft, error) {
+	return repository.ChallengePackDraft{}, errBuilderHydrateNotImpl
+}
 func (f *fakeBuilderHydrateRepository) DeleteChallengePackDraft(context.Context, uuid.UUID) error {
 	return errBuilderHydrateNotImpl
 }

@@ -33,6 +33,7 @@ type ChallengePackBuilderRepository interface {
 	GetChallengePackDraftByID(ctx context.Context, id uuid.UUID) (repository.ChallengePackDraft, error)
 	ListChallengePackDrafts(ctx context.Context, workspaceID uuid.UUID) ([]repository.ChallengePackDraft, error)
 	PatchChallengePackDraft(ctx context.Context, params repository.PatchChallengePackDraftParams) (repository.ChallengePackDraft, error)
+	MarkChallengePackDraftPublished(ctx context.Context, params repository.MarkChallengePackDraftPublishedParams) (repository.ChallengePackDraft, error)
 	DeleteChallengePackDraft(ctx context.Context, id uuid.UUID) error
 	// Used to hydrate a draft from an already-published pack (edit-in-builder).
 	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
@@ -347,7 +348,13 @@ func (m *ChallengePackBuilderManager) GetDraft(ctx context.Context, caller Calle
 }
 
 func (m *ChallengePackBuilderManager) PatchDraft(ctx context.Context, caller Caller, input PatchDraftInput) (repository.ChallengePackDraft, error) {
-	if _, err := m.GetDraft(ctx, caller, input.WorkspaceID, input.DraftID); err != nil {
+	draft, err := m.GetDraft(ctx, caller, input.WorkspaceID, input.DraftID)
+	if err != nil {
+		return repository.ChallengePackDraft{}, err
+	}
+	// A published draft is final. The repository guards the status again in
+	// SQL, for a publish that lands between this read and the write.
+	if err := requireEditableDraft(draft); err != nil {
 		return repository.ChallengePackDraft{}, err
 	}
 	if input.ExecutionMode != nil && !isValidExecutionMode(*input.ExecutionMode) {
@@ -405,6 +412,12 @@ func (m *ChallengePackBuilderManager) PublishDraft(ctx context.Context, caller C
 	if err != nil {
 		return PublishChallengePackResponse{}, err
 	}
+	// A draft publishes once. This check stops a second publish before the
+	// bundle is stored. The publish transaction locks the draft and checks
+	// the status again.
+	if err := requireEditableDraft(draft); err != nil {
+		return PublishChallengePackResponse{}, err
+	}
 
 	bundle, composeErr := m.composeDraft(ctx, draft)
 	if composeErr != nil {
@@ -434,12 +447,11 @@ func (m *ChallengePackBuilderManager) PublishDraft(ctx context.Context, caller C
 	// This publisher cannot update the draft in its transaction. The pack is
 	// already published, so a failed draft update must not fail the request,
 	// but it must not go unseen either.
-	publishedStatus := "published"
-	if _, patchErr := m.repo.PatchChallengePackDraft(ctx, repository.PatchChallengePackDraftParams{
-		ID:                     draftID,
-		Status:                 &publishedStatus,
-		LastPublishedVersionID: &resp.ChallengePackVersionID,
-		ChallengePackID:        &resp.ChallengePackID,
+	if _, patchErr := m.repo.MarkChallengePackDraftPublished(ctx, repository.MarkChallengePackDraftPublishedParams{
+		DraftID:                draftID,
+		WorkspaceID:            workspaceID,
+		ChallengePackID:        resp.ChallengePackID,
+		ChallengePackVersionID: resp.ChallengePackVersionID,
 	}); patchErr != nil {
 		slog.Default().Warn("mark challenge pack draft published failed",
 			"draft_id", draftID,
@@ -449,6 +461,17 @@ func (m *ChallengePackBuilderManager) PublishDraft(ctx context.Context, caller C
 	}
 
 	return resp, nil
+}
+
+// requireEditableDraft refuses a change to a draft whose status is final. To
+// change a published pack, the caller makes a new draft from the published
+// version (CreateDraft with FromChallengePackVersionID).
+func requireEditableDraft(draft repository.ChallengePackDraft) error {
+	status := repository.ChallengePackDraftStatus(draft.Status)
+	if status.Editable() {
+		return nil
+	}
+	return repository.ChallengePackDraftFinalError{ID: draft.ID, Status: status}
 }
 
 // composeDraft resolves a draft's referenced library pieces and assembles the
@@ -879,6 +902,7 @@ func builderRequestContext(w http.ResponseWriter, r *http.Request) (Caller, uuid
 func handleChallengePackBuilderError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var builderValidation ChallengePackBuilderValidationError
 	var authoringValidation ChallengePackAuthoringValidationError
+	var draftFinal repository.ChallengePackDraftFinalError
 	switch {
 	case errors.Is(err, errChallengePackBuilderUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "challenge pack builder is not configured")
@@ -900,6 +924,8 @@ func handleChallengePackBuilderError(w http.ResponseWriter, logger *slog.Logger,
 		writeError(w, http.StatusConflict, "challenge_pack_version_exists", "a pack version with this number already exists")
 	case errors.Is(err, repository.ErrChallengePackMetadataConflict):
 		writeError(w, http.StatusConflict, "challenge_pack_metadata_conflict", "pack metadata conflicts with an existing pack")
+	case errors.As(err, &draftFinal):
+		writeError(w, http.StatusConflict, "challenge_pack_draft_published", "This draft is published and cannot change. Open the published pack in the builder to make a new draft.")
 	default:
 		logger.Error("challenge pack builder operation failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")

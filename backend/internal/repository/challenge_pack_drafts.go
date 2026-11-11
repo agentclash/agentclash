@@ -41,14 +41,14 @@ type CreateChallengePackDraftParams struct {
 	CreatedByUserID *uuid.UUID
 }
 
+// PatchChallengePackDraftParams changes the content of a draft. The status
+// and the version link change only through a publish (see
+// challenge_pack_draft_status.go).
 type PatchChallengePackDraftParams struct {
-	ID                     uuid.UUID
-	Name                   *string
-	ExecutionMode          *string
-	Composition            json.RawMessage
-	ChallengePackID        *uuid.UUID
-	Status                 *string
-	LastPublishedVersionID *uuid.UUID
+	ID            uuid.UUID
+	Name          *string
+	ExecutionMode *string
+	Composition   json.RawMessage
 }
 
 func (r *Repository) CreateChallengePackDraft(ctx context.Context, params CreateChallengePackDraftParams) (ChallengePackDraft, error) {
@@ -99,23 +99,37 @@ func (r *Repository) ListChallengePackDrafts(ctx context.Context, workspaceID uu
 	return drafts, nil
 }
 
+// PatchChallengePackDraft changes the content of a draft. The UPDATE guards on
+// the draft status, so an edit of a published draft returns a
+// ChallengePackDraftFinalError and changes no column.
 func (r *Repository) PatchChallengePackDraft(ctx context.Context, params PatchChallengePackDraftParams) (ChallengePackDraft, error) {
 	row, err := r.queries.PatchChallengePackDraft(ctx, repositorysqlc.PatchChallengePackDraftParams{
-		ID:                     params.ID,
-		Name:                   trimmedPtr(params.Name),
-		ExecutionMode:          params.ExecutionMode,
-		Composition:            params.Composition,
-		ChallengePackID:        params.ChallengePackID,
-		ToStatus:               params.Status,
-		LastPublishedVersionID: params.LastPublishedVersionID,
+		ID:            params.ID,
+		Name:          trimmedPtr(params.Name),
+		ExecutionMode: params.ExecutionMode,
+		Composition:   params.Composition,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ChallengePackDraft{}, ErrChallengePackDraftNotFound
+			return ChallengePackDraft{}, r.challengePackDraftPatchRefusal(ctx, params.ID)
 		}
 		return ChallengePackDraft{}, fmt.Errorf("patch challenge pack draft: %w", err)
 	}
 	return mapChallengePackDraft(row)
+}
+
+// challengePackDraftPatchRefusal finds why the guarded UPDATE matched no row:
+// the draft does not exist, or its status does not take edits.
+func (r *Repository) challengePackDraftPatchRefusal(ctx context.Context, id uuid.UUID) error {
+	current, err := r.GetChallengePackDraftByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	status := ChallengePackDraftStatus(current.Status)
+	if status.Editable() {
+		return fmt.Errorf("patch challenge pack draft %s: no row changed in status %s", id, status)
+	}
+	return ChallengePackDraftFinalError{ID: id, Status: status}
 }
 
 func (r *Repository) DeleteChallengePackDraft(ctx context.Context, id uuid.UUID) error {

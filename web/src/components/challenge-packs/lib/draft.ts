@@ -3,11 +3,35 @@
 // immutable helpers so state transitions stay in one testable place.
 
 import type {
+  ChallengePackDraft,
   Composition,
   DimensionDeclaration,
   PieceKind,
   PieceRef,
 } from "./types";
+
+/**
+ * Only a draft with status "draft" takes edits. A published draft is final:
+ * the server refuses an edit or a second publish with HTTP 409
+ * (challenge_pack_draft_published). To change the pack, open the published
+ * version as a new draft.
+ */
+export function isDraftEditable(draft: Pick<ChallengePackDraft, "status">): boolean {
+  return draft.status === "draft";
+}
+
+/** The draft as the server stores it after a successful publish. */
+export function markDraftPublished(
+  draft: ChallengePackDraft,
+  published: { challenge_pack_id: string; challenge_pack_version_id: string },
+): ChallengePackDraft {
+  return {
+    ...draft,
+    status: "published",
+    challenge_pack_id: published.challenge_pack_id,
+    last_published_version_id: published.challenge_pack_version_id,
+  };
+}
 
 /** Sidebar/outline order for the piece groups. */
 export const PIECE_KINDS: PieceKind[] = ["challenge", "input_set", "validator", "judge"];

@@ -6197,6 +6197,12 @@ paths:
       operationId: patchChallengePackDraft
       tags: [ChallengePacks]
       summary: Patch a challenge pack draft
+      description: >
+        Changes the name, the execution mode or the composition of a draft.
+        Only a draft with status `draft` takes changes. A published draft is
+        final and returns 409 with the code `challenge_pack_draft_published`.
+        To change a published pack, make a new draft with
+        `from_challenge_pack_version_id`.
       security:
         - bearerJWT: []
       parameters:
@@ -6227,6 +6233,13 @@ paths:
           $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: >
+            The draft is published and final (`challenge_pack_draft_published`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
     delete:
@@ -6285,7 +6298,10 @@ paths:
       description: >
         Composes the draft into a runnable bundle, then validates and publishes
         it through the same path as the raw-YAML publish endpoint, snapshotting
-        an immutable challenge pack version.
+        an immutable challenge pack version. A draft publishes once: the
+        publish sets its status to `published`, and the draft is then final.
+        A second publish returns 409 with the code
+        `challenge_pack_draft_published` and writes no version.
       security:
         - bearerJWT: []
       parameters:
@@ -6311,7 +6327,10 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
         "409":
-          description: Challenge pack version or metadata conflict
+          description: >
+            The draft is already published (`challenge_pack_draft_published`),
+            the version number exists (`challenge_pack_version_exists`), or the
+            pack metadata conflicts (`challenge_pack_metadata_conflict`).
           content:
             application/json:
               schema:
@@ -14745,6 +14764,9 @@ components:
           description: Free-form draft composition referencing reusable pieces.
         status:
           type: string
+          description: >
+            `draft` takes changes and can publish. `published` is final. No
+            writer sets `discarded`.
           enum:
             - draft
             - published

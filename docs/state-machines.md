@@ -50,6 +50,7 @@ tests.
 | Billing checkout intent | `backend/internal/repository/billing_checkout_intent_status.go` | completed | no |
 | Hosted run execution | `backend/internal/repository/hosted_run_status.go` | completed, failed, timed_out | no |
 | Connector dispatch | `backend/internal/repository/connector_dispatch_status.go` | completed, rejected, unknown | no |
+| Challenge pack draft | `backend/internal/repository/challenge_pack_draft_status.go` | published | no |
 | Billing subscription | `backend/internal/billing/subscription_status.go` and the event-time guard in `UpsertBillingSubscription` | none (Dodo owns the transitions) | no |
 | Race standings entry (Redis) | `backend/internal/racecontext/types.go` (`StandingsState`) | submitted, failed, timed_out | no |
 | Vibe operation | `backend/internal/vibe/types.go` (`CanTransition`, `terminalStates`) | COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED | no |
@@ -105,6 +106,11 @@ Facts that the tables do not show:
 - Vibe operations keep AWAITING_INPUT in the CHECK constraint, but
   `CanTransition` refuses it. The question flow uses the build phase
   `clarifying`.
+- A challenge pack draft publishes once. A published draft is final: an edit
+  or a second publish returns HTTP 409 (`challenge_pack_draft_published`) and
+  writes no version. To change a published pack, make a new draft from the
+  published version (edit-in-builder). A delete is still legal. `discarded` is
+  in the CHECK constraint, but nothing writes it.
 - Vibe SQL gets the terminal operation states from `terminalStates()` as a
   `text[]` parameter. Do not write the terminal states as a list in SQL.
 - The vibe build quota (the cycle total and the guest trial) counts a terminal
@@ -182,7 +188,6 @@ or a lease.
 | `dataset_generation_jobs.status` (queued, running, completed, failed) | completed and failed are final. A failed workflow start marks the job failed. |
 | `organization_github_installations.status` (active, suspended, deleted) | deleted is final. |
 | `agent_tryout_turns.status` (pending, processing, done, dropped) | A claim takes a 20-minute lease. A later claim takes a turn whose lease ran out. Only a processing turn becomes done. Only a pending turn becomes dropped, in the transaction that sets `turns_closed_at`. An append guards on `turns_closed_at IS NULL`. If the worker crashes, the turns of the failed tryout can stay pending. |
-| `challenge_pack_drafts.status` (draft, published, discarded) | The publish transaction writes published. |
 | `dataset_examples.status` (active, archived, muted) | An import or a promotion with a default status keeps an archived or muted example. |
 | `vibe_enquiries.status` | The review sweep skips a send with a live lease. A lost acceptance keeps its provider ID. |
 | `vibe_inputs.status` | Lease guards on extraction. The failure sweep runs before every claim. An expired input stays expired on delete. |
@@ -191,11 +196,9 @@ or a lease.
 
 ## Open gaps
 
-These gaps remain. Each needs an owner decision or a larger change.
-
-| Area | Gap |
-|---|---|
-| `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
+No known gap remains. If you find a status write with no guard, add a
+row here with the area and the gap. Each gap needs an owner decision or a
+larger change.
 
 ## Add or change a lifecycle
 

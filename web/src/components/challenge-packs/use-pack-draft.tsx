@@ -18,10 +18,13 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
+import { useSWRConfig } from "swr";
 
 import { ApiError } from "@/lib/api/errors";
-import { compileDraft, patchDraft, publishDraft } from "./lib/api";
-import type { CompileDraftResponse, Composition, PieceKind } from "./lib/types";
+import { apiQueryKey } from "@/lib/api/swr";
+import { compileDraft, draftPath, patchDraft, publishDraft } from "./lib/api";
+import { markDraftPublished } from "./lib/draft";
+import type { ChallengePackDraft, CompileDraftResponse, Composition, PieceKind } from "./lib/types";
 
 const AUTOSAVE_DELAY_MS = 700;
 
@@ -139,6 +142,7 @@ export function PackDraftProvider({
 }) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
+  const { mutate } = useSWRConfig();
 
   const [state, dispatch] = useReducer(packDraftReducer, {
     composition: initialComposition,
@@ -210,6 +214,13 @@ export function PackDraftProvider({
       // Persist the latest edits before publishing so the snapshot is current.
       await patchDraft(token, workspaceId, draftId, { composition: compositionRef.current });
       const result = await publishDraft(token, workspaceId, draftId);
+      // The draft is final now. Update the cached draft, so a return to this
+      // page shows the published notice and not the editor.
+      void mutate<ChallengePackDraft>(
+        apiQueryKey(draftPath(workspaceId, draftId)),
+        (current) => (current ? markDraftPublished(current, result) : current),
+        { revalidate: false },
+      );
       toast.success("Challenge pack published");
       // Re-enable the button before navigating so an intercepted navigation
       // (redirect, route guard) can't leave Publish permanently disabled.
@@ -223,7 +234,7 @@ export function PackDraftProvider({
       }
       dispatch({ type: "publishingDone" });
     }
-  }, [getAccessToken, workspaceId, draftId, router]);
+  }, [getAccessToken, workspaceId, draftId, router, mutate]);
 
   const value = useMemo<PackDraftContextValue>(
     () => ({ state, workspaceId, select, update, publish }),

@@ -157,32 +157,26 @@ const patchChallengePackDraft = `-- name: PatchChallengePackDraft :one
 UPDATE challenge_pack_drafts
 SET name = COALESCE($1, name),
     execution_mode = COALESCE($2, execution_mode),
-    composition = COALESCE($3::jsonb, composition),
-    challenge_pack_id = COALESCE($4, challenge_pack_id),
-    status = COALESCE($5::text, status),
-    last_published_version_id = COALESCE($6, last_published_version_id)
-WHERE id = $7
+    composition = COALESCE($3::jsonb, composition)
+WHERE id = $4
+  AND status = 'draft'
 RETURNING id, workspace_id, name, execution_mode, challenge_pack_id, composition, status, last_published_version_id, created_by_user_id, created_at, updated_at
 `
 
 type PatchChallengePackDraftParams struct {
-	Name                   *string
-	ExecutionMode          *string
-	Composition            []byte
-	ChallengePackID        *uuid.UUID
-	ToStatus               *string
-	LastPublishedVersionID *uuid.UUID
-	ID                     uuid.UUID
+	Name          *string
+	ExecutionMode *string
+	Composition   []byte
+	ID            uuid.UUID
 }
 
+// Only a draft in status draft takes edits. A published draft is final. The
+// publish path writes the status (see challenge_pack_draft_status.go).
 func (q *Queries) PatchChallengePackDraft(ctx context.Context, arg PatchChallengePackDraftParams) (ChallengePackDraft, error) {
 	row := q.db.QueryRow(ctx, patchChallengePackDraft,
 		arg.Name,
 		arg.ExecutionMode,
 		arg.Composition,
-		arg.ChallengePackID,
-		arg.ToStatus,
-		arg.LastPublishedVersionID,
 		arg.ID,
 	)
 	var i ChallengePackDraft
