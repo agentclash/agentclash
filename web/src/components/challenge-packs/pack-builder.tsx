@@ -6,8 +6,9 @@ import { Loader2 } from "lucide-react";
 import { useApiQuery } from "@/lib/api/swr";
 import { BuilderShell } from "./builder-shell";
 import { draftPath } from "./lib/api";
-import { emptyComposition } from "./lib/draft";
+import { emptyComposition, isDraftEditable } from "./lib/draft";
 import type { ChallengePackDraft, Composition } from "./lib/types";
+import { PublishedDraftNotice } from "./published-draft-notice";
 import { PackDraftProvider } from "./use-pack-draft";
 
 /** Normalize a possibly-empty stored composition onto a complete shape. */
@@ -36,6 +37,16 @@ export function PackBuilder({ workspaceId, draftId, returnTo, returnTitle }: { w
   }
   if (error || !data) {
     return <div className="p-8 text-sm text-destructive">Couldn&apos;t load this draft.</div>;
+  }
+  // A published draft is final. Do not mount the editor, because its
+  // autosave would send changes that the server refuses with HTTP 409.
+  if (!isDraftEditable(data)) {
+    return (
+      <>
+        <VibeReturn path={returnTo} draft={draftId} title={returnTitle} />
+        <PublishedDraftNotice workspaceId={workspaceId} draft={data} />
+      </>
+    );
   }
 
   return (
