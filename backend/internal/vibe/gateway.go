@@ -138,7 +138,7 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 		return provider.Response{}, err
 	}
 	journalCtx := func() (context.Context, context.CancelFunc) {
-		return context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		return context.WithTimeout(context.WithoutCancel(ctx), attemptJournalTimeout)
 	}
 	req.OnGeneration = func(id string) error {
 		c, cancel := journalCtx()

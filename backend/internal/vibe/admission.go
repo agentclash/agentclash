@@ -608,8 +608,10 @@ func (s *Store) Stop(ctx context.Context, actor string, id uuid.UUID) error {
 	return s.syncBuildResult(ctx, id)
 }
 
-// settle retains the entire operation hold while any attempt is uncertain,
-// even after cancellation or a worker crash. It never releases by TTL.
+// settle keeps the full operation hold while the cost of an attempt is not
+// known, also after a stop or a worker crash. settle has no time limit. The
+// attempt sweep (sweepAttempts) gives an assumed cost to an attempt that has
+// no cost after AttemptChargeAfter, and then calls settle.
 func settle(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
 	var actual, uncertain int64
 	var unknown int
