@@ -54,6 +54,7 @@ tests.
 | Race standings entry (Redis) | `backend/internal/racecontext/types.go` (`StandingsState`) | submitted, failed, timed_out | no |
 | Vibe operation | `backend/internal/vibe/types.go` (`CanTransition`, `terminalStates`) | COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED | no |
 | Vibe operation billing | `backend/internal/vibe/types.go` (`CanTransitionBilling`) | SETTLED, RELEASED | no |
+| Vibe attempt | `backend/internal/vibe/attempt_state.go` (`attemptTransitions`) | SUCCEEDED, RECONCILED | no |
 
 The tables in `runtime/domain` are published to the CLI and the web app. The
 tables in the backend module are not published, because no client polls them
@@ -136,6 +137,39 @@ Facts that the tables do not show:
   warning and keeps the current entitlements. `renewed` becomes `active`, and
   `canceled` becomes `cancelled`.
 
+### Vibe attempt
+
+A `vibe_attempts` row records one paid provider call. `BeginAttempt` commits
+DISPATCHING before the call.
+
+| State | Meaning | Writers | Next states |
+|---|---|---|---|
+| DISPATCHING | The call started, and its end is not known. | `BeginAttempt` | SUCCEEDED, UNCERTAIN, RECONCILED |
+| SUCCEEDED | The call succeeded, and its cost is known. | `EndAttempt` | none |
+| UNCERTAIN | The attempt ended, but its cost is not known. The operation keeps its full hold. | `EndAttempt`, the sweep | RECONCILED |
+| RECONCILED | The attempt ended without success, and its cost is known. `reconciliation_evidence` records how the cost became known. | `EndAttempt`, `ReconcileCost`, the sweep | none |
+
+- The sweep (`sweepAttempts`) runs each minute on each worker. Each move locks
+  the operation and guards the old state in SQL.
+- After 20 minutes (`AttemptAbandonAfter`), the sweep moves a DISPATCHING
+  attempt to UNCERTAIN. If a receipt gave the cost first, the attempt goes to
+  RECONCILED.
+- The sweep writes `completed_at`, the error `attempt_abandoned`, and
+  `abandoned: true` in `reconciliation_evidence`.
+- 20 minutes is the 16-minute paid activity timeout plus 4 minutes. No live
+  call is older. The stage time in the diagnostics omits an abandoned attempt.
+- A late receipt (`ReconcileCost`) or a late response (`EndAttempt`) can still
+  give the cost of an abandoned UNCERTAIN attempt. The late response is cost
+  evidence only. Its output is not kept.
+- After 25 hours (`AttemptChargeAfter`, the 24-hour receipt window plus 1
+  hour), the sweep moves an UNCERTAIN attempt with no cost to RECONCILED.
+- The assumed cost is `max_cost` if the attempt has a generation ID (the
+  provider accepted the work), else 0. The evidence records `assumed_cost`.
+- The 25-hour rule also ends an UNCERTAIN attempt from a provider error with
+  no cost, for example a 429, a 5xx or a timeout.
+- Then `settle` runs for a finished operation. The hold ends, and a retry can
+  start.
+
 ## Guarded lifecycles
 
 These columns have no transition table, but each write guards the old status
@@ -161,11 +195,7 @@ These gaps remain. Each needs an owner decision or a larger change.
 
 | Area | Gap |
 |---|---|
-| `vibe_attempts.state` | A worker crash can leave an attempt in DISPATCHING. RECONCILED has two meanings. |
 | `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
-
-The money paths (billing, `vibe_attempts`, the build quota) need an owner
-decision before a change. Do not add a guard there as a side change.
 
 ## Add or change a lifecycle
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type costReceipt struct {
@@ -17,6 +18,12 @@ type costEvidence struct {
 	Receipts     []costReceipt `json:"receipts,omitempty"`
 	ResponseCost *int64        `json:"response_cost,omitempty"`
 	Conflict     bool          `json:"conflict,omitempty"`
+	// Abandoned is true when the sweep ended a DISPATCHING attempt that
+	// no live call could finish.
+	Abandoned bool `json:"abandoned,omitempty"`
+	// AssumedCost is the cost that the sweep wrote when no receipt came in
+	// the receipt window.
+	AssumedCost *int64 `json:"assumed_cost,omitempty"`
 }
 
 func (e *costEvidence) scrubContent() {
@@ -39,7 +46,8 @@ func freezeAccounting(ctx context.Context, tx pgx.Tx, o Operation, model string,
 }
 
 // Receipt availability says nothing about whether execution has finished.
-// The execution callback alone writes output, usage and completed_at.
+// The execution callback alone writes output, usage and completed_at. The
+// sweep is the only other writer of completed_at, for an abandoned attempt.
 func (s *Store) EndAttempt(ctx context.Context, a Attempt, output string, usage json.RawMessage, cost *int64, issue *Fault) error {
 	conflict := false
 	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
@@ -52,7 +60,8 @@ func (s *Store) EndAttempt(ctx context.Context, a Attempt, output string, usage 
 		var completed *time.Time
 		var known *int64
 		var saved []byte
-		if err = tx.QueryRow(ctx, `SELECT max_cost,model,completed_at,actual_cost,reconciliation_evidence FROM vibe_attempts WHERE id=$1 AND operation_id=$2 FOR UPDATE`, a.ID, o.ID).Scan(&ceiling, &model, &completed, &known, &saved); err != nil {
+		var from AttemptState
+		if err = tx.QueryRow(ctx, `SELECT max_cost,model,completed_at,actual_cost,reconciliation_evidence,state FROM vibe_attempts WHERE id=$1 AND operation_id=$2 FOR UPDATE`, a.ID, o.ID).Scan(&ceiling, &model, &completed, &known, &saved, &from); err != nil {
 			return err
 		}
 		evidence := costEvidence{}
@@ -62,22 +71,29 @@ func (s *Store) EndAttempt(ctx context.Context, a Attempt, output string, usage 
 			}
 		}
 		conflict = cost != nil && known != nil && *cost != *known
-		if completed != nil && !conflict {
+		// The sweep ended this attempt before the response came. The response
+		// cost is the real cost, thus keep it as evidence. Do not write the
+		// output, because the operation did not use it.
+		late := completed != nil && from == AttemptUncertain && evidence.Abandoned && known == nil && cost != nil
+		if completed != nil && !conflict && !late {
 			return nil
 		}
-		if conflict {
-			evidence.Conflict = true
+		if conflict || late {
+			evidence.Conflict = evidence.Conflict || conflict
 			evidence.ResponseCost = cost
 		}
 		if known != nil {
 			cost = known
 		}
-		state := "SUCCEEDED"
+		state := AttemptSucceeded
 		if cost == nil {
-			state = "UNCERTAIN"
+			state = AttemptUncertain
 		}
 		if issue != nil && cost != nil {
-			state = "RECONCILED"
+			state = AttemptReconciled
+		}
+		if late {
+			state = AttemptReconciled
 		}
 		var deleted bool
 		if err = tx.QueryRow(ctx, `SELECT deleted_at IS NOT NULL FROM vibe_sessions WHERE id=$1`, o.SessionID).Scan(&deleted); err != nil {
@@ -95,20 +111,37 @@ func (s *Store) EndAttempt(ctx context.Context, a Attempt, output string, usage 
 				return err
 			}
 		}
-		if completed == nil {
-			_, err = tx.Exec(ctx, `UPDATE vibe_attempts SET state=$2,output=$3,usage=$4,actual_cost=$5,error=$6,completed_at=now(),reconciliation_evidence=$7 WHERE id=$1`, a.ID, state, output, usage, cost, nullableJSON(issue), raw(evidence))
-		} else {
-			_, err = tx.Exec(ctx, `UPDATE vibe_attempts SET reconciliation_evidence=$2 WHERE id=$1`, a.ID, raw(evidence))
+		var tag pgconn.CommandTag
+		kind := "attempt.finished"
+		switch {
+		case completed == nil:
+			if !from.CanTransitionTo(state) {
+				return attemptTransitionFault(from, state)
+			}
+			tag, err = tx.Exec(ctx, `UPDATE vibe_attempts SET state=$2,output=$3,usage=$4,actual_cost=$5,error=$6,completed_at=now(),reconciliation_evidence=$7 WHERE id=$1 AND state=$8 AND completed_at IS NULL`, a.ID, state, output, usage, cost, nullableJSON(issue), raw(evidence), from)
+		case late:
+			if !from.CanTransitionTo(state) {
+				return attemptTransitionFault(from, state)
+			}
+			kind = "billing.reconciled"
+			tag, err = tx.Exec(ctx, `UPDATE vibe_attempts SET state=$2,actual_cost=$3,reconciliation_evidence=$4 WHERE id=$1 AND state=$5 AND actual_cost IS NULL`, a.ID, state, cost, raw(evidence), from)
+		default:
+			// A cost conflict on a finished attempt adds evidence only.
+			state = from
+			tag, err = tx.Exec(ctx, `UPDATE vibe_attempts SET reconciliation_evidence=$2 WHERE id=$1 AND state=$3`, a.ID, raw(evidence), from)
 		}
 		if err != nil {
 			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return attemptTransitionFault(from, state)
 		}
 		if o.State.Terminal() {
 			if err = settle(ctx, tx, o.ID); err != nil {
 				return err
 			}
 		}
-		return event(ctx, tx, o.SessionID, &o.ID, "attempt.finished")
+		return event(ctx, tx, o.SessionID, &o.ID, kind)
 	})
 	if err == nil && conflict {
 		return fault("reconciliation_conflict", "Provider cost conflicts with saved evidence. Funding is frozen for accounting review.")
@@ -135,7 +168,8 @@ func (s *Store) ReconcileCost(ctx context.Context, id uuid.UUID, cost int64, rec
 		var ceiling int64
 		var model string
 		var saved []byte
-		if err = tx.QueryRow(ctx, `SELECT actual_cost,max_cost,model,reconciliation_evidence FROM vibe_attempts WHERE id=$1 FOR UPDATE`, id).Scan(&known, &ceiling, &model, &saved); err != nil {
+		var from AttemptState
+		if err = tx.QueryRow(ctx, `SELECT actual_cost,max_cost,model,reconciliation_evidence,state FROM vibe_attempts WHERE id=$1 FOR UPDATE`, id).Scan(&known, &ceiling, &model, &saved, &from); err != nil {
 			return err
 		}
 		evidence := costEvidence{}
@@ -167,8 +201,21 @@ func (s *Store) ReconcileCost(ctx context.Context, id uuid.UUID, cost int64, rec
 				return err
 			}
 		}
-		if _, err = tx.Exec(ctx, `UPDATE vibe_attempts SET actual_cost=COALESCE(actual_cost,$2),reconciliation_evidence=$3,state=CASE WHEN state='UNCERTAIN' AND completed_at IS NOT NULL THEN 'RECONCILED' ELSE state END WHERE id=$1`, id, cost, raw(evidence)); err != nil {
+		// A receipt ends an UNCERTAIN attempt. For each other state it only
+		// adds the cost: EndAttempt or the sweep still ends a DISPATCHING one.
+		next := from
+		if from == AttemptUncertain {
+			next = AttemptReconciled
+			if !from.CanTransitionTo(next) {
+				return attemptTransitionFault(from, next)
+			}
+		}
+		tag, err := tx.Exec(ctx, `UPDATE vibe_attempts SET actual_cost=COALESCE(actual_cost,$2),reconciliation_evidence=$3,state=$4 WHERE id=$1 AND state=$5`, id, cost, raw(evidence), next, from)
+		if err != nil {
 			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return attemptTransitionFault(from, next)
 		}
 		if o.State.Terminal() {
 			if err = settle(ctx, tx, op); err != nil {
