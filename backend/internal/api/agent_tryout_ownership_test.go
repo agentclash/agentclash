@@ -114,6 +114,19 @@ func TestTryoutCreatorCookieAndClaimBoundary(t *testing.T) {
 	if got := request("POST", path+"/turns", `{"end":true}`, cookie).Code; got != 202 {
 		t.Fatalf("creator end status=%d", got)
 	}
+	// The worker closed the turn intake. A message gets a clear 409, and a
+	// second end signal still succeeds.
+	closedAt := time.Now()
+	stored.TurnsClosedAt = &closedAt
+	repo.tryouts[result.ID] = stored
+	if late := request("POST", path+"/turns", `{"message":"one more thing"}`, cookie); late.Code != 409 || !strings.Contains(late.Body.String(), "agent_tryout_session_closed") {
+		t.Fatalf("late message status=%d body=%s", late.Code, late.Body.String())
+	}
+	if got := request("POST", path+"/turns", `{"end":true}`, cookie).Code; got != 202 {
+		t.Fatalf("end after close status=%d", got)
+	}
+	stored.TurnsClosedAt = nil
+	repo.tryouts[result.ID] = stored
 	stored.Status = repository.AgentTryoutStatusCompleted
 	repo.tryouts[result.ID] = stored
 	read := request("GET", path, "", cookie)

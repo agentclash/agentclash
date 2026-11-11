@@ -19,6 +19,9 @@ WITH owned_tryout AS (
       AND organization_id IS NULL AND claimed_by_user_id IS NULL
       AND anonymous_owner_proof_hash = $4::text
       AND expires_at > CURRENT_TIMESTAMP AND status IN ('queued', 'running')
+      -- The worker closes the intake when its turn loop ends. No session
+      -- would answer a later turn.
+      AND turns_closed_at IS NULL
     FOR UPDATE
 ), next_turn AS (
     SELECT COALESCE(MAX(turn_index), -1) + 1 AS turn_index
@@ -87,7 +90,7 @@ WHERE id = $5
   AND anonymous_owner_proof_hash = $6::text
   AND expires_at > CURRENT_TIMESTAMP
   AND status IN ('completed', 'failed', 'cancelled')
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash, turns_closed_at
 `
 
 type ClaimAgentTryoutParams struct {
@@ -137,6 +140,7 @@ func (q *Queries) ClaimAgentTryout(ctx context.Context, arg ClaimAgentTryoutPara
 		&i.ParentTryoutID,
 		&i.SelectedHarnessKind,
 		&i.AnonymousOwnerProofHash,
+		&i.TurnsClosedAt,
 	)
 	return i, err
 }
@@ -186,6 +190,26 @@ func (q *Queries) ClaimNextPendingAgentTryoutTurn(ctx context.Context, arg Claim
 		&i.LeaseUntil,
 	)
 	return i, err
+}
+
+const closeAgentTryoutTurnIntake = `-- name: CloseAgentTryoutTurnIntake :execrows
+UPDATE agent_tryouts
+SET turns_closed_at = COALESCE(turns_closed_at, now())
+WHERE id = $1
+`
+
+type CloseAgentTryoutTurnIntakeParams struct {
+	ID uuid.UUID
+}
+
+// Closes the turn intake. The UPDATE locks the tryout row, so an append that
+// holds the row lock commits first, and a later append fails its guard.
+func (q *Queries) CloseAgentTryoutTurnIntake(ctx context.Context, arg CloseAgentTryoutTurnIntakeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, closeAgentTryoutTurnIntake, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const countPendingAgentTryoutTurns = `-- name: CountPendingAgentTryoutTurns :one
@@ -255,7 +279,7 @@ VALUES (
     $21,
     $22
 )
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash, turns_closed_at
 `
 
 type CreateAgentTryoutParams struct {
@@ -337,12 +361,61 @@ func (q *Queries) CreateAgentTryout(ctx context.Context, arg CreateAgentTryoutPa
 		&i.ParentTryoutID,
 		&i.SelectedHarnessKind,
 		&i.AnonymousOwnerProofHash,
+		&i.TurnsClosedAt,
 	)
 	return i, err
 }
 
+const dropPendingAgentTryoutTurns = `-- name: DropPendingAgentTryoutTurns :many
+UPDATE agent_tryout_turns
+SET status = 'dropped',
+    processed_at = now(),
+    lease_until = NULL
+WHERE agent_tryout_id = $1
+  AND status = 'pending'
+RETURNING id, agent_tryout_id, turn_index, role, message, status, created_at, processed_at, lease_until
+`
+
+type DropPendingAgentTryoutTurnsParams struct {
+	AgentTryoutID uuid.UUID
+}
+
+// Run this after CloseAgentTryoutTurnIntake, in the same transaction but as a
+// separate statement. The new statement snapshot then sees each append that
+// committed while the close waited for the row lock. A pending end signal
+// is dropped too: the session already ended.
+func (q *Queries) DropPendingAgentTryoutTurns(ctx context.Context, arg DropPendingAgentTryoutTurnsParams) ([]AgentTryoutTurn, error) {
+	rows, err := q.db.Query(ctx, dropPendingAgentTryoutTurns, arg.AgentTryoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AgentTryoutTurn
+	for rows.Next() {
+		var i AgentTryoutTurn
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentTryoutID,
+			&i.TurnIndex,
+			&i.Role,
+			&i.Message,
+			&i.Status,
+			&i.CreatedAt,
+			&i.ProcessedAt,
+			&i.LeaseUntil,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAgentTryoutByID = `-- name: GetAgentTryoutByID :one
-SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash
+SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash, turns_closed_at
 FROM agent_tryouts
 WHERE id = $1
 LIMIT 1
@@ -383,6 +456,7 @@ func (q *Queries) GetAgentTryoutByID(ctx context.Context, arg GetAgentTryoutByID
 		&i.ParentTryoutID,
 		&i.SelectedHarnessKind,
 		&i.AnonymousOwnerProofHash,
+		&i.TurnsClosedAt,
 	)
 	return i, err
 }
@@ -405,7 +479,7 @@ func (q *Queries) GetAgentTryoutTurnStatus(ctx context.Context, arg GetAgentTryo
 }
 
 const getClaimedAgentTryoutRetry = `-- name: GetClaimedAgentTryoutRetry :one
-SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash FROM agent_tryouts
+SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash, turns_closed_at FROM agent_tryouts
 WHERE id = $1
   AND workspace_id = $2
   AND organization_id = $3
@@ -458,6 +532,7 @@ func (q *Queries) GetClaimedAgentTryoutRetry(ctx context.Context, arg GetClaimed
 		&i.ParentTryoutID,
 		&i.SelectedHarnessKind,
 		&i.AnonymousOwnerProofHash,
+		&i.TurnsClosedAt,
 	)
 	return i, err
 }
@@ -506,7 +581,7 @@ func (q *Queries) ListAgentTryoutEventsAfter(ctx context.Context, arg ListAgentT
 }
 
 const listAgentTryoutsByWorkspaceID = `-- name: ListAgentTryoutsByWorkspaceID :many
-SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash
+SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash, turns_closed_at
 FROM agent_tryouts
 WHERE workspace_id = $1
 ORDER BY created_at DESC
@@ -556,6 +631,7 @@ func (q *Queries) ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAge
 			&i.ParentTryoutID,
 			&i.SelectedHarnessKind,
 			&i.AnonymousOwnerProofHash,
+			&i.TurnsClosedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -641,7 +717,7 @@ const setAgentTryoutRunID = `-- name: SetAgentTryoutRunID :one
 UPDATE agent_tryouts
 SET run_id = $1
 WHERE id = $2
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash, turns_closed_at
 `
 
 type SetAgentTryoutRunIDParams struct {
@@ -680,6 +756,7 @@ func (q *Queries) SetAgentTryoutRunID(ctx context.Context, arg SetAgentTryoutRun
 		&i.ParentTryoutID,
 		&i.SelectedHarnessKind,
 		&i.AnonymousOwnerProofHash,
+		&i.TurnsClosedAt,
 	)
 	return i, err
 }
@@ -699,7 +776,7 @@ WHERE id = $6
   -- A terminal tryout keeps its status. A write to the same status stays
   -- allowed so that retries and summary refreshes remain idempotent.
   AND (status NOT IN ('completed', 'failed', 'cancelled') OR status = $1)
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind, anonymous_owner_proof_hash, turns_closed_at
 `
 
 type UpdateAgentTryoutStatusParams struct {
@@ -751,6 +828,7 @@ func (q *Queries) UpdateAgentTryoutStatus(ctx context.Context, arg UpdateAgentTr
 		&i.ParentTryoutID,
 		&i.SelectedHarnessKind,
 		&i.AnonymousOwnerProofHash,
+		&i.TurnsClosedAt,
 	)
 	return i, err
 }

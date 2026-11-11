@@ -74,6 +74,7 @@ type PublicAgentTryoutRepository interface {
 	RecordAgentTryoutEvent(ctx context.Context, params repository.RecordAgentTryoutEventParams) (repository.AgentTryoutEvent, error)
 	ClaimNextPendingAgentTryoutTurn(ctx context.Context, tryoutID uuid.UUID, lease time.Duration) (repository.AgentTryoutTurn, bool, error)
 	MarkAgentTryoutTurnProcessed(ctx context.Context, id int64) error
+	CloseAgentTryoutTurnIntake(ctx context.Context, tryoutID uuid.UUID) (int, error)
 }
 
 // ArtifactWriter persists produced files as durable, downloadable artifact rows.
