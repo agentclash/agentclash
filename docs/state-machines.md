@@ -53,6 +53,7 @@ tests.
 | Billing subscription | `backend/internal/billing/subscription_status.go` and the event-time guard in `UpsertBillingSubscription` | none (Dodo owns the transitions) | no |
 | Race standings entry (Redis) | `backend/internal/racecontext/types.go` (`StandingsState`) | submitted, failed, timed_out | no |
 | Vibe operation | `backend/internal/vibe/types.go` (`CanTransition`, `terminalStates`) | COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED | no |
+| Vibe operation billing | `backend/internal/vibe/types.go` (`CanTransitionBilling`) | SETTLED, RELEASED | no |
 
 The tables in `runtime/domain` are published to the CLI and the web app. The
 tables in the backend module are not published, because no client polls them
@@ -103,6 +104,15 @@ Facts that the tables do not show:
 - The vibe build quota (the cycle total and the guest trial) counts a terminal
   operation, also a PARTIAL one, at its `model_calls`. It counts each other
   operation at the calls that it reserved (`input.calls`).
+- Submit inserts a vibe quote as UNRESERVED and a funded vibe operation as
+  RESERVED. Each later billing write goes through `moveBilling`
+  (`backend/internal/vibe/admission.go`).
+- RECONCILING keeps the full hold and has no actual cost. It can move to
+  RECONCILING, because `settle` runs again for each late receipt.
+- A late receipt or response does not change a SETTLED or RELEASED
+  operation. If its cost conflicts with the saved cost, the attempt keeps the
+  conflict in `reconciliation_evidence`, and the funding accounts freeze for
+  review. The settled cost stays.
 - Membership changes cascade from the organization to its workspaces in one
   transaction. A workspace membership can become active only while the
   organization membership is active or invited.
@@ -146,7 +156,6 @@ These gaps remain. Each needs an owner decision or a larger change.
 
 | Area | Gap |
 |---|---|
-| `vibe_operations.billing` | A later cost conflict moves a settled operation back to RECONCILING and freezes the account for review. Confirm that this is the intended review flow. |
 | `vibe_attempts.state` | A worker crash can leave an attempt in DISPATCHING. RECONCILED has two meanings. |
 | `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
 | Public tryout | A message that arrives after the turn loop ends, but before the completed write, is accepted and never processed. |
