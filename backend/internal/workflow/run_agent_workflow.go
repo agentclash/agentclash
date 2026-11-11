@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/engine"
+	"github.com/agentclash/agentclash/backend/internal/racecontext"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/domain"
@@ -69,12 +70,15 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 		if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("HTTP connector execution started"), nil); err != nil {
 			return err
 		}
+		writeRaceStandings(ctx, input, executionContext, racecontext.StandingsStateRunning)
 		options := nativeModelActivityOptions(executionContext)
 		options.RetryPolicy.MaximumAttempts = 1
 		activityCtx := sdkworkflow.WithActivityOptions(ctx, withActivityTaskQueue(ctx, options, TaskQueueExecution))
 		if err := sdkworkflow.ExecuteActivity(activityCtx, executeNativeModelStepActivityName, input).Get(ctx, nil); err != nil {
+			writeRaceStandingsForError(ctx, input, executionContext, err)
 			return err
 		}
+		writeRaceStandings(ctx, input, executionContext, racecontext.StandingsStateSubmitted)
 		return transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("connector outputs recorded; parent scoring pending"), nil)
 	}
 	if executionContext.Deployment.DeploymentType == "hosted_external" {
@@ -244,7 +248,26 @@ func nativeModelActivityOptions(executionContext repository.RunAgentExecutionCon
 	}
 }
 
+// runHostedRunAgent runs a hosted agent. The API stores the events of a
+// hosted agent without the standings recorder of the worker, so this
+// workflow writes the standings entry when it knows the outcome.
 func runHostedRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {
+	if err := executeHostedRun(ctx, input, executionContext); err != nil {
+		writeRaceStandingsForError(ctx, input, executionContext, err)
+		return err
+	}
+	writeRaceStandings(ctx, input, executionContext, racecontext.StandingsStateSubmitted)
+
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("hosted execution completed; parent scoring pending"), nil); err != nil {
+		return err
+	}
+	warnOnReplayBuildFailure(ctx, input.RunAgentID, "successful hosted execution")
+	return nil
+}
+
+// executeHostedRun starts the hosted run and waits for its outcome. It
+// returns nil when the hosted run completed.
+func executeHostedRun(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {
 	// The repository replaces connector run/step limits with the frozen binding's
 	// timeout. Give its acceptance request that full bound, plus repository setup
 	// and the activity's three-second cancellation-independent unknown cleanup.
@@ -272,18 +295,15 @@ func runHostedRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, exe
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, &reason, nil); err != nil {
 		return err
 	}
+	// The running write sets the start time, so the newswire of the peers
+	// shows the elapsed time of the hosted agent.
+	writeRaceStandings(ctx, input, executionContext, racecontext.StandingsStateRunning)
 
-	if !startResult.Completed {
-		if err := waitForHostedRunTerminalEvent(ctx, input, executionContext, startResult.ExternalRunID, startResult.DeadlineAt); err != nil {
-			return err
-		}
+	// Completed means that the callback came before the wait.
+	if startResult.Completed {
+		return nil
 	}
-
-	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("hosted execution completed; parent scoring pending"), nil); err != nil {
-		return err
-	}
-	warnOnReplayBuildFailure(ctx, input.RunAgentID, "successful hosted execution")
-	return nil
+	return waitForHostedRunTerminalEvent(ctx, input, executionContext, startResult.ExternalRunID, startResult.DeadlineAt)
 }
 
 func waitForHostedRunTerminalEvent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext, externalRunID string, deadlineAt ...time.Time) error {
@@ -326,7 +346,7 @@ func waitForHostedRunTerminalEvent(ctx sdkworkflow.Context, input RunAgentWorkfl
 				if err := future.Get(ctx, nil); err != nil {
 					return err
 				}
-				return errors.New(reason)
+				return hostedRunTimeoutError{reason: reason}
 			}
 			var marked MarkHostedRunTimedOutResult
 			if err := future.Get(ctx, &marked); err != nil {
@@ -382,7 +402,7 @@ func hostedTimeoutOutcome(marked MarkHostedRunTimedOutResult, timeoutReason stri
 		}
 		return errors.New("hosted run failed")
 	default:
-		return errors.New(timeoutReason)
+		return hostedRunTimeoutError{reason: timeoutReason}
 	}
 }
 

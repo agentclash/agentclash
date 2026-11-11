@@ -578,7 +578,7 @@ func (s *Store) saveDraft(ctx context.Context, actor string, id uuid.UUID, revis
 			var valid bool
 			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE id=$1 AND session_id=$2
               AND input#>>'{artifact,id}'=$3 AND kind IN ('check','retest')
-              AND state IN ('COMPLETED','PARTIAL','FAILED','CANCELLED','EXPIRED'))`, *baseline, id, artifact.ID.String()).Scan(&valid); err != nil {
+              AND state=ANY($4))`, *baseline, id, artifact.ID.String(), terminalStates()).Scan(&valid); err != nil {
 				return err
 			}
 			if !valid {

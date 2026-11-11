@@ -47,10 +47,11 @@ tests.
 | Organization membership | `backend/internal/repository/membership_status.go` | none (re-invite moves archived to invited) | no |
 | Workspace membership | `backend/internal/repository/membership_status.go` | none (re-invite moves archived to invited) | no |
 | Device auth code | `backend/internal/repository/device_auth_status.go` | denied, expired, consumed | no |
+| Billing checkout intent | `backend/internal/repository/billing_checkout_intent_status.go` | completed | no |
 | Hosted run execution | `backend/internal/repository/hosted_run_status.go` | completed, failed, timed_out | no |
 | Connector dispatch | `backend/internal/repository/connector_dispatch_status.go` | completed, rejected, unknown | no |
 | Race standings entry (Redis) | `backend/internal/racecontext/types.go` (`StandingsState`) | submitted, failed, timed_out | no |
-| Vibe operation | `backend/internal/vibe/types.go` (`CanTransition`) | COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED | no |
+| Vibe operation | `backend/internal/vibe/types.go` (`CanTransition`, `terminalStates`) | COMPLETED, PARTIAL, FAILED, CANCELLED, EXPIRED | no |
 | Vibe operation billing | `backend/internal/vibe/types.go` (`CanTransitionBilling`) | SETTLED, RELEASED | no |
 | Vibe attempt | `backend/internal/vibe/attempt_state.go` (`attemptTransitions`) | SUCCEEDED, RECONCILED | no |
 
@@ -64,6 +65,15 @@ Facts that the tables do not show:
   their last status. To know when a run ends, follow the run status.
 - `budget_exceeded` ends an eval set before it finishes. The CLI exits with
   code 1 for it.
+- A billing checkout intent expires 24 hours after `created_at`. This is the
+  default lifetime of a Dodo checkout session. An hourly worker sweep writes
+  `expired`. `WORKER_BILLING_CHECKOUT_INTENT_REAPER_INTERVAL=0` stops the
+  sweep.
+- A late payment still completes an expired checkout intent. `completed`
+  means that a verified Dodo webhook named the checkout. It does not prove a
+  payment.
+- A repeat complete of a checkout intent is a no-op, not a 409. A 409 would
+  roll back the subscription and entitlement writes of the same webhook.
 - A hosted run execution in `unknown` has an outcome that nobody knows. An
   owner must reconcile it. A callback that arrives after the wait ended is
   kept as evidence and does not change the status.
@@ -76,11 +86,23 @@ Facts that the tables do not show:
   no accept phase, so nothing writes it.
 - A race standings entry becomes `submitted` on `system.output.finalized` or
   on `system.run.completed`. Native runs emit only the second event.
+- Three paths do not send their events through the standings recorder of the
+  worker. The API stores hosted events. A connector stores its events in one
+  transaction. A case fan-out run records no `system.run.*` event for a case.
+  For these paths, the run agent workflow writes the standings entry through
+  `workflow.update_race_standings`. No persisted event changes. The write is
+  best effort: a failure only logs a warning, and a cancel writes nothing. A
+  case fan-out agent is `submitted` if one or more cases passed.
 - If the worker of a public tryout stops, the workflow marks the tryout
   failed. The web app then stops its wait.
 - Vibe operations keep AWAITING_INPUT in the CHECK constraint, but
   `CanTransition` refuses it. The question flow uses the build phase
   `clarifying`.
+- Vibe SQL gets the terminal operation states from `terminalStates()` as a
+  `text[]` parameter. Do not write the terminal states as a list in SQL.
+- The vibe build quota (the cycle total and the guest trial) counts a terminal
+  operation, also a PARTIAL one, at its `model_calls`. It counts each other
+  operation at the calls that it reserved (`input.calls`).
 - Submit inserts a vibe quote as UNRESERVED and a funded vibe operation as
   RESERVED. Each later billing write goes through `moveBilling`
   (`backend/internal/vibe/admission.go`).
@@ -152,11 +174,8 @@ These gaps remain. Each needs an owner decision or a larger change.
 
 | Area | Gap |
 |---|---|
-| Vibe build quota | `build_cycle.go` and `build_quota.go` leave PARTIAL out of the finished list, so a partial operation counts at its reserved calls. |
 | `billing_subscriptions.status` | No CHECK constraint. A missing event time falls back to `now()`. |
-| `billing_checkout_intents.status` | Only completed is written, so an abandoned checkout stays created. |
 | `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
-| Race standings | Hosted events do not pass through the standings recorder of the worker, so hosted peers never update. A run with case fan-out emits no run-level event, so its agents never show as submitted. |
 | Public tryout | A message that arrives after the turn loop ends, but before the completed write, is accepted and never processed. |
 | Public tryout | After a worker crash, the tryout shows failed only when the activity times out (about 32 minutes). A follow-up sets a 60-second heartbeat timeout after this release deploys. |
 
