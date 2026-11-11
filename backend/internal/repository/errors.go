@@ -22,6 +22,7 @@ var (
 	ErrAgentTryoutNotFound                   = errors.New("agent tryout not found")
 	ErrAgentTryoutAlreadyClaimed             = errors.New("agent tryout is already claimed")
 	ErrAgentTryoutTurnNotFound               = errors.New("agent tryout turn not found")
+	ErrAgentTryoutTurnsClosed                = errors.New("agent tryout session closed")
 	ErrRunComparisonNotFound                 = errors.New("run comparison not found")
 	ErrInvalidRunComparisonParams            = errors.New("invalid run comparison params")
 	ErrAgentHarnessFailureAnnotationNotFound = errors.New("agent harness failure annotation not found")

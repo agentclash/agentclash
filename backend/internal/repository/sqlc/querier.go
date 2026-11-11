@@ -24,6 +24,9 @@ type Querier interface {
 	// lease predates leases and counts as expired.
 	ClaimNextPendingAgentTryoutTurn(ctx context.Context, arg ClaimNextPendingAgentTryoutTurnParams) (AgentTryoutTurn, error)
 	ClearScanFindingsForTarget(ctx context.Context, arg ClearScanFindingsForTargetParams) error
+	// Closes the turn intake. The UPDATE locks the tryout row, so an append that
+	// holds the row lock commits first, and a later append fails its guard.
+	CloseAgentTryoutTurnIntake(ctx context.Context, arg CloseAgentTryoutTurnIntakeParams) (int64, error)
 	CountActiveAgentDeploymentsByWorkspaceID(ctx context.Context, arg CountActiveAgentDeploymentsByWorkspaceIDParams) (int64, error)
 	CountActiveOrgMembers(ctx context.Context, arg CountActiveOrgMembersParams) (int32, error)
 	CountActiveWorkspaceRuns(ctx context.Context, arg CountActiveWorkspaceRunsParams) (int32, error)
@@ -70,6 +73,11 @@ type Querier interface {
 	CreateVibeEvalConversation(ctx context.Context, arg CreateVibeEvalConversationParams) (VibeEvalConversation, error)
 	CreateVibeEvalDraft(ctx context.Context, arg CreateVibeEvalDraftParams) (VibeEvalDraft, error)
 	DeleteChallengePackDraft(ctx context.Context, arg DeleteChallengePackDraftParams) error
+	// Run this after CloseAgentTryoutTurnIntake, in the same transaction but as a
+	// separate statement. The new statement snapshot then sees each append that
+	// committed while the close waited for the row lock. A pending end signal
+	// is dropped too: the session already ended.
+	DropPendingAgentTryoutTurns(ctx context.Context, arg DropPendingAgentTryoutTurnsParams) ([]AgentTryoutTurn, error)
 	FindOrganizationByDodoSubscriptionOrCustomer(ctx context.Context, arg FindOrganizationByDodoSubscriptionOrCustomerParams) (uuid.UUID, error)
 	FinishBillingWebhookEvent(ctx context.Context, arg FinishBillingWebhookEventParams) (int64, error)
 	GetAgentBuildByID(ctx context.Context, arg GetAgentBuildByIDParams) (AgentBuild, error)

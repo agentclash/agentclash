@@ -431,6 +431,15 @@ func (m *AgentTryoutManager) SubmitAnonymousTryoutTurn(ctx context.Context, id u
 		tryout.Status != repository.AgentTryoutStatusQueued {
 		return fmt.Errorf("%w: this tryout session is no longer active", ErrInvalidAgentTryoutInput)
 	}
+	// The worker closed the turn intake: its turn loop ended, and the
+	// tryout is in its last steps. No session answers a new message. An end
+	// signal has nothing left to end, so it succeeds.
+	if tryout.TurnsClosedAt != nil {
+		if input.End {
+			return nil
+		}
+		return repository.ErrAgentTryoutTurnsClosed
+	}
 	role := "user"
 	message := strings.TrimSpace(input.Message)
 	if input.End {
@@ -450,6 +459,10 @@ func (m *AgentTryoutManager) SubmitAnonymousTryoutTurn(ctx context.Context, id u
 		Role:           role,
 		Message:        message,
 	}); err != nil {
+		// The intake closed after the read above.
+		if input.End && errors.Is(err, repository.ErrAgentTryoutTurnsClosed) {
+			return nil
+		}
 		return err
 	}
 	return nil
@@ -1696,6 +1709,8 @@ func writeAgentTryoutError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusConflict, "agent_tryout_active", "Finish or end this session before saving its result.")
 	case errors.Is(err, repository.ErrAgentTryoutExpired):
 		writeError(w, http.StatusGone, "agent_tryout_expired", "This tryout has expired. Start a new tryout to continue.")
+	case errors.Is(err, repository.ErrAgentTryoutTurnsClosed):
+		writeError(w, http.StatusConflict, "agent_tryout_session_closed", "The session closed before this message. The agent did not get it.")
 	case errors.Is(err, repository.ErrAgentTryoutNotFound):
 		writeError(w, http.StatusNotFound, "agent_tryout_not_found", "agent tryout not found")
 	case errors.Is(err, repository.ErrAgentTryoutAlreadyClaimed):

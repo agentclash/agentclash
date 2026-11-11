@@ -6761,7 +6761,7 @@ paths:
                   description: User message for the agent. Required unless end=true.
                 end:
                   type: boolean
-                  description: Close the interactive session instead of sending a message.
+                  description: Close the interactive session instead of sending a message. After the session closed, an end request returns 202 and does nothing.
       responses:
         "202":
           description: Turn submitted; the session activity will process it.
@@ -6776,6 +6776,15 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: >-
+            Code `agent_tryout_session_closed`. The chat session closed before
+            this message, so no agent will answer it. The tryout can still be
+            in its scoring step.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "410":
           description: The creator's anonymous result has expired. Start a new tryout.
 

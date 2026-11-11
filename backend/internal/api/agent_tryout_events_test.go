@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -53,6 +54,9 @@ func TestClassifyTryoutEvent(t *testing.T) {
 		{runevents.EventTypeSystemRunCompleted, TryoutTimelineFinished, true},
 		// Unrelated voice event still maps to a stable catch-all, never dropped.
 		{runevents.EventTypeTurnUserMessage, TryoutTimelineActivity, true},
+		// A dropped late message shows as an activity row, not as the end
+		// of the run.
+		{workflow.PublicTryoutEventTypeTurnsDropped, TryoutTimelineActivity, true},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.eventType), func(t *testing.T) {
@@ -64,6 +68,19 @@ func TestClassifyTryoutEvent(t *testing.T) {
 				t.Fatalf("type = %q, want %q", got, tt.wantType)
 			}
 		})
+	}
+}
+
+func TestTryoutEventSummaryForDroppedTurns(t *testing.T) {
+	summary := tryoutEventSummary(workflow.PublicTryoutEventTypeTurnsDropped, map[string]any{"status": "dropped"})
+	if !strings.Contains(summary, "session closed before your last message") {
+		t.Fatalf("summary = %q, want the session-closed note", summary)
+	}
+	// The web timeline renames a row that says "final" and marks a row that
+	// says "fail" as failed.
+	lower := strings.ToLower(summary)
+	if strings.Contains(lower, "final") || strings.Contains(lower, "fail") {
+		t.Fatalf("summary = %q must not contain final or fail", summary)
 	}
 }
 

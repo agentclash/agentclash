@@ -76,6 +76,11 @@ Facts that the tables do not show:
   on `system.run.completed`. Native runs emit only the second event.
 - If the worker of a public tryout stops, the workflow marks the tryout
   failed. The web app then stops its wait.
+- When the turn loop of a public tryout ends, the worker sets
+  `agent_tryouts.turns_closed_at`. The tryout stays `running` while the judge
+  scores it, but the API refuses a new message with HTTP 409
+  (`agent_tryout_session_closed`). A message that arrived before the close but
+  after the last claim becomes `dropped`, and the timeline shows a note.
 - Vibe operations keep AWAITING_INPUT in the CHECK constraint, but
   `CanTransition` refuses it. The question flow uses the build phase
   `clarifying`.
@@ -94,7 +99,7 @@ or a lease.
 | `workspace_arena_tasks.status` (pending, completed) | The completing UPDATE guards on pending. A late vote returns 409. |
 | `dataset_generation_jobs.status` (queued, running, completed, failed) | completed and failed are final. A failed workflow start marks the job failed. |
 | `organization_github_installations.status` (active, suspended, deleted) | deleted is final. |
-| `agent_tryout_turns.status` (pending, processing, done) | A claim takes a 20-minute lease. A later claim takes a turn whose lease ran out. Only a processing turn becomes done. |
+| `agent_tryout_turns.status` (pending, processing, done, dropped) | A claim takes a 20-minute lease. A later claim takes a turn whose lease ran out. Only a processing turn becomes done. Only a pending turn becomes dropped, in the transaction that sets `turns_closed_at`. An append guards on `turns_closed_at IS NULL`. If the worker crashes, the turns of the failed tryout can stay pending. |
 | `challenge_pack_drafts.status` (draft, published, discarded) | The publish transaction writes published. |
 | `dataset_examples.status` (active, archived, muted) | An import or a promotion with a default status keeps an archived or muted example. |
 | `vibe_enquiries.status` | The review sweep skips a send with a live lease. A lost acceptance keeps its provider ID. |
@@ -115,7 +120,6 @@ These gaps remain. Each needs an owner decision or a larger change.
 | `billing_checkout_intents.status` | Only completed is written, so an abandoned checkout stays created. |
 | `challenge_pack_drafts.status` | A published draft can change and publish again. A test does this on purpose. Decide if published must be final. |
 | Race standings | Hosted events do not pass through the standings recorder of the worker, so hosted peers never update. A run with case fan-out emits no run-level event, so its agents never show as submitted. |
-| Public tryout | A message that arrives after the turn loop ends, but before the completed write, is accepted and never processed. |
 | Public tryout | After a worker crash, the tryout shows failed only when the activity times out (about 32 minutes). A follow-up sets a 60-second heartbeat timeout after this release deploys. |
 
 The money paths (billing, `vibe_attempts`, the build quota) need an owner
