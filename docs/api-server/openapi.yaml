@@ -6302,6 +6302,12 @@ paths:
         publish sets its status to `published`, and the draft is then final.
         A second publish returns 409 with the code
         `challenge_pack_draft_published` and writes no version.
+
+        A draft of an existing pack (for example a draft from
+        `from_challenge_pack_version_id`) publishes as the next free version
+        number of the workspace pack with its slug. A higher number in the
+        composition stays. A draft for a new pack keeps the number in its
+        composition. The compile step shows the same number.
       security:
         - bearerJWT: []
       parameters:
@@ -6330,7 +6336,10 @@ paths:
           description: >
             The draft is already published (`challenge_pack_draft_published`),
             the version number exists (`challenge_pack_version_exists`), or the
-            pack metadata conflicts (`challenge_pack_metadata_conflict`).
+            pack metadata conflicts (`challenge_pack_metadata_conflict`). For a
+            draft of an existing pack, `challenge_pack_version_exists` means
+            that a different publish took the number first. A retry uses the
+            next number.
           content:
             application/json:
               schema:

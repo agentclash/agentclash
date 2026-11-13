@@ -12,6 +12,31 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getNextWorkspaceChallengePackVersionNumber = `-- name: GetNextWorkspaceChallengePackVersionNumber :one
+SELECT (COALESCE(MAX(v.version_number), 0) + 1)::integer AS next_version_number
+FROM challenge_packs p
+JOIN challenge_pack_versions v ON v.challenge_pack_id = p.id
+WHERE p.workspace_id = $1::uuid
+  AND p.slug = $2
+`
+
+type GetNextWorkspaceChallengePackVersionNumberParams struct {
+	WorkspaceID uuid.UUID
+	Slug        string
+}
+
+// The next free version number of the workspace pack with this slug, or 1 if
+// the workspace has no such pack. The publish path finds the pack by
+// (workspace_id, slug) also when the pack is archived, and the unique key on
+// (challenge_pack_id, version_number) counts every version. So this query
+// also counts archived packs and versions.
+func (q *Queries) GetNextWorkspaceChallengePackVersionNumber(ctx context.Context, arg GetNextWorkspaceChallengePackVersionNumberParams) (int32, error) {
+	row := q.db.QueryRow(ctx, getNextWorkspaceChallengePackVersionNumber, arg.WorkspaceID, arg.Slug)
+	var next_version_number int32
+	err := row.Scan(&next_version_number)
+	return next_version_number, err
+}
+
 const getWorkspaceChallengePackVersionBySlug = `-- name: GetWorkspaceChallengePackVersionBySlug :one
 SELECT p.id AS challenge_pack_id, v.id AS challenge_pack_version_id
 FROM challenge_packs p

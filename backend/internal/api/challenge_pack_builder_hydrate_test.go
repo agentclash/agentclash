@@ -83,6 +83,9 @@ func (f *fakeBuilderHydrateRepository) MarkChallengePackDraftPublished(context.C
 func (f *fakeBuilderHydrateRepository) DeleteChallengePackDraft(context.Context, uuid.UUID) error {
 	return errBuilderHydrateNotImpl
 }
+func (f *fakeBuilderHydrateRepository) GetNextWorkspaceChallengePackVersionNumber(context.Context, uuid.UUID, string) (int32, error) {
+	return 1, nil
+}
 
 func catalogManifest(t *testing.T, slug string) json.RawMessage {
 	t.Helper()

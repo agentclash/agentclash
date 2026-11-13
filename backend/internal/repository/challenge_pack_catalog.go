@@ -31,3 +31,18 @@ func (r *Repository) GetWorkspaceChallengePackVersionBySlug(ctx context.Context,
 	}
 	return row.ChallengePackID, row.ChallengePackVersionID, true, nil
 }
+
+// GetNextWorkspaceChallengePackVersionNumber returns the next free version
+// number of the workspace pack with this slug, or 1 if the workspace has no
+// such pack. A global pack with the same slug does not count, because a
+// workspace publish never writes a version into a global pack.
+func (r *Repository) GetNextWorkspaceChallengePackVersionNumber(ctx context.Context, workspaceID uuid.UUID, slug string) (int32, error) {
+	next, err := r.queries.GetNextWorkspaceChallengePackVersionNumber(ctx, repositorysqlc.GetNextWorkspaceChallengePackVersionNumberParams{
+		WorkspaceID: workspaceID,
+		Slug:        slug,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("get next workspace challenge pack version number: %w", err)
+	}
+	return next, nil
+}
