@@ -12,13 +12,13 @@ require (
 	github.com/moby/moby/client v0.6.2
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/zalando/go-keyring v0.2.8
-	golang.org/x/text v0.43.0
+	golang.org/x/text v0.44.0
 	golang.org/x/time v0.16.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.37.2
 	k8s.io/apimachinery v0.37.2
 	k8s.io/client-go v0.37.2
-	modernc.org/sqlite v1.61.1
+	modernc.org/sqlite v1.62.0
 )
 
 require (
@@ -88,7 +88,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
 	k8s.io/streaming v0.37.2 // indirect
 	k8s.io/utils v0.0.0-20260626114624-be93311217bd // indirect
-	modernc.org/libc v1.79.0 // indirect
+	modernc.org/libc v1.80.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
