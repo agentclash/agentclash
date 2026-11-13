@@ -23,6 +23,26 @@ type fakeBuilderPublishRepository struct {
 	patchCalls []repository.PatchChallengePackDraftParams
 	markErr    error
 	markCalls  []repository.MarkChallengePackDraftPublishedParams
+	// nextVersion is the answer of the version number lookup. Zero means 1.
+	nextVersion int32
+	nextErr     error
+	nextCalls   []nextVersionCall
+}
+
+type nextVersionCall struct {
+	workspaceID uuid.UUID
+	slug        string
+}
+
+func (f *fakeBuilderPublishRepository) GetNextWorkspaceChallengePackVersionNumber(_ context.Context, workspaceID uuid.UUID, slug string) (int32, error) {
+	f.nextCalls = append(f.nextCalls, nextVersionCall{workspaceID: workspaceID, slug: slug})
+	if f.nextErr != nil {
+		return 0, f.nextErr
+	}
+	if f.nextVersion == 0 {
+		return 1, nil
+	}
+	return f.nextVersion, nil
 }
 
 func (f *fakeBuilderPublishRepository) GetChallengePackDraftByID(_ context.Context, id uuid.UUID) (repository.ChallengePackDraft, error) {
@@ -62,10 +82,12 @@ func (f *fakeDraftPublisher) PublishBundle(context.Context, uuid.UUID, []byte) (
 type fakeSourceDraftPublisher struct {
 	fakeDraftPublisher
 	sources []repository.PackPublicationSource
+	bundles [][]byte
 }
 
-func (f *fakeSourceDraftPublisher) PublishBundleFromDraft(_ context.Context, _ uuid.UUID, _ []byte, source repository.PackPublicationSource) (PublishChallengePackResponse, error) {
+func (f *fakeSourceDraftPublisher) PublishBundleFromDraft(_ context.Context, _ uuid.UUID, bundleYAML []byte, source repository.PackPublicationSource) (PublishChallengePackResponse, error) {
 	f.sources = append(f.sources, source)
+	f.bundles = append(f.bundles, bundleYAML)
 	return f.resp, nil
 }
 

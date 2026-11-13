@@ -38,6 +38,8 @@ type ChallengePackBuilderRepository interface {
 	// Used to hydrate a draft from an already-published pack (edit-in-builder).
 	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
 	WorkspacePublicPacksEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error)
+	// Gives a draft of an existing pack the next free version number.
+	GetNextWorkspaceChallengePackVersionNumber(ctx context.Context, workspaceID uuid.UUID, slug string) (int32, error)
 }
 
 // ChallengePackBuilderService is the full builder surface: reusable piece CRUD,
@@ -388,6 +390,10 @@ func (m *ChallengePackBuilderManager) CompileDraft(ctx context.Context, caller C
 			Errors: []validationErrorDetail{{Field: "composition", Message: composeErr.Error()}},
 		}, nil
 	}
+	// The YAML preview shows the number that a publish uses.
+	if err := m.assignDraftVersionNumber(ctx, draft, &bundle); err != nil {
+		return CompileDraftResult{}, err
+	}
 
 	result := CompileDraftResult{SpecCard: challengepack.SpecCardSummary(bundle)}
 	if yamlBytes, yamlErr := challengepack.BundleYAML(bundle); yamlErr == nil {
@@ -422,6 +428,11 @@ func (m *ChallengePackBuilderManager) PublishDraft(ctx context.Context, caller C
 	bundle, composeErr := m.composeDraft(ctx, draft)
 	if composeErr != nil {
 		return PublishChallengePackResponse{}, builderValidationError("composition", composeErr.Error())
+	}
+	// Set the number before the YAML render, so the stored bundle and the
+	// version row agree.
+	if err := m.assignDraftVersionNumber(ctx, draft, &bundle); err != nil {
+		return PublishChallengePackResponse{}, err
 	}
 
 	bundleYAML, err := challengepack.BundleYAML(bundle)
@@ -498,6 +509,35 @@ func (m *ChallengePackBuilderManager) composeDraft(ctx context.Context, draft re
 	}
 
 	return challengepack.ComposeBundle(composition, resolved)
+}
+
+// assignDraftVersionNumber gives a draft of an existing pack the next free
+// version number of that pack. The builder has no field for the number, and a
+// draft from a published version (edit-in-builder) keeps the number of that
+// version. Without this step, its publish fails with
+// challenge_pack_version_exists. A higher number in the composition stays.
+//
+// A draft for a new pack keeps its number. Its slug can match a workspace pack
+// by chance. A publish must not add a version to that pack, because the user
+// did not choose it.
+//
+// The number is a forecast. If a different draft of the same pack publishes
+// first, this publish fails with challenge_pack_version_exists. A retry gets
+// the next number.
+func (m *ChallengePackBuilderManager) assignDraftVersionNumber(ctx context.Context, draft repository.ChallengePackDraft, bundle *challengepack.Bundle) error {
+	if draft.ChallengePackID == nil || strings.TrimSpace(bundle.Pack.Slug) == "" {
+		return nil
+	}
+	// The publish writes into the workspace pack with this slug. For a draft
+	// from a global pack, that is not draft.ChallengePackID.
+	next, err := m.repo.GetNextWorkspaceChallengePackVersionNumber(ctx, draft.WorkspaceID, bundle.Pack.Slug)
+	if err != nil {
+		return fmt.Errorf("find next challenge pack version number: %w", err)
+	}
+	if bundle.Version.Number < next {
+		bundle.Version.Number = next
+	}
+	return nil
 }
 
 func optionalUserID(id uuid.UUID) *uuid.UUID {

@@ -115,6 +115,12 @@ type Querier interface {
 	GetLatestBillingSubscriptionByOrganizationID(ctx context.Context, arg GetLatestBillingSubscriptionByOrganizationIDParams) (BillingSubscription, error)
 	GetLatestRegressionPromotionByCaseID(ctx context.Context, arg GetLatestRegressionPromotionByCaseIDParams) (WorkspaceRegressionPromotion, error)
 	GetLatestVersionNumberForBuild(ctx context.Context, arg GetLatestVersionNumberForBuildParams) (int32, error)
+	// The next free version number of the workspace pack with this slug, or 1 if
+	// the workspace has no such pack. The publish path finds the pack by
+	// (workspace_id, slug) also when the pack is archived, and the unique key on
+	// (challenge_pack_id, version_number) counts every version. So this query
+	// also counts archived packs and versions.
+	GetNextWorkspaceChallengePackVersionNumber(ctx context.Context, arg GetNextWorkspaceChallengePackVersionNumberParams) (int32, error)
 	GetOrganizationEntitlements(ctx context.Context, arg GetOrganizationEntitlementsParams) (GetOrganizationEntitlementsRow, error)
 	GetRegressionCaseByID(ctx context.Context, arg GetRegressionCaseByIDParams) (GetRegressionCaseByIDRow, error)
 	GetRegressionCaseIDByPromotionSource(ctx context.Context, arg GetRegressionCaseIDByPromotionSourceParams) (uuid.UUID, error)
