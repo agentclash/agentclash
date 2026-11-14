@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { parseResultSelection, formatResultSelection } from "./vibe-result-selection";
 import { workspaceEvidenceAccess } from "./use-vibe-workspace-access";
-import { reportSourceCases, sdkExportValue } from "./vibe-reports";
+import { exactCaseTarget, localRunnerCapability, reportSourceCases, reportToTestPack, sdkExportValue } from "./vibe-reports";
+import { readFileSync } from "node:fs";
 import type { UserMeResponse } from "./api/types";
 import type { SDKReport } from "./vibe-reports";
 const id="01234567-89ab-4def-8123-456789abcdef";
@@ -47,4 +48,31 @@ it("requires explicit v2 discovery and previews only allowlisted uncertain evide
  const source=JSON.stringify({schema_version:2,report_id:"<script>alert(1)</script>",suite_id:null,target_revision:null,cases:[{case:{case_id:"case",name:"<img src=x onerror=alert(1)>"},status:"incomplete",target_invoked:false,checks:[{check_id:"outcome",passed:false,evidence:{secret:"PRIVATE"}}],evidence:{prompt:"PRIVATE",tool_calls:[{arguments:"PRIVATE"}]}}]});
  const preview=refundReportPreview(source);expect(preview.cost_usd).toBeNull();expect(preview.target_revision).toBeNull();expect(preview.cases[0].target_invoked).toBe(false);expect(JSON.stringify(preview)).not.toContain("PRIVATE");
  expect(()=>reportSourceCases(source,"eval_report",1)).toThrow("explicit source format");expect(reportSourceCases(source,"eval_report",2)[0].id).toBe("case");
+});
+
+describe("local report start",()=>{
+ const fixture=(name:string)=>readFileSync(`${__dirname}/../../../schemas/refund-report-v2/fixtures/${name}.json`,"utf8");
+ it("suggests a test only for one identical ID, never a similar one",()=>{
+  const tuples=[["a",{case_key:"DEMO-repeat-refund-01"}],["b",{case_key:"demo-repeat-refund-01"}],["c",{case_key:"twice"}],["d",{case_key:"twice"}]] as [string,{case_key:string}][];
+  expect(exactCaseTarget("DEMO-repeat-refund-01",tuples)).toBe("a");
+  expect(exactCaseTarget("Demo-Repeat-Refund-01",tuples)).toBe("");
+  expect(exactCaseTarget("twice",tuples)).toBe("");
+  expect(exactCaseTarget("",[["e",{case_key:""}]])).toBe("");
+ });
+ it.each(["openai-correct-v2","claude-faulty-v1"])("derives placeholder tests from %s that keep the original case IDs and cannot run hosted",name=>{
+  const source=fixture(name),report=JSON.parse(source),made=reportToTestPack(source);
+  expect(made.caseIDs).toEqual(report.cases.map((c:{case:{case_id:string}})=>c.case.case_id));
+  expect(made.pack.evaluation.cases.map(c=>c.key)).toEqual(made.caseIDs);
+  expect(made.pack).toMatchObject({format:"agentclash-vibe-v2",agent_prompt:"",required_capabilities:[localRunnerCapability]});
+  expect(made.suiteDigest).toBe(report.suite_digest);expect(made.targetRevision).toBe(report.target_revision??null);
+  // The placeholder holds IDs and names only: no prompt, reply, tool argument or check detail leaves the report.
+  const text=JSON.stringify(made.pack);for(const c of report.cases)for(const check of c.checks||[])if(typeof check.message==="string"&&check.message)expect(text).not.toContain(check.message);
+ });
+ it("makes no pack from an unsupported, empty or ambiguous report",()=>{
+  expect(()=>reportToTestPack("not json")).toThrow(SyntaxError);
+  expect(()=>reportToTestPack(JSON.stringify({schema_version:1,cases:[]}))).toThrow("not an eval report v2");
+  expect(()=>reportToTestPack(JSON.stringify({schema_version:2,cases:[]}))).toThrow("no tests");
+  expect(()=>reportToTestPack(JSON.stringify({schema_version:2,cases:[{case:{case_id:"a"}},{case:{case_id:"a"}}]}))).toThrow("unique case_id");
+  expect(()=>reportToTestPack(JSON.stringify({schema_version:2,cases:[{case:{case_id:" a"}}]}))).toThrow("unique case_id");
+ });
 });

@@ -103,3 +103,21 @@ test("refund report v2 imports explicitly and reopens exact original without hos
  const download=page.waitForEvent("download");await page.getByRole("button",{name:"Download exact original",exact:true}).click();expect(await readFile((await(await download).path())!,"utf8")).toBe(source);
  const after=await evidence(page,id);expect(after.session.operations).toHaveLength(0);expect(after.calls).toHaveLength(before.calls.length);
 });
+
+test("local report link keeps a refund report v2 with derived placeholder tests, no manual map and no hosted work",async({page})=>{
+ // Actual SCRIPTED Linux demo report; no customer agent or model is executed here.
+ const source=await readFile(__dirname+"/../../../schemas/refund-report-v2/fixtures/openai-correct-v2.json","utf8");
+ await page.goto("/auth/login?returnTo="+encodeURIComponent("/vibe-evals?start=improve&source=local-report"));await page.getByRole("button",{name:"Continue with AgentClash"}).click();
+ const panel=page.getByRole("group",{name:"Local report file",exact:true});await expect(panel).toContainText("uploader claims");
+ await panel.locator('input[type="file"]').setInputFiles({name:"results.json",mimeType:"application/json",buffer:Buffer.from(source)});await expect(panel).toContainText("Selected: results.json");
+ const imported=page.waitForResponse(r=>/\/sessions\/[^/]+\/reports$/.test(new URL(r.url()).pathname)&&r.request().method()==="POST");
+ await panel.getByRole("button",{name:"Import",exact:true}).click();const response=await imported;expect(response.status(),await response.text()).toBe(201);const receipt=await response.json();
+ expect(receipt.source_schema_version).toBe(2);expect(receipt.cases.map((c:{source_case_id:string;case_key:string})=>[c.source_case_id,c.case_key])).toEqual([["DEMO-repeat-refund-01","DEMO-repeat-refund-01"]]);
+ await expect(page.getByRole("article",{name:"Imported report detail"})).toContainText("Imported source v2");
+ const url=new URL(page.url()),id=url.searchParams.get("session")!;expect(url.searchParams.get("run")).toBe(`sdk_report:${receipt.id}`);
+ const saved=await evidence(page,id);expect(saved.session.workspace_id).toBe(workspace);expect(saved.session.document.artifacts).toHaveLength(1);
+ // The placeholder tests need a capability that hosted execution lacks, so nothing can run them here.
+ expect(saved.session.document.artifacts[0].unavailable_reason).toContain("local_runner");expect(saved.session.operations).toHaveLength(0);
+ await page.reload();await expect(page.getByRole("article",{name:"Imported report detail"})).toContainText("Imported source v2");await expect(page.getByRole("button",{name:"Estimate hosted regrade",exact:true})).toBeDisabled();
+ const download=page.waitForEvent("download");await page.getByRole("button",{name:"Download exact original",exact:true}).click();expect(await readFile((await(await download).path())!,"utf8")).toBe(source);
+});

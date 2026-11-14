@@ -3946,6 +3946,68 @@ it("PR4 imports a pack on selection and derives its title from the filename", as
   expect(posts()).toHaveLength(0); expect(params().get("view")).toBe("tests"); expect(params().get("agent")).toBe("pack-tests");
 });
 
+const refundV2 = { sdk_report_import_formats: [{ envelope_version: 1, source_kind: "eval_report", source_schema_version: 2 }] };
+const localReport = JSON.stringify({ schema_version: 2, report_id: "local-1", suite_id: "Refund suite", suite_digest: "sha256:suite", target_revision: "rev-9", cases: [{ case: { case_id: "DEMO-repeat-refund-01", name: "Repeat refund" }, status: "passed", checks: [] }] });
+async function chooseLocalReport(source: string) {
+  await click("Keep a local report");
+  const input = container.querySelector<HTMLInputElement>('[aria-label="Local report file"] input[type="file"]')!;
+  await act(async () => { Object.defineProperty(input, "files", { value: [new File([source], "results.json", { type: "application/json" })], configurable: true }); input.dispatchEvent(new Event("change", { bubbles: true })); });
+  await frame();
+}
+it("local report start makes one project, placeholder tests and the exact report, then opens the saved result", async () => {
+  signedInWorkspace(); await enterDoor("test", refundV2);
+  const previous = respond; const reportID = "a8000000-0000-4000-8000-0000000000b1";
+  respond = async (path, options) => {
+    if (path.endsWith("/import")) { session = { ...session, workspace_id: "workspace-one", document: { ...session.document, artifacts: [{ id: "report-tests", kind: "test_suite", title: "Refund suite", agent_prompt: "", accepted: false, source_message_id: "", blueprint: { cases: [{ key: "DEMO-repeat-refund-01" }] } }] } } as Session; return json(session); }
+    if (path.endsWith("/case-mapping")) return json([{ artifact_id: "report-tests", cases: [{ case_key: "DEMO-repeat-refund-01", input_set_key: "", challenge_key: "" }], published: [] }]);
+    if (path.endsWith("/reports") && options.method === "POST") return json({ id: reportID, binding: { session_id: session.id, artifact_id: "report-tests", result_ref: { kind: "sdk_report", id: reportID } }, source_kind: "eval_report", source_schema_version: 2, external_report_id: "local-1", cases: [] }, 201);
+    return previous(path, options);
+  };
+  await chooseLocalReport(localReport);
+  expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
+  await click("Import"); await frame();
+  const writes = requests.filter(r => r.method === "POST");
+  expect(writes.map(r => r.path.replace(session.id, ":id"))).toEqual(["/sessions", "/sessions/:id/import", "/sessions/:id/reports"]);
+  expect(writes[0].body).toMatchObject({ door: "test", title: "Refund suite", workspace_id: "workspace-one" });
+  expect(writes[1].body).toMatchObject({ format: "agentclash-vibe-v2", required_capabilities: ["local_runner"], evaluation: { cases: [{ key: "DEMO-repeat-refund-01" }] } });
+  expect(writes[2].body).toEqual({ envelope_version: 1, source_kind: "eval_report", source_schema_version: 2, source_json: localReport, metadata: { artifact_id: "report-tests", application_revision: "rev-9", fingerprints: { model: null, build: null, test: "sha256:suite", judge: null, config: null }, capture_scope: { messages: { scope: "unknown", instrumentation: "unknown" }, tools: { scope: "unknown", instrumentation: "unknown" }, retrieval: { scope: "unknown", instrumentation: "unknown" } }, cases: [{ source_case_id: "DEMO-repeat-refund-01", case_key: "DEMO-repeat-refund-01", input_set_key: "", challenge_key: "" }] } });
+  expect(posts()).toHaveLength(0); expect(params().get("view")).toBe("results"); expect(params().get("agent")).toBe("report-tests"); expect(params().get("run")).toBe(`sdk_report:${reportID}`);
+});
+it("the local report link opens the Local report source once and a guest gets a sign-in link that returns to it", async () => {
+  harness.params = new URLSearchParams("start=improve&source=local-report&utm_source=codex");
+  respond = async path => path === "/config" ? json({ ...(await twoDoorConfig().json()), ...refundV2 }) : json([]);
+  await render(); await frame();
+  const panel = container.querySelector('[aria-label="Local report file"]')!;
+  expect(panel.querySelector("a")?.getAttribute("href")).toBe("/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dimprove%26source%3Dlocal-report");
+  expect(panel.querySelector('input[type="file"]')).toBeNull();
+  await click("Bring an agent a different way"); await frame();
+  expect(container.querySelector('[aria-label="Local report file"]')).toBeNull(); expect(container.querySelectorAll('[role="radio"]')).toHaveLength(3);
+  expect(requests.filter(r => r.method !== "GET")).toHaveLength(0);
+});
+it("local report start makes no project for an unreadable or unsupported report, or on a server without v2", async () => {
+  signedInWorkspace(); await enterDoor("test", refundV2);
+  for (const [source, message] of [["{not json", "not valid JSON"], [JSON.stringify({ schema_version: 1, cases: [] }), "not an eval report v2"], [JSON.stringify({ schema_version: 2, cases: [] }), "no tests"]]) {
+    await chooseLocalReport(source); await click("Import"); await frame();
+    expect(container.querySelector('[aria-label="Local report file"] [role="alert"]')?.textContent).toContain(message);
+    await click("Bring an agent a different way");
+  }
+  expect(requests.filter(r => r.method !== "GET")).toHaveLength(0);
+});
+it("local report start keeps the saved tests and reports the failure when the report import is refused", async () => {
+  signedInWorkspace(); await enterDoor("test", refundV2);
+  const previous = respond;
+  respond = async (path, options) => {
+    if (path.endsWith("/import")) { session = { ...session, workspace_id: "workspace-one", document: { ...session.document, artifacts: [{ id: "report-tests", kind: "test_suite", title: "Refund suite", agent_prompt: "", accepted: false, source_message_id: "", blueprint: { cases: [{ key: "DEMO-repeat-refund-01" }] } }] } } as Session; return json(session); }
+    if (path.endsWith("/case-mapping")) return json([{ artifact_id: "report-tests", cases: [{ case_key: "DEMO-repeat-refund-01", input_set_key: "", challenge_key: "" }], published: [] }]);
+    if (path.endsWith("/reports") && options.method === "POST") return json({ error: { code: "invalid_report", message: "The report is inconsistent.", admission: "rejected" } }, 400);
+    return previous(path, options);
+  };
+  await chooseLocalReport(localReport); await click("Import"); await frame();
+  expect(requests.filter(r => r.method === "DELETE")).toHaveLength(0);
+  expect(params().get("view")).toBe("results"); expect(params().get("agent")).toBe("report-tests"); expect(params().get("run")).toBeNull();
+  expect(container.textContent).toContain("The tests were saved, but the report was not imported: The report is inconsistent.");
+});
+
 it("PR4 shows the configured first-build ceiling for a signed-in user", async () => {
   await enterDoor("build"); signedInWorkspace();
   const previous = respond;

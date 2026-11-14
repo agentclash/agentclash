@@ -239,3 +239,37 @@ it.each(["instructions", "replies", "pack"] as const)("PR7 connects %s feedback 
     expect(descriptions).toContain("Review this input.");
   }
 });
+
+it("keeps a local report behind Other ways: a signed-out user gets a returning sign-in link and no upload control", async () => {
+  await draw();
+  expect(node.querySelectorAll('[role="radio"]')).toHaveLength(3);
+  const link = [...node.querySelectorAll<HTMLAnchorElement>(".vibe-improve-other a")].find(a => a.textContent === "Sign in to keep a local report")!;
+  expect(link.getAttribute("href")).toBe("/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dimprove%26source%3Dlocal-report");
+  await draw({ mode: "report" });
+  const panel = node.querySelector('[role="group"][aria-label="Local report file"]')!;
+  expect(panel.querySelector('input[type="file"]')).toBeNull(); expect(node.querySelector('[role="radiogroup"]')).toBeNull();
+  expect([...panel.querySelectorAll("a")].map(a => a.getAttribute("href"))).toEqual(["/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dimprove%26source%3Dlocal-report"]);
+});
+it("reads the chosen local report as exact text and sends it only on Import", async () => {
+  const report = vi.fn();
+  await draw({ signedIn: true, onImportReport: report });
+  await click("Keep a local report");
+  const panel = node.querySelector('[role="group"][aria-label="Local report file"]')!;
+  expect(panel.textContent).toContain("complete original file is kept"); expect(panel.textContent).toContain("uploader claims"); expect(panel.textContent).toContain("cannot run here");
+  expect(button("Import").disabled).toBe(true);
+  const input = panel.querySelector<HTMLInputElement>('input[type="file"]')!, source = '{"schema_version":2,"cases":[]}\n';
+  await act(async () => { Object.defineProperty(input, "files", { value: [new File([source], "results.json", { type: "application/json" })], configurable: true }); input.dispatchEvent(new Event("change", { bubbles: true })); });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  expect(panel.textContent).toContain("Selected: results.json"); expect(report).not.toHaveBeenCalled();
+  await click("Import"); expect(report).toHaveBeenCalledExactlyOnceWith(source);
+  await click("Bring an agent a different way"); expect(node.querySelectorAll('[role="radio"]')).toHaveLength(3);
+});
+it("blocks a local report import with the stated reason and rejects a file that is not UTF-8", async () => {
+  const report = vi.fn();
+  await draw({ signedIn: true, mode: "report", onImportReport: report, reportBlockedReason: "This server does not accept refund report v2 yet." });
+  const panel = node.querySelector('[role="group"][aria-label="Local report file"]')!, input = panel.querySelector<HTMLInputElement>('input[type="file"]')!;
+  await act(async () => { Object.defineProperty(input, "files", { value: [new File([new Uint8Array([0xff, 0xfe, 0x00])], "results.json")], configurable: true }); input.dispatchEvent(new Event("change", { bubbles: true })); });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  expect(panel.querySelector('[role="alert"]')?.textContent).toContain("not UTF-8"); expect(button("Import").disabled).toBe(true);
+  expect(panel.textContent).toContain("does not accept refund report v2"); expect(report).not.toHaveBeenCalled();
+});
