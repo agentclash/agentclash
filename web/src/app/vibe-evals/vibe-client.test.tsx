@@ -3984,6 +3984,14 @@ it("the local report link opens the Local report source once and a guest gets a 
   expect(container.querySelector('[aria-label="Local report file"]')).toBeNull(); expect(container.querySelectorAll('[role="radio"]')).toHaveLength(3);
   expect(requests.filter(r => r.method !== "GET")).toHaveLength(0);
 });
+it("the local report link opens the upload panel for a signed-in user and does not store the choice in the start draft", async () => {
+  signedInWorkspace(); harness.params = new URLSearchParams("start=improve&source=local-report");
+  respond = async path => path === "/config" ? json({ ...(await twoDoorConfig().json()), ...refundV2 }) : json([]);
+  await render(); await frame();
+  const panel = container.querySelector('[aria-label="Local report file"]')!;
+  expect(panel.querySelector('input[type="file"]')).not.toBeNull(); expect(panel.querySelector("a")).toBeNull();
+  expect(JSON.stringify(sessionStorage)).not.toContain('\\"mode\\":\\"report\\"');
+});
 it("local report start makes no project for an unreadable or unsupported report, or on a server without v2", async () => {
   signedInWorkspace(); await enterDoor("test", refundV2);
   for (const [source, message] of [["{not json", "not valid JSON"], [JSON.stringify({ schema_version: 1, cases: [] }), "not an eval report v2"], [JSON.stringify({ schema_version: 2, cases: [] }), "no tests"]]) {

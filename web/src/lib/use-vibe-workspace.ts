@@ -187,15 +187,15 @@ export function useVibeWorkspace() {
   const startImproveDraft = useVibeEditorDraft(improveDraftProject, "start", "inputs", "", "{}");
   let startInputs: { instructions: string; model?: string; conversations: string; rules: string; chat?: string; mode?: "instructions" | "replies" | "pack" | "report" } = { instructions: "", conversations: "", rules: "" };
   try { startInputs = { ...startInputs, ...JSON.parse(startImproveDraft.value) }; } catch { /* Keep an unreadable draft in storage. */ }
-  const setStartInputs = (patch: Partial<typeof startInputs>) => startImproveDraft.setValue(JSON.stringify({ ...startInputs, ...patch }));
-  // /vibe-evals?start=improve&source=local-report opens the Local report source once; the user can still pick another.
+  // /vibe-evals?start=improve&source=local-report opens the Local report source until the user picks another.
+  // The link owns this choice, not the stored draft: the draft changes owner when a guest signs in.
   const localReportLink = startDoor === "improve" && new URLSearchParams(navigation.search).get("source") === "local-report";
-  const localReportOpened = useRef(false);
-  useEffect(() => {
-    if (!browserReady || !localReportLink || localReportOpened.current) return;
-    localReportOpened.current = true;
-    if (startInputs.mode !== "report") setStartInputs({ mode: "report" });
-  });
+  const [localReportLeft, setLocalReportLeft] = useState(false);
+  if (localReportLink && !localReportLeft) startInputs = { ...startInputs, mode: "report" };
+  const setStartInputs = (patch: Partial<typeof startInputs>) => {
+    if (patch.mode) setLocalReportLeft(patch.mode !== "report");
+    startImproveDraft.setValue(JSON.stringify({ ...startInputs, ...patch }));
+  };
   const pendingStartProject = `start:${authUserID || "guest"}:${startDoor === "build" ? "build" : "test"}`;
   const pendingStartPrefix = editorDraftKey(pendingStartProject, "start", startDoor === "build" ? "pending-brief:" : "pending-inputs:");
   const pendingStartRows = Object.entries(browserReady ? (draftMemory.get(pendingStartProject) || readBuildDrafts(pendingStartProject))?.editors || {} : {}).filter(([key, row]) => key.startsWith(pendingStartPrefix) && row.artifact === "start");
