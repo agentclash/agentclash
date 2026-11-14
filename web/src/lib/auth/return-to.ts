@@ -160,6 +160,8 @@ export function buildVibeReturnTo(input: URLSearchParams): string {
   // The current panes (agent, tests, results) and the legacy names that
   // use-vibe-navigation still reads.
   if (view && ["agent", "tests", "results", "build", "try", "checks"].includes(view)) params.set("view", view);
+  // The local report link is one fixed pair of values; no other start or source survives sign-in.
+  if (input.get("start") === "improve" && input.get("source") === "local-report" && !params.has("session")) { params.set("start", "improve"); params.set("source", "local-report"); }
   return `/vibe-evals${params.size ? `?${params}` : ""}`;
 }
 

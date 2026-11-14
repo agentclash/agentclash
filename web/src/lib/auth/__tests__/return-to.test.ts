@@ -127,6 +127,10 @@ it("preserves only validated Vibe save identities through sign-in", () => {
   expect(params.has("content")).toBe(false);
   expect(sanitizeReturnTo("/vibe-evals?session=invalid&agent=https://evil.example&keep=1")).toBe("/vibe-evals");
   expect(sanitizeReturnTo("//evil.example/vibe-evals")).toBe("/dashboard");
+  // The local report link keeps only its one fixed pair of values through sign-in.
+  expect(sanitizeReturnTo("/vibe-evals?start=improve&source=local-report&utm_source=codex&next=https://evil.example")).toBe("/vibe-evals?start=improve&source=local-report");
+  for (const other of ["start=improve", "source=local-report", "start=build&source=local-report", "start=improve&source=https://evil.example", "start=javascript:alert(1)&source=local-report"]) expect(sanitizeReturnTo(`/vibe-evals?${other}`)).toBe("/vibe-evals");
+  expect(sanitizeReturnTo(`/vibe-evals?session=${id}&start=improve&source=local-report`)).toBe(`/vibe-evals?session=${id}`);
 });
 
 it("keeps the current Vibe pane through sign-in", () => {
