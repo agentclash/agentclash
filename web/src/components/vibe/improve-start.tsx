@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { friendlyModelName } from "./model-name";
 import { ChevronLeft, FileText, FileUp, MessageCircle, Package } from "lucide-react";
 import { VibeButton } from "./vibe-button";
@@ -13,14 +13,17 @@ const sources = [
   { mode: "replies", title: "Real replies", description: "Paste conversations it already had", Icon: MessageCircle },
   { mode: "pack", title: "Test pack", description: "Import a pack from AgentClash", Icon: Package },
 ] as const;
+// A local report is a rare start: it lives in "Other ways" and opens its own panel, not a fourth radio.
+type Mode = typeof sources[number]["mode"] | "report";
+const localReportReturn = "/auth/login?returnTo=" + encodeURIComponent("/vibe-evals?start=improve&source=local-report");
 
 export function ImproveStart(p: {
-  mode: "instructions" | "replies" | "pack"; onMode(mode: "instructions" | "replies" | "pack"): void;
+  mode: Mode; onMode(mode: Mode): void;
   drafts: { instructions: string; model?: string; conversations: string; rules: string };
   onDraft(patch: Partial<{ instructions: string; model: string; conversations: string; rules: string }>): void;
   models: { id: string; name: string }[]; signedIn: boolean; busy: boolean; error?: string; blockedReason?: string;
   onWriteTests(input: { text: string; model?: string }): void; onSaveReplies(input: { conversations: string; rules: string }): void;
-  onImportPack(file: File): void; onOther(kind: "chat" | "live_app" | "sdk_report"): void; onSwitchDoor(): void; onBack(): void;
+  onImportPack(file: File): void; onImportReport?(source: string): void; reportBlockedReason?: string; onOther(kind: "chat" | "live_app" | "sdk_report"): void; onSwitchDoor(): void; onBack(): void;
 }) {
   const ready = useVibeBrowserReady();
   const id = useId();
@@ -32,13 +35,26 @@ export function ImproveStart(p: {
   const notices = <>{p.blockedReason && <p id={`${id}-blocked`} role="status">{p.blockedReason}</p>}{p.error && <p id={`${id}-error`} role="alert">{p.error}</p>}</>;
   const describedBy = [p.blockedReason && `${id}-blocked`, p.error && `${id}-error`].filter(Boolean).join(" ") || undefined;
   const importFile = (chosen?: File) => { if (chosen && !blocked) p.onImportPack(chosen); };
+  const [reportFile, setReportFile] = useState<{ name: string; source: string }>(), [reportError, setReportError] = useState("");
+  const reading = useRef(0);
+  // Read the exact bytes as strict UTF-8; nothing leaves the browser until Import.
+  const chooseReport = async (chosen?: File) => {
+    if (!chosen || p.busy) return;
+    const turn = ++reading.current; setReportFile(undefined); setReportError("");
+    try {
+      if (chosen.size > 1024 * 1024) throw Error("Report files must be at most 1 MiB.");
+      const source = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await chosen.arrayBuffer());
+      if (turn === reading.current) setReportFile({ name: chosen.name, source });
+    } catch (e) { if (turn === reading.current) setReportError(e instanceof TypeError ? "This file is not UTF-8 text. Choose the results.json that the local runner wrote." : (e as Error).message); }
+  };
+  const reportBlocked = p.busy || !!p.reportBlockedReason;
   return <section className="vibe-improve-start vibe-start-page vibe-start-layout" onKeyDown={event => { if (event.key === "Escape" && !p.busy) p.onBack(); }}>
     <header><VibeButton variant="quiet" className="vibe-start-back" disabled={p.busy} onClick={p.onBack}><ChevronLeft aria-hidden="true" />All projects</VibeButton></header>
     <div className="vibe-start-intro">
       <p className="vibe-start-eyebrow">Improve an agent</p>
       <h1 className="vibe-start-title" ref={heading} tabIndex={-1}>What can you share about your agent?</h1>
     </div>
-    <div role="radiogroup" aria-label="Agent source" className="vibe-improve-sources">
+    {p.mode !== "report" && <div role="radiogroup" aria-label="Agent source" className="vibe-improve-sources">
       {sources.map(({ mode, title, description, Icon }, index) => <button key={mode} ref={element => { radios.current[index] = element; }} type="button" role="radio" aria-checked={p.mode === mode} aria-labelledby={`${id}-${mode}-title`} aria-describedby={`${id}-${mode}-description`} tabIndex={p.mode === mode ? 0 : -1} disabled={p.busy}
         onClick={() => p.onMode(mode)} onKeyDown={event => {
           let next = index;
@@ -51,8 +67,21 @@ export function ImproveStart(p: {
         <span className="vibe-improve-source-icons" aria-hidden="true"><Icon size={20} /><span className="vibe-improve-radio" /></span>
         <span className="vibe-improve-source-copy"><span id={`${id}-${mode}-title`} className="vibe-improve-source-title">{title}</span><span id={`${id}-${mode}-description`} className="vibe-improve-source-description" aria-hidden="true">{description}</span></span>
       </button>)}
-    </div>
-    {p.mode === "pack" ? <div className="vibe-improve-drop" role="group" aria-label="Test pack file" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); importFile(event.dataTransfer.files[0]); }}>
+    </div>}
+    {p.mode === "report" ? <div className="vibe-improve-drop" role="group" aria-label="Local report file" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (p.signedIn) void chooseReport(event.dataTransfer.files[0]); }}>
+      <FileUp aria-hidden="true" /><p>Keep a local report</p>
+      <p className="vibe-muted">Choose the results.json that the local runner wrote. We make placeholder tests from its case IDs and keep the report with them. Nothing runs, and no inference credits are used.</p>
+      <p className="vibe-muted">The complete original file is kept privately in your workspace, including any prompts, replies and tool arguments. Its results are uploader claims, not verified execution. The placeholder tests cannot run here.</p>
+      {!p.signedIn ? <p><a className="underline" href={localReportReturn}>Sign in to keep a local report</a></p> : <>
+        <label className="sr-only" htmlFor={`${id}-report`}>Local report file</label><input id={`${id}-report`} hidden ref={file} type="file" accept="application/json,.json" disabled={p.busy} onChange={event => { void chooseReport(event.target.files?.[0]); event.target.value = ""; }} />
+        <VibeButton disabled={p.busy} onClick={() => file.current?.click()}>{reportFile ? "Choose a different file" : "Choose results.json"}</VibeButton>
+        {reportFile && <p role="status">Selected: {reportFile.name}</p>}
+        <VibeButton variant="primary" aria-describedby={[p.reportBlockedReason && `${id}-report-blocked`, p.error && `${id}-error`].filter(Boolean).join(" ") || undefined} disabled={reportBlocked || !reportFile} loading={p.busy} onClick={() => { if (reportFile && !reportBlocked) p.onImportReport?.(reportFile.source); }}>Import</VibeButton>
+        {p.reportBlockedReason && <p id={`${id}-report-blocked`} role="status">{p.reportBlockedReason}</p>}
+      </>}
+      {reportError && <p role="alert">{reportError}</p>}{p.error && <p id={`${id}-error`} role="alert">{p.error}</p>}
+      <VibeButton variant="quiet" disabled={p.busy} onClick={() => p.onMode("instructions")}>Bring an agent a different way</VibeButton>
+    </div> : p.mode === "pack" ? <div className="vibe-improve-drop" role="group" aria-label="Test pack file" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); importFile(event.dataTransfer.files[0]); }}>
       <FileUp aria-hidden="true" /><p>Drop a test pack here</p><p className="vibe-muted">A test pack holds tests. Add your agent’s instructions after import.</p>
       <label className="sr-only" htmlFor={`${id}-file`}>Test pack file</label><input id={`${id}-file`} hidden ref={file} type="file" accept=".json,.yaml,.yml" disabled={blocked} onChange={event => { importFile(event.target.files?.[0]); event.target.value = ""; }} />
       <VibeButton variant="primary" aria-describedby={describedBy} disabled={blocked} onClick={() => file.current?.click()}>Choose a file</VibeButton>{notices}
@@ -81,8 +110,8 @@ export function ImproveStart(p: {
     </form>}
     <details className="vibe-improve-other"><summary>Other ways to bring your agent</summary><div>
       <VibeButton variant="quiet" disabled={p.busy} onClick={() => p.onOther("chat")}>Describe it in chat</VibeButton>
-      {p.signedIn ? <><VibeButton variant="quiet" disabled={p.busy} onClick={() => p.onOther("live_app")}>Connect a live app</VibeButton><VibeButton variant="quiet" disabled={p.busy} onClick={() => p.onOther("sdk_report")}>Import an SDK report</VibeButton></>
-        : <><p><a href="/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dimprove">Sign in to connect a live app</a></p><p><a href="/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dimprove">Sign in to import an SDK report</a></p></>}
+      {p.signedIn ? <><VibeButton variant="quiet" disabled={p.busy} onClick={() => p.onOther("live_app")}>Connect a live app</VibeButton><VibeButton variant="quiet" disabled={p.busy} onClick={() => p.onOther("sdk_report")}>Import an SDK report</VibeButton>{p.mode !== "report" && <VibeButton variant="quiet" disabled={p.busy} onClick={() => p.onMode("report")}>Keep a local report</VibeButton>}</>
+        : <><p><a href="/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dimprove">Sign in to connect a live app</a></p><p><a href="/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dimprove">Sign in to import an SDK report</a></p>{p.mode !== "report" && <p><a href={localReportReturn}>Sign in to keep a local report</a></p>}</>}
     </div></details>
     <footer className="vibe-start-footer">
       <VibeDataUseNotice />

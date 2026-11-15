@@ -41,3 +41,17 @@ it("retains an unconfirmed v2 request when the returned original digest differs"
  const node=document.createElement("div");document.body.append(node);const root=createRoot(node),done=vi.fn();
  try{await act(async()=>root.render(<SDKReportImportForm {...props} onImported={done}/>));await setup(node);await act(async()=>button(node,"Import historical report").click());await vi.waitFor(async()=>{await act(async()=>{await Promise.resolve()});expect(node.textContent).toContain("different original report identity")});expect(done).not.toHaveBeenCalled();expect(button(node,"Retry this report import")).toBeDefined();expect(node.querySelector("textarea")!.value).toBe(source)}finally{await act(async()=>root.unmount());node.remove()}
 });
+
+it("selects the one test with an identical ID, shows the selection and lets the user change it before the explicit import",async()=>{
+ const writes:string[]=[];const rows=()=>[{artifact_id:"a",cases:[{case_key:"demo",input_set_key:"",challenge_key:""},{case_key:"Demo",input_set_key:"",challenge_key:""}],published:[]}];
+ transport.fetch.mockImplementation(async(path:string,_auth:unknown,init?:RequestInit)=>{if(path==="/config")return config;if(path.endsWith("case-mapping"))return rows();writes.push(String(init?.body));return {...report,content_sha256:Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(source))),b=>b.toString(16).padStart(2,"0")).join("")}});
+ const node=document.createElement("div");document.body.append(node);const root=createRoot(node),done=vi.fn();
+ try{await act(async()=>root.render(<SDKReportImportForm {...props} onImported={done}/>));
+ await change(node.querySelector('select[aria-label="SDK source format"]')!,"eval_report_v2");await change(node.querySelector("textarea")!,source);await act(async()=>button(node,"Read source tests").click());
+ const select=node.querySelector<HTMLSelectElement>('select[aria-label^="Test for"]')!;expect(select.selectedOptions[0].textContent).toBe("demo");expect(node.textContent).toContain("exactly the same ID is selected for you");expect(writes).toHaveLength(0);
+ await change(select,"");expect(button(node,"Import historical report").disabled).toBe(true);expect(node.textContent).not.toContain("exactly the same ID is selected for you");
+ await change(select,select.options[1].value);await act(async()=>button(node,"Import historical report").click());await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20))});
+ expect(node.querySelector('[role="alert"]')?.textContent||"").toBe("");
+ expect(JSON.parse(writes[0]).metadata.cases).toEqual([{source_case_id:"demo",case_key:"demo",input_set_key:"",challenge_key:""}]);expect(done).toHaveBeenCalledOnce();
+ }finally{await act(async()=>root.unmount());node.remove()}
+});

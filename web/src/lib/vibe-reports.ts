@@ -24,7 +24,12 @@ export const reportBase = (sessionId: string) => `/sessions/${encodeURIComponent
 export function unknownCapture(): CaptureScope { return { messages: { scope: "unknown", instrumentation: "unknown" }, tools: { scope: "unknown", instrumentation: "unknown" }, retrieval: { scope: "unknown", instrumentation: "unknown" } }; }
 export const unknownFingerprints = (): Fingerprints => ({ model: null, build: null, test: null, judge: null, config: null });
 // Preview only; the server applies the versioned canonical schema. Do not infer
-// a binding from a title, array position or matching input text.
+// a binding from a title, array position, matching input text or a similar ID.
+// An identical ID is the one permitted suggestion, and the user can change it.
+export function exactCaseTarget(sourceCaseID: string, tuples: [string, { case_key: string }][]): string {
+  const hits = sourceCaseID ? tuples.filter(([, tuple]) => tuple.case_key === sourceCaseID) : [];
+  return hits.length === 1 ? hits[0][0] : "";
+}
 export function reportSourceCases(source: string, kind: SDKReportImport["source_kind"], version: 1 | 2 = 1): { id: string; label: string }[] {
   const value = JSON.parse(source);
   if (kind === "agent_result" && (version !== 1 || value.schema_version !== undefined)) throw Error("Choose a standalone agent result v1.");
@@ -70,5 +75,32 @@ export function refundReportPreview(source: string) {
       target_invoked: flag(c?.target_invoked), tool_calls_observed: flag(c?.observations?.tool_calls), fixture_state_observed: flag(c?.observations?.fixture_state),
       checks: Array.isArray(c?.checks) ? c.checks.slice(0,100).map(check => ({check_id:text(check?.check_id,80),passed:flag(check?.passed)})) : [],
     })),
+  };
+}
+
+// A local report names its tests but not their inputs. These placeholder tests keep
+// the original case IDs so the report can attach to a test version. The required
+// capability is deliberately one that hosted execution lacks, so they never run here.
+export const localRunnerCapability = "local_runner";
+export function reportToTestPack(source: string) {
+  const d = JSON.parse(source);
+  const cases = reportSourceCases(source, "eval_report", 2);
+  if (!cases.length) throw Error("This report has no tests, so there is nothing to keep it with.");
+  if (new Set(cases.map(c => c.id)).size !== cases.length || cases.some(c => !c.id.trim() || c.id !== c.id.trim() || new TextEncoder().encode(c.id).length > 128)) throw Error("Each report test needs a unique case_id of at most 128 bytes.");
+  const text = (v: unknown, max: number) => typeof v === "string" ? Array.from(v.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").trim()).slice(0, max).join("") : "";
+  const title = text(d.suite_id, 60) || "Local report";
+  const note = "Placeholder tests derived from an uploaded local report. The local runner decides their results; they cannot run here.";
+  return {
+    title, caseIDs: cases.map(c => c.id), suiteDigest: text(d.suite_digest, 200) || null, targetRevision: text(d.target_revision, 200) || null,
+    pack: {
+      format: "agentclash-vibe-v2", title, agent_prompt: "", scope_note: note, required_capabilities: [localRunnerCapability],
+      evaluation: {
+        slug: "local-report", name: title, description: note, difficulty: "easy", instructions: "{{question}}",
+        cases: cases.map(c => ({ key: c.id, payload: { question: `Local test ${c.label}` } })),
+        validators: [{ key: "has_answer", type: "regex_match", target: "final_output", expected_from: "literal:.+" }],
+        judges: [{ key: "behavior", mode: "assertion", assertion: "The local runner decided this test. This placeholder cannot grade a reply." }],
+        dimensions: [{ key: "output_present", source: "validators", validators: ["has_answer"] }, { key: "behavior_correctness", source: "llm_judge", judge_key: "behavior" }],
+      },
+    },
   };
 }

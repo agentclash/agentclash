@@ -11,7 +11,7 @@ import type { InputBinding } from "@/lib/vibe-inputs";
 import { parseResultSelection, formatResultSelection } from "./vibe-result-selection";
 import { useVibeWorkspaceAccess } from "./use-vibe-workspace-access";
 import { useVibeEvidenceOwner } from "./use-vibe-evidence-owner";
-import { reportBase, type SDKReport } from "./vibe-reports";
+import { exactCaseTarget, loadArtifactCaseMapping, reportBase, reportToTestPack, supportsRefundV2, unknownCapture, unknownFingerprints, type SDKReport, type SDKReportImport } from "./vibe-reports";
 import { useVibeExport } from "./use-vibe-export";
 import {pinVibeReturn} from "./vibe-keep";
 import { useVibeSaving } from "@/lib/use-vibe-saving";
@@ -48,7 +48,7 @@ import { editableEvaluation, defaultModels, terminal, retryVibeOperation, VibeEr
 
 type StartConfig = VibeConfig & { first_build_ceiling_nano_usd?: number; guest_trial?: { initial_build_used: boolean; build_in_progress: boolean } };
 
-export type StartInput = { kind: "chat"; text: string } | { kind: "build"; text: string } | { kind: "instructions"; text: string; model?: string } | { kind: "replies"; conversations: string; rules: string } | { kind: "pack"; file: File };
+export type StartInput = { kind: "chat"; text: string } | { kind: "build"; text: string } | { kind: "instructions"; text: string; model?: string } | { kind: "replies"; conversations: string; rules: string } | { kind: "pack"; file: File } | { kind: "report"; source: string };
 
 type RequestScope = { actor: string; sessionID?: string };
 // The work the user started and the view they started it from. When it ends, the
@@ -185,9 +185,17 @@ export function useVibeWorkspace() {
   const startBuildDraft = useVibeEditorDraft(`start:${authUserID || "guest"}:build`, "start", "brief", "", "");
   const improveDraftProject = requestedSessionID ? `intake:${authUserID || "guest"}:${requestedSessionID}` : `start:${authUserID || "guest"}:test`;
   const startImproveDraft = useVibeEditorDraft(improveDraftProject, "start", "inputs", "", "{}");
-  let startInputs: { instructions: string; model?: string; conversations: string; rules: string; chat?: string; mode?: "instructions" | "replies" | "pack" } = { instructions: "", conversations: "", rules: "" };
+  let startInputs: { instructions: string; model?: string; conversations: string; rules: string; chat?: string; mode?: "instructions" | "replies" | "pack" | "report" } = { instructions: "", conversations: "", rules: "" };
   try { startInputs = { ...startInputs, ...JSON.parse(startImproveDraft.value) }; } catch { /* Keep an unreadable draft in storage. */ }
-  const setStartInputs = (patch: Partial<typeof startInputs>) => startImproveDraft.setValue(JSON.stringify({ ...startInputs, ...patch }));
+  // /vibe-evals?start=improve&source=local-report opens the Local report source until the user picks another.
+  // The link owns this choice, not the stored draft: the draft changes owner when a guest signs in.
+  const localReportLink = startDoor === "improve" && new URLSearchParams(navigation.search).get("source") === "local-report";
+  const [localReportLeft, setLocalReportLeft] = useState(false);
+  if (localReportLink && !localReportLeft) startInputs = { ...startInputs, mode: "report" };
+  const setStartInputs = (patch: Partial<typeof startInputs>) => {
+    if (patch.mode) setLocalReportLeft(patch.mode !== "report");
+    startImproveDraft.setValue(JSON.stringify({ ...startInputs, ...patch }));
+  };
   const pendingStartProject = `start:${authUserID || "guest"}:${startDoor === "build" ? "build" : "test"}`;
   const pendingStartPrefix = editorDraftKey(pendingStartProject, "start", startDoor === "build" ? "pending-brief:" : "pending-inputs:");
   const pendingStartRows = Object.entries(browserReady ? (draftMemory.get(pendingStartProject) || readBuildDrafts(pendingStartProject))?.editors || {} : {}).filter(([key, row]) => key.startsWith(pendingStartPrefix) && row.artifact === "start");
@@ -662,9 +670,18 @@ export function useVibeWorkspace() {
   async function startProject(door: "build" | "test", first: StartInput): Promise<void> {
     const existing = session && !newEvaluation && session.id === requestedSessionID && session.document.evaluation?.door === door && !session.document.messages.length && !session.document.artifacts.length && !session.operations.length && !session.document.build ? session : undefined;
     if (starting.current || pending || !config || requestedSessionID && !existing) return;
-    if (first.kind !== "pack" && !(first.kind === "replies" ? first.conversations.trim() && first.rules.trim() : first.text.trim())) return;
+    // A local report start reads the whole file before any project exists.
+    let localReport: ReturnType<typeof reportToTestPack> | undefined;
+    const reportSource = first.kind === "report" ? first.source : "";
+    if (first.kind === "report") {
+      if (!authUserID || !workspace) { setStartError("Sign in and choose a workspace to keep a local report."); return; }
+      if (!supportsRefundV2(config)) { setStartError("This server does not accept refund report v2 yet. Nothing was saved."); return; }
+      if (new TextEncoder().encode(first.source).length > 1024 * 1024) { setStartError("Report files must be at most 1 MiB."); return; }
+      try { localReport = reportToTestPack(first.source); } catch (e) { setStartError(e instanceof SyntaxError ? "This file is not valid JSON. Choose the results.json that the local runner wrote." : (e as Error).message); return; }
+    }
+    if (first.kind !== "pack" && first.kind !== "report" && !(first.kind === "replies" ? first.conversations.trim() && first.rules.trim() : first.text.trim())) return;
     const instructionsPrefix = "Write three tests for these instructions.\n\nAgent instructions to test:\n";
-    const content = first.kind === "pack" || first.kind === "replies" ? "" : first.kind === "instructions" ? instructionsPrefix + first.text : first.text;
+    const content = first.kind === "pack" || first.kind === "report" || first.kind === "replies" ? "" : first.kind === "instructions" ? instructionsPrefix + first.text : first.text;
     if (new TextEncoder().encode(content).length > messageLimit) {
       const prefixBytes = new TextEncoder().encode(instructionsPrefix).length;
       setStartError(first.kind === "instructions" ? `Agent instructions can use up to ${Math.max(0, messageLimit - prefixBytes).toLocaleString()} UTF-8 bytes. The test request uses ${prefixBytes} of the ${messageLimit.toLocaleString()} byte limit.` : `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.`);
@@ -678,7 +695,7 @@ export function useVibeWorkspace() {
     const startComposerVersion = composerEdits.current;
     const id = existing?.id || crypto.randomUUID();
     const clientID = crypto.randomUUID();
-    const rawTitle = first.kind === "pack" ? first.file.name.replace(/\.[^.]+$/, "") : first.kind === "replies" ? "Recorded replies" : first.text.trim().split(/(?<=[.!?])\s|\n/)[0];
+    const rawTitle = first.kind === "pack" ? first.file.name.replace(/\.[^.]+$/, "") : first.kind === "report" ? localReport!.title : first.kind === "replies" ? "Recorded replies" : first.text.trim().split(/(?<=[.!?])\s|\n/)[0];
     const title = Array.from(rawTitle.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").trim()).slice(0, 60).join("");
     const requestModels = { ...models, ...(first.kind === "instructions" && first.model ? { target: first.model } : {}) };
     starting.current = true; setPending(true); setStartError("");
@@ -687,6 +704,8 @@ export function useVibeWorkspace() {
     let intakeUncertain = false;
     let firstRequest: PendingSubmission | undefined;
     let createdRevision: number | undefined;
+    let importedReport: SDKReport | undefined;
+    let reportError = "";
     try {
       auth = await token();
       if (!ownsScope(scope)) return;
@@ -696,12 +715,14 @@ export function useVibeWorkspace() {
       let next = await vibeFetch<Session>(`/sessions/${id}`, auth);
       createdRevision = next.revision;
       if (!ownsScope(scope)) throw Error("The active account or project changed.");
-      if (first.kind === "pack" || first.kind === "replies") {
+      if (first.kind === "pack" || first.kind === "report" || first.kind === "replies") {
         const before = new Set(next.document.artifacts.map(artifact => artifact.id));
         const beforeEvidence = new Set(next.document.evidence_sets?.map(evidence => evidence.id));
         const expectations = first.kind === "replies" ? first.rules.split("\n").map(line => line.trim()).filter(Boolean).map((statement, index) => ({ id: `rule-${index + 1}`, statement })) : [];
         try {
-          if (first.kind === "pack") {
+          if (first.kind === "report") {
+            next = await vibeFetch<Session>(`/sessions/${id}/import`, auth, { method: "POST", headers: { "Content-Type": "application/json", "If-Match": String(next.revision), "X-File-Name": encodeURIComponent("local-report-tests.json") }, body: JSON.stringify(localReport!.pack) });
+          } else if (first.kind === "pack") {
             next = await vibeFetch<Session>(`/sessions/${id}/import`, auth, { method: "POST", headers: { "Content-Type": first.file.name.endsWith(".json") ? "application/json" : "application/yaml", "If-Match": String(next.revision), "X-File-Name": encodeURIComponent(first.file.name) }, body: new Blob([first.file]) });
           } else {
             next = await vibeFetch<Session>(`/sessions/${id}/evidence`, auth, { method: "POST", body: JSON.stringify({ client_id: clientID, revision: next.revision, label: "Recorded replies", content: first.conversations, expectations }) });
@@ -722,6 +743,27 @@ export function useVibeWorkspace() {
           intakeUncertain = !committed;
           if (intakeUncertain) recoveries.current.set(recoveryKey({ actor: scope.actor, sessionID: id }), { submission: { current: null }, sending: { current: false }, retry: { current: undefined }, error: "Couldn’t confirm the saved input. Reload this project to check before trying again." });
         }
+        // The tests exist now. A report that fails here stays outside the project,
+        // and the project's own importer can attach the same file later.
+        const reportArtifact = first.kind === "report" && !intakeUncertain ? next.document.artifacts.find(artifact => !before.has(artifact.id)) : undefined;
+        if (first.kind === "report" && !reportArtifact) reportError = "The tests were saved, but the report was not imported.";
+        if (reportArtifact) {
+          admitted = true;
+          try {
+            const tuples = (await loadArtifactCaseMapping(id, reportArtifact.id, auth)).flatMap(row => row.cases).map(tuple => [JSON.stringify(tuple), tuple] as [string, typeof tuple]);
+            const cases = localReport!.caseIDs.map(source_case_id => {
+              const tuple = tuples.find(([key]) => key === exactCaseTarget(source_case_id, tuples))?.[1];
+              if (!tuple) throw Error(`Test ${source_case_id} has no exact match.`);
+              return { source_case_id, ...tuple };
+            });
+            const body: SDKReportImport = { envelope_version: 1, source_kind: "eval_report", source_schema_version: 2, source_json: reportSource, metadata: { artifact_id: reportArtifact.id, application_revision: localReport!.targetRevision, fingerprints: { ...unknownFingerprints(), test: localReport!.suiteDigest }, capture_scope: unknownCapture(), cases } };
+            const accepted = await vibeFetch<SDKReport>(reportBase(id), auth, { method: "POST", body: JSON.stringify(body) });
+            if (accepted.source_schema_version !== 2 || accepted.binding.session_id !== id || accepted.binding.artifact_id !== reportArtifact.id || accepted.binding.result_ref.kind !== "sdk_report" || accepted.binding.result_ref.id !== accepted.id) throw Error("The server returned a different report identity.");
+            importedReport = accepted;
+          } catch (e) { reportError = `The tests were saved, but the report was not imported: ${(e as Error).message}`; }
+        }
+        // Keyed to the new project like an uncertain intake, so the notice survives the switch to it.
+        if (reportError) recoveries.current.set(recoveryKey({ actor: scope.actor, sessionID: id }), { submission: { current: null }, sending: { current: false }, retry: { current: undefined }, error: `${reportError} Open “Import SDK report” in Results to try the same file again.` });
       } else {
         let quote: BuildQuote | undefined;
         if (first.kind === "build") {
@@ -757,11 +799,15 @@ export function useVibeWorkspace() {
       if (!ownsScope(scope)) return;
       const url = new URL(`/vibe-evals?session=${id}${workspace ? `&workspace=${encodeURIComponent(workspace)}` : ""}`, window.location.origin);
       if (first.kind === "pack" || first.kind === "replies") { url.searchParams.set("view", "tests"); const artifact = next.document.artifacts.at(-1); if (artifact) url.searchParams.set("agent", artifact.id); }
+      if (first.kind === "report") { url.searchParams.set("view", "results"); const artifact = next.document.artifacts.at(-1); if (artifact) url.searchParams.set("agent", artifact.id); if (importedReport) url.searchParams.set("run", formatResultSelection(importedReport.binding.result_ref)); }
       startFocus.current = id;
       navigation.writeURL(url, "push");
       adoptContext(next);
       // adoptContext restores remembered views; first intake always lands on its tests.
       if (first.kind === "pack" || first.kind === "replies") navigation.update({ view: "tests", artifact: next.document.artifacts.at(-1)?.id || null }, "replace");
+      if (first.kind === "report") {
+        navigation.update({ view: "results", artifact: next.document.artifacts.at(-1)?.id || null, ...(importedReport ? { run: formatResultSelection(importedReport.binding.result_ref) } : {}) }, "replace");
+      }
       setContexts(old => [next, ...old.filter(row => row.id !== id)]);
       if (!firstRequest?.uncertain && !intakeUncertain) {
         if (firstRequest) {

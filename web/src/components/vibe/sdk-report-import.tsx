@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { vibeFetch, type VibeConfig } from "@/lib/vibe";
-import { loadArtifactCaseMapping, reportBase, reportSourceCases, refundReportPreview, supportsRefundV2, unknownCapture, unknownFingerprints, type ArtifactCaseMapping, type SDKReport, type SDKReportImport } from "@/lib/vibe-reports";
+import { exactCaseTarget, loadArtifactCaseMapping, reportBase, reportSourceCases, refundReportPreview, supportsRefundV2, unknownCapture, unknownFingerprints, type ArtifactCaseMapping, type SDKReport, type SDKReportImport } from "@/lib/vibe-reports";
 import type { ProjectResultBinding } from "@/lib/vibe-result-evidence";
 import type { WorkspaceEvidenceAccess } from "@/lib/use-vibe-workspace-access";
 import { useVibeEvidenceOwner } from "@/lib/use-vibe-evidence-owner";
@@ -24,7 +24,7 @@ function SDKImportFields({ sessionId, workspaceId, artifactId, actorScope, acces
   const [v2Available, setV2Available] = useState(false);
   const [safePreview, setSafePreview] = useState<ReturnType<typeof refundReportPreview>>();
   const [source, setSource] = useState("");
-  const [cases, setCases] = useState<{ id: string; label: string; target: string }[]>();
+  const [cases, setCases] = useState<{ id: string; label: string; target?: string }[]>();
   const [mapping, setMapping] = useState<ArtifactCaseMapping[]>();
   const [mappingAttempt, setMappingAttempt] = useState(0);
   const [version, setVersion] = useState("");
@@ -58,9 +58,11 @@ function SDKImportFields({ sessionId, workspaceId, artifactId, actorScope, acces
   const tuples = Array.from(new Map((mapping || []).flatMap(r => r.cases).map(c => [JSON.stringify([c.input_set_key, c.challenge_key, c.case_key]), c])).entries());
   const published = (mapping || []).flatMap(r => r.published);
   const versions = Array.from(new Set(published.map(r => r.challenge_pack_version_id)));
+  // An untouched test takes the one test with an identical ID; any choice the user makes wins.
+  const targetOf = (c: { id: string; target?: string }) => c.target ?? (kind === "eval_report" ? exactCaseTarget(c.id, tuples) : "");
   const preview = (text: string, sourceKind = kind, selectedVersion = sourceVersion) => {
     fileRead.current++; setSource(text); setCases(undefined); setSafePreview(undefined); setNotice("");
-    try { if (new TextEncoder().encode(text).length > 1024 * 1024) throw Error("Report files must be at most 1 MiB."); if (selectedVersion === 2 && !v2Available) throw Error("This server does not advertise refund report v2 saving."); setCases(reportSourceCases(text, sourceKind, selectedVersion).map(c => ({ ...c, target: "" }))); if (selectedVersion === 2) setSafePreview(refundReportPreview(text)); setError(""); }
+    try { if (new TextEncoder().encode(text).length > 1024 * 1024) throw Error("Report files must be at most 1 MiB."); if (selectedVersion === 2 && !v2Available) throw Error("This server does not advertise refund report v2 saving."); setCases(reportSourceCases(text, sourceKind, selectedVersion)); if (selectedVersion === 2) setSafePreview(refundReportPreview(text)); setError(""); }
     catch (e) { setCases(undefined); setSafePreview(undefined); setError((e as Error).message); }
   };
   return <section aria-label="Import SDK report" className="space-y-4">
@@ -72,7 +74,7 @@ function SDKImportFields({ sessionId, workspaceId, artifactId, actorScope, acces
       let body = request;
       if (!body) {
         const bindings = cases.map(c => {
-          const tuple = tuples.find(([key]) => key === c.target)?.[1];
+          const tuple = tuples.find(([key]) => key === targetOf(c))?.[1];
           if (!tuple || !c.id.trim()) throw Error("Map every source test explicitly.");
           const ids = Array.from(new Set(published.filter(p => p.challenge_pack_version_id === version && p.case_key === tuple.case_key && p.challenge_key === tuple.challenge_key && p.input_set_key === tuple.input_set_key).map(p => p.published_case_id)));
           return { source_case_id: c.id, ...tuple, ...(version && ids.length === 1 ? { published_case_id: ids[0] } : {}) };
@@ -110,9 +112,10 @@ function SDKImportFields({ sessionId, workspaceId, artifactId, actorScope, acces
         {safePreview && <section aria-label="Refund v2 safe preview"><h4>Uploader-supplied refund evidence</h4><p>Cost, capture completeness and production model identity remain unknown. This preview omits raw prompts, replies and tool arguments. Saving retains the complete original file.</p><pre className="whitespace-pre-wrap break-words">{JSON.stringify(safePreview, null, 2)}</pre></section>}
         {cases && <fieldset><legend>Bind each source test to this test version</legend>
           {cases.length === 0 && <p>This report has no tests. Its diagnostic summary will be retained.</p>}
+          {cases.some(c => c.target === undefined && targetOf(c)) && <p>A test with exactly the same ID is selected for you. Check each selection before you import.</p>}
           {cases.map((c, index) => <div key={index} className="space-y-2">
             {kind === "agent_result" ? <label>Source test ID<input aria-label="Standalone source test ID" value={c.id} onChange={e => setCases(old => old?.map((item, i) => i === index ? { ...item, id: e.target.value } : item))} /></label> : <p>{c.label}</p>}
-            <label>Test<select aria-label={`Test for ${c.label}`} value={c.target} onChange={e => setCases(old => old?.map((item, i) => i === index ? { ...item, target: e.target.value } : item))}>
+            <label>Test<select aria-label={`Test for ${c.label}`} value={targetOf(c)} onChange={e => setCases(old => old?.map((item, i) => i === index ? { ...item, target: e.target.value } : item))}>
               <option value="">Choose the exact test</option>{tuples.map(([key, tuple]) => <option key={key} value={key}>{[tuple.input_set_key, tuple.challenge_key, tuple.case_key].filter(Boolean).join(" / ")}</option>)}
             </select></label>
           </div>)}
@@ -125,7 +128,7 @@ function SDKImportFields({ sessionId, workspaceId, artifactId, actorScope, acces
         </details>
       </fieldset>
       {!mapping && <VibeButton disabled={busy} onClick={() => { setError(""); setMapping(undefined); setMappingAttempt(n => n + 1); }}>Retry test mapping</VibeButton>}
-      <VibeButton type="submit" variant="primary" loading={busy} disabled={busy || sourceVersion === 2 && !v2Available || !mapping || !cases || cases.some(c => !c.id.trim() || !c.target)}>{request ? "Retry this report import" : "Import historical report"}</VibeButton>
+      <VibeButton type="submit" variant="primary" loading={busy} disabled={busy || sourceVersion === 2 && !v2Available || !mapping || !cases || cases.some(c => !c.id.trim() || !targetOf(c))}>{request ? "Retry this report import" : "Import historical report"}</VibeButton>
       {request && <p>The import is unconfirmed. Retry sends the same bytes and metadata. <VibeButton disabled={busy} onClick={() => { setRequest(undefined); setError(""); }}>Edit import metadata</VibeButton></p>}
     </form>
     {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
