@@ -1,7 +1,7 @@
 ---
 title: Use with AI Tools
-description: Feed AgentClash docs into ChatGPT, Codex, Claude Code, and similar tools using llms.txt and markdown exports, and install the AgentClash Agent Skills.
-dateModified: 2026-08-14
+description: Feed AgentClash docs into ChatGPT, Codex, Claude Code, and similar tools using llms.txt and markdown exports, and install the AgentClash plugin or CLI skills.
+dateModified: 2026-11-18
 ---
 
 Goal: give an assistant or coding agent enough AgentClash context to answer questions, draft workflows, or transform the docs into internal runbooks.
@@ -10,6 +10,20 @@ Prerequisites:
 
 - You can open or paste URLs into the assistant you are using.
 - You know whether you want the full docs bundle or just one page.
+
+## Install the AgentClash plugin
+
+For ChatGPT or Codex, find **AgentClash** in the [plugin directory](https://chatgpt.com/plugins?search=agentclash). In Claude Code 2.1.292 or later, run:
+
+```sh
+claude plugin install agentclash --marketplace agentclash/agentclash-claude-plugin
+```
+
+On earlier versions with marketplace support, run `claude plugin marketplace add agentclash/agentclash-claude-plugin`, then `claude plugin install agentclash@agentclash`.
+
+Start a new session and ask: “Help me turn a duplicate refund into a regression test.” Describe the failure with fictional IDs. The plugin can prepare and validate the tests for a Python callable with injected refund tools. Follow the local run instructions in your project to get a report, then share a sanitized copy for comparison. You can optionally sign in to save a supported complete report.
+
+For CLI workflows, see the [AgentClash Agent Skills](/docs/agent-skills).
 
 ## Pick the right docs export
 
