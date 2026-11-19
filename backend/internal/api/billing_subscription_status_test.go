@@ -93,10 +93,10 @@ func TestBillingManagerWebhookWithoutEventTimeOrSubscriptionIDKeepsEntitlements(
 	manager, repo, secret := newSubscriptionStatusTestManager()
 	activateProSubscription(t, manager, repo, secret, "sub_no_id")
 
-	// A payment event with no time and no subscription ID has no row to order
+	// An event with no time and no subscription ID has no row to order
 	// against. It must not change the plan of the organization.
-	untimedFailure := `{"business_id":"biz_test","type":"payment.failed","data":{"payload_type":"Payment","payment_id":"pay_untimed","customer_id":"cus_status","status":"failed","metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
-	deliverSubscriptionStatusWebhook(t, manager, secret, "wh_untimed_payment_failed", untimedFailure)
+	untimedHold := `{"business_id":"biz_test","type":"subscription.on_hold","data":{"payload_type":"Subscription","customer_id":"cus_status","product_id":"agentclash_pro_monthly","status":"on_hold","quantity":5,"metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
+	deliverSubscriptionStatusWebhook(t, manager, secret, "wh_untimed_payment_failed", untimedHold)
 
 	if !repo.webhookIDs["wh_untimed_payment_failed"] {
 		t.Fatal("the event with no time was not stored")
@@ -138,5 +138,76 @@ func TestBillingManagerWebhookPaymentSucceededKeepsPaidPlan(t *testing.T) {
 	}
 	if repo.subscription.Status != "active" {
 		t.Fatalf("subscription status = %q, want active", repo.subscription.Status)
+	}
+}
+
+func TestBillingManagerWebhookPastDueKeepsPaidPlanUntilGraceEnds(t *testing.T) {
+	manager, repo, secret := newSubscriptionStatusTestManager()
+	activateProSubscription(t, manager, repo, secret, "sub_grace")
+	orgID := repo.orgID.String()
+
+	// A renewal failed. Dodo starts the grace period: the customer keeps
+	// access until past_due_ends_at.
+	pastDue := `{"business_id":"biz_test","type":"subscription.past_due","timestamp":"2026-04-28T23:00:00Z","data":{"payload_type":"Subscription","subscription_id":"sub_grace","customer_id":"cus_status","product_id":"agentclash_pro_monthly","status":"past_due","quantity":5,"next_billing_date":"2026-04-28T00:00:00Z","cancel_at_next_billing_date":true,"past_due_ends_at":"2026-05-05T00:00:00Z","metadata":{"organization_id":"` + orgID + `"}}}`
+	deliverSubscriptionStatusWebhook(t, manager, secret, "wh_grace_past_due", pastDue)
+
+	if repo.subscription.Status != "past_due" {
+		t.Fatalf("subscription status = %q, want past_due", repo.subscription.Status)
+	}
+	if repo.entitlements.PlanKey != billingpkg.PlanPro || repo.entitlements.Status != billingpkg.EntitlementStatusActive {
+		t.Fatalf("entitlements in the grace period = %s/%s, want pro/active", repo.entitlements.PlanKey, repo.entitlements.Status)
+	}
+	graceEnd := time.Date(2026, 5, 5, 0, 0, 0, 0, time.UTC)
+	if repo.entitlements.ExpiresAt == nil || !repo.entitlements.ExpiresAt.Equal(graceEnd) {
+		t.Fatalf("entitlements expire at %v, want the end of the grace period %v", repo.entitlements.ExpiresAt, graceEnd)
+	}
+
+	// The grace period ends with no payment. Dodo moves the subscription to
+	// on_hold, and the paid plan stays, but inactive.
+	onHold := `{"business_id":"biz_test","type":"subscription.on_hold","timestamp":"2026-04-28T23:30:00Z","data":{"payload_type":"Subscription","subscription_id":"sub_grace","customer_id":"cus_status","product_id":"agentclash_pro_monthly","status":"on_hold","quantity":5,"metadata":{"organization_id":"` + orgID + `"}}}`
+	deliverSubscriptionStatusWebhook(t, manager, secret, "wh_grace_on_hold", onHold)
+
+	if repo.entitlements.PlanKey != billingpkg.PlanPro || repo.entitlements.Status != billingpkg.EntitlementStatusInactive {
+		t.Fatalf("entitlements after the grace period = %s/%s, want pro/inactive", repo.entitlements.PlanKey, repo.entitlements.Status)
+	}
+}
+
+func TestBillingManagerWebhookFailedPaymentKeepsSubscriptionState(t *testing.T) {
+	manager, repo, secret := newSubscriptionStatusTestManager()
+	activateProSubscription(t, manager, repo, secret, "sub_card")
+
+	// A failed charge does not end the subscription. Dodo sends a
+	// subscription event (past_due, on_hold) when the state changes.
+	failed := `{"business_id":"biz_test","type":"payment.failed","timestamp":"2026-04-28T23:00:00Z","data":{"payload_type":"Payment","payment_id":"pay_declined","subscription_id":"sub_card","customer_id":"cus_status","status":"failed","total_amount":2900,"currency":"USD","metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
+	deliverSubscriptionStatusWebhook(t, manager, secret, "wh_card_failed", failed)
+
+	if !repo.webhookIDs["wh_card_failed"] {
+		t.Fatal("the payment.failed event was not stored")
+	}
+	if repo.subscription.Status != "active" {
+		t.Fatalf("subscription status = %q, want active", repo.subscription.Status)
+	}
+	if repo.entitlements.PlanKey != billingpkg.PlanPro || repo.entitlements.Status != billingpkg.EntitlementStatusActive {
+		t.Fatalf("entitlements = %s/%s, want pro/active", repo.entitlements.PlanKey, repo.entitlements.Status)
+	}
+}
+
+func TestBillingManagerWebhookDunningStartedKeepsSubscriptionState(t *testing.T) {
+	manager, repo, secret := newSubscriptionStatusTestManager()
+	activateProSubscription(t, manager, repo, secret, "sub_dunning")
+
+	// The Dodo dunning payload has the status of the dunning run
+	// ("recovering"), not a subscription status.
+	started := `{"business_id":"biz_test","type":"dunning.started","timestamp":"2026-04-28T23:00:00Z","data":{"brand_id":"brand_test","created_at":"2026-04-28T23:00:00Z","customer_id":"cus_status","status":"recovering","subscription_id":"sub_dunning","trigger_state":"past_due","metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
+	deliverSubscriptionStatusWebhook(t, manager, secret, "wh_dunning_started", started)
+
+	if !repo.webhookIDs["wh_dunning_started"] {
+		t.Fatal("the dunning.started event was not stored")
+	}
+	if repo.subscription.Status != "active" {
+		t.Fatalf("subscription status = %q, want active", repo.subscription.Status)
+	}
+	if repo.entitlements.PlanKey != billingpkg.PlanPro || repo.entitlements.Status != billingpkg.EntitlementStatusActive {
+		t.Fatalf("entitlements = %s/%s, want pro/active", repo.entitlements.PlanKey, repo.entitlements.Status)
 	}
 }

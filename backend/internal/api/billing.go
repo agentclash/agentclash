@@ -442,7 +442,7 @@ func (m *BillingManager) ProcessDodoWebhook(ctx context.Context, headers DodoWeb
 	}
 
 	var duplicate bool
-	if strings.HasPrefix(envelope.Type, "subscription.") || envelope.Type == "payment.succeeded" || envelope.Type == "payment.failed" || strings.HasPrefix(envelope.Type, "dunning.") {
+	if billingpkg.DodoEventChangesSubscription(envelope.Type) {
 		duplicate, err = m.applySubscriptionWebhook(ctx, eventInput, envelope)
 	} else {
 		duplicate, err = m.repo.ApplyBillingWebhookEvent(ctx, eventInput, repository.BillingWebhookApplication{})
@@ -542,9 +542,16 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 		if err := billingpkg.ValidateSeatQuantity(plan, seatQuantity); err != nil {
 			return false, err
 		}
-		entitlements = billingpkg.MaterializeEntitlements(plan, mapping.BillingPeriod, seatQuantity, entitlementStatusForDodoStatus(status))
+		entitlements = billingpkg.MaterializeEntitlements(plan, mapping.BillingPeriod, seatQuantity, status.EntitlementStatus())
 		useSubscriptionAsSource = true
-		if shouldExpireMaterializedEntitlement(status, subscriptionInput.CancelAtNextBillingDate, subscriptionInput.ExpiresAt) {
+		if status == billingpkg.SubscriptionStatusPastDue {
+			// The grace period: the paid plan stays active until Dodo ends the
+			// grace period. If the on_hold or cancelled event does not come,
+			// the plan expires at past_due_ends_at.
+			graceEndsAt := envelope.DataTime("past_due_ends_at")
+			entitlementExpiresAt = graceEndsAt
+			entitlements.ExpiresAt = graceEndsAt
+		} else if shouldExpireMaterializedEntitlement(status, subscriptionInput.CancelAtNextBillingDate, subscriptionInput.ExpiresAt) {
 			entitlementExpiresAt = subscriptionInput.ExpiresAt
 			entitlements.ExpiresAt = subscriptionInput.ExpiresAt
 		}
@@ -621,13 +628,6 @@ func shouldExpireMaterializedEntitlement(status billingpkg.SubscriptionStatus, c
 // subscription that can come back after a payment.
 func shouldRetainPaidPlanInactive(status billingpkg.SubscriptionStatus) bool {
 	return status == billingpkg.SubscriptionStatusOnHold || status == billingpkg.SubscriptionStatusFailed
-}
-
-func entitlementStatusForDodoStatus(status billingpkg.SubscriptionStatus) string {
-	if status == billingpkg.SubscriptionStatusTrialing {
-		return billingpkg.EntitlementStatusTrialing
-	}
-	return billingpkg.EntitlementStatusActive
 }
 
 func (m *BillingManager) createDodoCheckoutSession(ctx context.Context, caller Caller, _ uuid.UUID, intentID uuid.UUID, plan billingpkg.Plan, input CreateBillingCheckoutInput, metadata json.RawMessage) (string, string, error) {

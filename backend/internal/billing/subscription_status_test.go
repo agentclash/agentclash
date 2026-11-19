@@ -29,9 +29,22 @@ func TestSubscriptionStatusesAreTheOwnerSet(t *testing.T) {
 
 func TestSubscriptionStatusEntitled(t *testing.T) {
 	for _, status := range SubscriptionStatuses() {
-		want := status == SubscriptionStatusActive || status == SubscriptionStatusTrialing
+		// past_due is the Dodo grace period: the customer keeps access.
+		want := status == SubscriptionStatusActive || status == SubscriptionStatusTrialing || status == SubscriptionStatusPastDue
 		if got := status.Entitled(); got != want {
 			t.Errorf("%q.Entitled() = %v, want %v", status, got, want)
+		}
+	}
+}
+
+func TestSubscriptionStatusEntitlementStatus(t *testing.T) {
+	for status, want := range map[SubscriptionStatus]string{
+		SubscriptionStatusActive:   EntitlementStatusActive,
+		SubscriptionStatusPastDue:  EntitlementStatusActive,
+		SubscriptionStatusTrialing: EntitlementStatusTrialing,
+	} {
+		if got := status.EntitlementStatus(); got != want {
+			t.Errorf("%q.EntitlementStatus() = %q, want %q", status, got, want)
 		}
 	}
 }
@@ -83,13 +96,12 @@ func TestDodoSubscriptionStatusFromEvent(t *testing.T) {
 		// Other payloads: the payload status is not a subscription status.
 		{"payment.succeeded", "Payment", "succeeded", SubscriptionStatusActive},
 		{"payment.succeeded", "Payment", "", SubscriptionStatusActive},
-		{"payment.failed", "Payment", "failed", SubscriptionStatusFailed},
-		{"payment.failed", "Payment", "requires_payment_method", SubscriptionStatusFailed},
-		{"dunning.succeeded", "", "succeeded", SubscriptionStatusActive},
+		{"dunning.recovered", "", "recovered", SubscriptionStatusActive},
 		{"dunning.recovered", "", "", SubscriptionStatusActive},
-		{"dunning.failed", "", "", SubscriptionStatusFailed},
-		{"dunning.exhausted", "", "cancelled", SubscriptionStatusFailed},
-		{"dunning.started", "", "active", SubscriptionStatusUnknown},
+		// These events do not change the subscription (see
+		// DodoEventChangesSubscription), so no status maps from them.
+		{"payment.failed", "Payment", "failed", SubscriptionStatusUnknown},
+		{"dunning.started", "", "recovering", SubscriptionStatusUnknown},
 		{"refund.succeeded", "Refund", "succeeded", SubscriptionStatusUnknown},
 	}
 	for _, tc := range cases {
@@ -100,13 +112,40 @@ func TestDodoSubscriptionStatusFromEvent(t *testing.T) {
 	}
 }
 
+func TestDodoEventChangesSubscription(t *testing.T) {
+	for eventType, want := range map[string]bool{
+		"subscription.active":    true,
+		"subscription.past_due":  true,
+		"subscription.on_hold":   true,
+		"subscription.paused":    true,
+		"subscription.unpaused":  true,
+		"payment.succeeded":      true,
+		"dunning.recovered":      true,
+		"payment.failed":         false,
+		"payment.processing":     false,
+		"dunning.started":        false,
+		"refund.succeeded":       false,
+		"invoice.payment_failed": false,
+	} {
+		if got := DodoEventChangesSubscription(eventType); got != want {
+			t.Errorf("DodoEventChangesSubscription(%q) = %v, want %v", eventType, got, want)
+		}
+	}
+}
+
 func TestDodoStatusIsEntitledUsesTheStatusSet(t *testing.T) {
 	for status, want := range map[string]bool{
 		"active":    true,
 		"trialing":  true,
 		"renewed":   true,
+		"past_due":  true,
 		"succeeded": false,
 		"on_hold":   false,
+		"paused":    false,
+		"failed":    false,
+		"cancelled": false,
+		"expired":   false,
+		"pending":   false,
 		"unknown":   false,
 	} {
 		if got := DodoStatusIsEntitled(status); got != want {
