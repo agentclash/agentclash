@@ -54,13 +54,16 @@ describe("first-touch attribution", () => {
   });
 });
 
-it.each(["claude", "codex"])("retains original %s channel across auth and later visits", (host) => {
+it.each(["claude", "codex", "chatgpt"])("retains original %s channel across auth and later visits", (host) => {
   window.localStorage.clear();
   window.history.replaceState({}, "", `/tryouts?utm_source=${host}`);
   recordFirstTouch();
   window.history.replaceState({}, "", "/auth/callback?utm_source=other");
   recordFirstTouch();
-  expect(attributionSetOnce().acquisition_channel).toBe(host);
+  expect(attributionSetOnce()).toMatchObject({
+    acquisition_channel: host,
+    acquisition_utm_source: host,
+  });
 });
 
 it("sanitizes tampered storage before identifying a person", () => {

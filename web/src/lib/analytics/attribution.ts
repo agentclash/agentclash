@@ -142,7 +142,8 @@ export function attributionSetOnce(): Record<string, string> {
   if (state.first_touch) {
     properties.acquisition_entry_path = state.first_touch.entry_path;
     const source = state.first_touch.utm?.utm_source;
-    properties.acquisition_channel = source === "claude" || source === "codex" ? source : "unknown";
+    properties.acquisition_channel =
+      source === "claude" || source === "codex" || source === "chatgpt" ? source : "unknown";
     if (state.first_touch.referrer_hostname) {
       properties.acquisition_referrer_hostname =
         state.first_touch.referrer_hostname;
