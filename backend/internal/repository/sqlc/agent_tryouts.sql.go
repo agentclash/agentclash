@@ -12,68 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const appendAgentTryoutTurn = `-- name: AppendAgentTryoutTurn :one
-WITH owned_tryout AS (
-    SELECT id FROM agent_tryouts
-    WHERE id = $1 AND workspace_id IS NULL
-      AND organization_id IS NULL AND claimed_by_user_id IS NULL
-      AND anonymous_owner_proof_hash = $4::text
-      AND expires_at > CURRENT_TIMESTAMP AND status IN ('queued', 'running')
-      -- The worker closes the intake when its turn loop ends. No session
-      -- would answer a later turn.
-      AND turns_closed_at IS NULL
-    FOR UPDATE
-), next_turn AS (
-    SELECT COALESCE(MAX(turn_index), -1) + 1 AS turn_index
-    FROM agent_tryout_turns
-    WHERE agent_tryout_id = $1
-)
-INSERT INTO agent_tryout_turns (
-    agent_tryout_id,
-    turn_index,
-    role,
-    message,
-    status
-)
-SELECT
-    $1,
-    next_turn.turn_index,
-    $2,
-    $3,
-    'pending'
-FROM next_turn, owned_tryout
-RETURNING id, agent_tryout_id, turn_index, role, message, status, created_at, processed_at, lease_until
-`
-
-type AppendAgentTryoutTurnParams struct {
-	AgentTryoutID  uuid.UUID
-	Role           string
-	Message        string
-	OwnerProofHash string
-}
-
-func (q *Queries) AppendAgentTryoutTurn(ctx context.Context, arg AppendAgentTryoutTurnParams) (AgentTryoutTurn, error) {
-	row := q.db.QueryRow(ctx, appendAgentTryoutTurn,
-		arg.AgentTryoutID,
-		arg.Role,
-		arg.Message,
-		arg.OwnerProofHash,
-	)
-	var i AgentTryoutTurn
-	err := row.Scan(
-		&i.ID,
-		&i.AgentTryoutID,
-		&i.TurnIndex,
-		&i.Role,
-		&i.Message,
-		&i.Status,
-		&i.CreatedAt,
-		&i.ProcessedAt,
-		&i.LeaseUntil,
-	)
-	return i, err
-}
-
 const claimAgentTryout = `-- name: ClaimAgentTryout :one
 UPDATE agent_tryouts
 SET
@@ -537,6 +475,53 @@ func (q *Queries) GetClaimedAgentTryoutRetry(ctx context.Context, arg GetClaimed
 	return i, err
 }
 
+const insertAgentTryoutTurn = `-- name: InsertAgentTryoutTurn :one
+INSERT INTO agent_tryout_turns (
+    agent_tryout_id,
+    turn_index,
+    role,
+    message,
+    status
+)
+SELECT
+    $1,
+    COALESCE(MAX(turn_index), -1) + 1,
+    $2,
+    $3,
+    'pending'
+FROM agent_tryout_turns
+WHERE agent_tryout_id = $1
+RETURNING id, agent_tryout_id, turn_index, role, message, status, created_at, processed_at, lease_until
+`
+
+type InsertAgentTryoutTurnParams struct {
+	AgentTryoutID uuid.UUID
+	Role          string
+	Message       string
+}
+
+// Run this only in a transaction that holds the lock of
+// LockAppendableAgentTryout. This statement starts after the lock, so its
+// snapshot shows each turn of an earlier append, and MAX gives a free index.
+// In one statement with the lock, MAX would use the snapshot from before the
+// lock wait, and two appends would get the same index.
+func (q *Queries) InsertAgentTryoutTurn(ctx context.Context, arg InsertAgentTryoutTurnParams) (AgentTryoutTurn, error) {
+	row := q.db.QueryRow(ctx, insertAgentTryoutTurn, arg.AgentTryoutID, arg.Role, arg.Message)
+	var i AgentTryoutTurn
+	err := row.Scan(
+		&i.ID,
+		&i.AgentTryoutID,
+		&i.TurnIndex,
+		&i.Role,
+		&i.Message,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ProcessedAt,
+		&i.LeaseUntil,
+	)
+	return i, err
+}
+
 const listAgentTryoutEventsAfter = `-- name: ListAgentTryoutEventsAfter :many
 SELECT id, agent_tryout_id, sequence_number, event_type, actor_type, occurred_at, payload
 FROM agent_tryout_events
@@ -641,6 +626,32 @@ func (q *Queries) ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAge
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockAppendableAgentTryout = `-- name: LockAppendableAgentTryout :one
+SELECT id FROM agent_tryouts
+WHERE id = $1 AND workspace_id IS NULL
+  AND organization_id IS NULL AND claimed_by_user_id IS NULL
+  AND anonymous_owner_proof_hash = $2::text
+  AND expires_at > CURRENT_TIMESTAMP AND status IN ('queued', 'running')
+  -- The worker closes the intake when its turn loop ends. No session
+  -- would answer a later turn.
+  AND turns_closed_at IS NULL
+FOR UPDATE
+`
+
+type LockAppendableAgentTryoutParams struct {
+	AgentTryoutID  uuid.UUID
+	OwnerProofHash string
+}
+
+// Locks an anonymous tryout that accepts a new turn. Run it first in the
+// append transaction, then run InsertAgentTryoutTurn as a second statement.
+func (q *Queries) LockAppendableAgentTryout(ctx context.Context, arg LockAppendableAgentTryoutParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockAppendableAgentTryout, arg.AgentTryoutID, arg.OwnerProofHash)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const markAgentTryoutTurnProcessed = `-- name: MarkAgentTryoutTurnProcessed :execrows

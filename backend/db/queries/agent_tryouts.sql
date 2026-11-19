@@ -141,22 +141,25 @@ WHERE agent_tryout_id = @agent_tryout_id
 ORDER BY id ASC
 LIMIT @limit_count;
 
--- name: AppendAgentTryoutTurn :one
-WITH owned_tryout AS (
-    SELECT id FROM agent_tryouts
-    WHERE id = @agent_tryout_id AND workspace_id IS NULL
-      AND organization_id IS NULL AND claimed_by_user_id IS NULL
-      AND anonymous_owner_proof_hash = @owner_proof_hash::text
-      AND expires_at > CURRENT_TIMESTAMP AND status IN ('queued', 'running')
-      -- The worker closes the intake when its turn loop ends. No session
-      -- would answer a later turn.
-      AND turns_closed_at IS NULL
-    FOR UPDATE
-), next_turn AS (
-    SELECT COALESCE(MAX(turn_index), -1) + 1 AS turn_index
-    FROM agent_tryout_turns
-    WHERE agent_tryout_id = @agent_tryout_id
-)
+-- name: LockAppendableAgentTryout :one
+-- Locks an anonymous tryout that accepts a new turn. Run it first in the
+-- append transaction, then run InsertAgentTryoutTurn as a second statement.
+SELECT id FROM agent_tryouts
+WHERE id = @agent_tryout_id AND workspace_id IS NULL
+  AND organization_id IS NULL AND claimed_by_user_id IS NULL
+  AND anonymous_owner_proof_hash = @owner_proof_hash::text
+  AND expires_at > CURRENT_TIMESTAMP AND status IN ('queued', 'running')
+  -- The worker closes the intake when its turn loop ends. No session
+  -- would answer a later turn.
+  AND turns_closed_at IS NULL
+FOR UPDATE;
+
+-- name: InsertAgentTryoutTurn :one
+-- Run this only in a transaction that holds the lock of
+-- LockAppendableAgentTryout. This statement starts after the lock, so its
+-- snapshot shows each turn of an earlier append, and MAX gives a free index.
+-- In one statement with the lock, MAX would use the snapshot from before the
+-- lock wait, and two appends would get the same index.
 INSERT INTO agent_tryout_turns (
     agent_tryout_id,
     turn_index,
@@ -166,11 +169,12 @@ INSERT INTO agent_tryout_turns (
 )
 SELECT
     @agent_tryout_id,
-    next_turn.turn_index,
+    COALESCE(MAX(turn_index), -1) + 1,
     @role,
     @message,
     'pending'
-FROM next_turn, owned_tryout
+FROM agent_tryout_turns
+WHERE agent_tryout_id = @agent_tryout_id
 RETURNING *;
 
 -- name: ClaimNextPendingAgentTryoutTurn :one

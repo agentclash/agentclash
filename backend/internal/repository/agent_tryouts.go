@@ -841,22 +841,45 @@ func mapAgentTryoutEvent(row repositorysqlc.AgentTryoutEvent) (AgentTryoutEvent,
 	}, nil
 }
 
+// AppendAgentTryoutTurn adds a pending turn to an anonymous tryout that
+// accepts turns. It locks the tryout row in one statement and reads the next
+// turn index in a second statement. With READ COMMITTED, the second statement
+// takes a new snapshot after the lock, so it sees each append that committed
+// while this append waited. One statement would read the index from its old
+// snapshot, and two appends at the same time would get the same index
+// (issue 1402).
 func (r *Repository) AppendAgentTryoutTurn(ctx context.Context, params AppendAgentTryoutTurnParams) (AgentTryoutTurn, error) {
 	role := strings.TrimSpace(params.Role)
 	if role == "" {
 		role = "user"
 	}
-	row, err := r.queries.AppendAgentTryoutTurn(ctx, repositorysqlc.AppendAgentTryoutTurnParams{
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return AgentTryoutTurn{}, fmt.Errorf("begin append agent tryout turn: %w", err)
+	}
+	defer rollback(ctx, tx)
+	queries := r.queries.WithTx(tx)
+
+	if _, err := queries.LockAppendableAgentTryout(ctx, repositorysqlc.LockAppendableAgentTryoutParams{
 		AgentTryoutID:  params.AgentTryoutID,
 		OwnerProofHash: params.OwnerProofHash,
-		Role:           role,
-		Message:        params.Message,
-	})
-	if err != nil {
+	}); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			rollback(ctx, tx)
 			return AgentTryoutTurn{}, r.classifyRefusedAgentTryoutTurn(ctx, params)
 		}
+		return AgentTryoutTurn{}, fmt.Errorf("lock agent tryout for turn: %w", err)
+	}
+	row, err := queries.InsertAgentTryoutTurn(ctx, repositorysqlc.InsertAgentTryoutTurnParams{
+		AgentTryoutID: params.AgentTryoutID,
+		Role:          role,
+		Message:       params.Message,
+	})
+	if err != nil {
 		return AgentTryoutTurn{}, fmt.Errorf("append agent tryout turn: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return AgentTryoutTurn{}, fmt.Errorf("commit append agent tryout turn: %w", err)
 	}
 	return mapAgentTryoutTurn(row), nil
 }
@@ -889,8 +912,9 @@ func (r *Repository) classifyRefusedAgentTryoutTurn(ctx context.Context, params 
 // time and drops nothing.
 //
 // The close UPDATE locks the tryout row. AppendAgentTryoutTurn locks the same
-// row, so an append either commits before the close gets the lock, or waits
-// and then fails its turns_closed_at guard. The drop runs as a second
+// row with LockAppendableAgentTryout and keeps the lock until it commits, so
+// an append either commits before the close gets the lock, or waits and then
+// fails its turns_closed_at guard. The drop runs as a second
 // statement, so its snapshot sees each append that committed first.
 func (r *Repository) CloseAgentTryoutTurnIntake(ctx context.Context, tryoutID uuid.UUID) (int, error) {
 	tx, err := r.db.Begin(ctx)
