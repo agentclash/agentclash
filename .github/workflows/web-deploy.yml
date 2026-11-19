@@ -1,0 +1,72 @@
+name: Web deploy
+
+# Deploys the web app (www.agentclash.dev) to Vercel production.
+#
+# The Vercel project has no Git connection. Vercel counts each deploy, also a
+# canceled one, toward the daily deploy limit of the team. A connected
+# repository made a canceled deploy for every PR push, and those deploys used
+# up the limit. This workflow deploys only main, and only when a web input
+# changes. See docs/deployment/web-vercel.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/web-deploy.yml"
+      # Keep the paths below the same as the paths of frontend.yml.
+      - "web/**"
+      # External inputs that generated docs and public content read at build time.
+      - "SECURITY.md"
+      - "backend/.env.example"
+      - "backend/internal/api/config.go"
+      - "backend/internal/worker/config.go"
+      - "try-cli/demos/**"
+      - "docs/api-server/openapi.yaml"
+      - "docs/schemas/**"
+      - "cli/**"
+      - "docs/marketing/**"
+      - "examples/challenge-packs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A deploy in progress always finishes. A newer pending run replaces an older
+# pending run, so a burst of merges makes one deploy of the newest commit.
+concurrency:
+  group: web-deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Vercel production
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: vercel-production
+      url: https://www.agentclash.dev
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 22
+      - name: Check the deploy secrets
+        run: |
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is missing from the vercel-production environment."
+              exit 1
+            fi
+          done
+      # Run from the repository root. Vercel applies the Root Directory of the
+      # project (web) and builds there, so the build can read the files
+      # outside web/. The token comes from VERCEL_TOKEN, never from an option.
+      - name: Deploy
+        run: npx --yes vercel@65.15.0 deploy --prod --yes

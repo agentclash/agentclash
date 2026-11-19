@@ -3,6 +3,7 @@ name: Frontend CI
 on:
   push:
     branches: [main]
+    # Keep these paths the same as the paths of web-deploy.yml.
     paths:
       - "web/**"
       - ".github/workflows/frontend.yml"
