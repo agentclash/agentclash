@@ -65,8 +65,21 @@ func (s SubscriptionStatus) Valid() bool {
 }
 
 // Entitled reports whether the status grants the paid plan.
+//
+// past_due is the grace period of Dodo: a renewal failed, and the customer
+// keeps access until past_due_ends_at. After that time, Dodo moves the
+// subscription to on_hold or cancelled.
 func (s SubscriptionStatus) Entitled() bool {
-	return s == SubscriptionStatusActive || s == SubscriptionStatusTrialing
+	return s == SubscriptionStatusActive || s == SubscriptionStatusTrialing || s == SubscriptionStatusPastDue
+}
+
+// EntitlementStatus returns the entitlement status for a status that grants
+// the paid plan.
+func (s SubscriptionStatus) EntitlementStatus() string {
+	if s == SubscriptionStatusTrialing {
+		return EntitlementStatusTrialing
+	}
+	return EntitlementStatusActive
 }
 
 // ParseDodoSubscriptionStatus maps a Dodo subscription status into the set.
@@ -81,6 +94,19 @@ func ParseDodoSubscriptionStatus(value string) SubscriptionStatus {
 		return status
 	}
 	return SubscriptionStatusUnknown
+}
+
+// DodoEventChangesSubscription reports whether a Dodo webhook event changes
+// the subscription and the entitlements.
+//
+// Dodo sends a subscription event for each change of the subscription state.
+// A payment.failed event does not change the state: after a failed renewal,
+// Dodo sends subscription.past_due or subscription.on_hold. A dunning.started
+// event also does not change the state. Its data.status is the status of the
+// dunning run ("recovering"), and Dodo sent the subscription event before it.
+func DodoEventChangesSubscription(eventType string) bool {
+	eventType = normalizeStatus(eventType)
+	return strings.HasPrefix(eventType, "subscription.") || eventType == "payment.succeeded" || eventType == "dunning.recovered"
 }
 
 // DodoSubscriptionStatusFromEvent returns the subscription status that a Dodo
@@ -101,9 +127,9 @@ func DodoSubscriptionStatusFromEvent(eventType string, payloadType string, paylo
 		return SubscriptionStatusActive
 	case "subscription.on_hold":
 		return SubscriptionStatusOnHold
-	case "payment.succeeded", "dunning.succeeded", "dunning.recovered":
+	case "payment.succeeded", "dunning.recovered":
 		return SubscriptionStatusActive
-	case "subscription.failed", "payment.failed", "dunning.failed", "dunning.exhausted":
+	case "subscription.failed":
 		return SubscriptionStatusFailed
 	case "subscription.cancelled":
 		return SubscriptionStatusCancelled

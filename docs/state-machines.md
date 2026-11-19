@@ -139,6 +139,14 @@ Facts that the tables do not show:
 - Only a subscription payload gives the subscription status. For a payment
   or dunning event, the event type gives the status. For example,
   `payment.succeeded` gives `active`.
+- `payment.failed` and `dunning.started` do not change the subscription or
+  the entitlements. The webhook stores them only. After a failed renewal,
+  Dodo sends `subscription.past_due` or `subscription.on_hold`
+  (`DodoEventChangesSubscription`).
+- `past_due` is the Dodo grace period. The paid plan stays active, and it
+  expires at `past_due_ends_at`. `on_hold` and `failed` keep the paid plan,
+  but inactive. `unknown` keeps the current plan (see below). Each other
+  status moves the organization to the free plan.
 - A Dodo status that is not in the set becomes `unknown`. The webhook logs a
   warning and keeps the current entitlements. `renewed` becomes `active`, and
   `canceled` becomes `cancelled`.
