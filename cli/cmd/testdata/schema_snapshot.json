@@ -525,6 +525,57 @@
       ]
     },
     {
+      "name": "arena",
+      "path": "agentclash arena",
+      "short": "Review arena tasks and submit votes",
+      "runnable": false,
+      "example": "  agentclash arena tasks",
+      "subcommands": [
+        {
+          "name": "tasks",
+          "path": "agentclash arena tasks",
+          "short": "List pending arena tasks",
+          "runnable": true,
+          "example": "  agentclash arena tasks"
+        },
+        {
+          "name": "vote",
+          "path": "agentclash arena vote",
+          "short": "Submit a vote for an arena task",
+          "runnable": true,
+          "args": [
+            {
+              "name": "task-id",
+              "required": true
+            }
+          ],
+          "example": "  agentclash arena vote \u003ctask-id\u003e --winner left --rubric-score recovery=4.5\n  agentclash arena vote \u003ctask-id\u003e --winner-run-agent \u003crun-agent-id\u003e",
+          "flags": [
+            {
+              "name": "rubric-score",
+              "usage": "Rubric score as key=value (repeat for each key)",
+              "type": "stringArray",
+              "default": "[]"
+            },
+            {
+              "name": "winner",
+              "usage": "Side of the winner (left or right)",
+              "type": "string",
+              "allowed_values": [
+                "left",
+                "right"
+              ]
+            },
+            {
+              "name": "winner-run-agent",
+              "usage": "Winner run agent UUID",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "artifact",
       "path": "agentclash artifact",
       "short": "Upload and download artifacts",
@@ -844,6 +895,61 @@
               ]
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "calibration",
+      "path": "agentclash calibration",
+      "short": "Manage calibration reviews",
+      "runnable": false,
+      "example": "  agentclash calibration list",
+      "subcommands": [
+        {
+          "name": "create",
+          "path": "agentclash calibration create",
+          "short": "Record a calibration review for a run agent turn",
+          "runnable": true,
+          "example": "  agentclash calibration create --run-agent \u003crun-agent-id\u003e --turn 0 --score 4.5\n  agentclash calibration create --run-agent \u003crun-agent-id\u003e --turn 1 --score 5 --rubric-key recovery --notes \"The agent resumed the task.\"",
+          "flags": [
+            {
+              "name": "notes",
+              "usage": "Notes for the review",
+              "type": "string"
+            },
+            {
+              "name": "rubric-key",
+              "usage": "Rubric key for the review",
+              "type": "string"
+            },
+            {
+              "name": "run-agent",
+              "usage": "Run agent UUID for the review",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "score",
+              "usage": "Calibration score from 1 to 5",
+              "type": "float64",
+              "default": "0",
+              "required": true
+            },
+            {
+              "name": "turn",
+              "usage": "Turn index (0 or more)",
+              "type": "int",
+              "default": "0",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "path": "agentclash calibration list",
+          "short": "List recent calibration reviews",
+          "runnable": true,
+          "example": "  agentclash calibration list\n  agentclash calibration list --json --query '.items[] | select(.run_agent_id == \"\u003crun-agent-id\u003e\")'"
         }
       ]
     },

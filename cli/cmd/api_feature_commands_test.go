@@ -21,9 +21,14 @@ var apiFeatureCommandPaths = []string{
 	"agentclash share create",
 	"agentclash share update",
 	"agentclash share revoke",
+	"agentclash calibration create",
+	"agentclash calibration list",
+	"agentclash arena tasks",
+	"agentclash arena vote",
 }
 
 func TestAPIFeatureCommandsHaveShortAndExample(t *testing.T) {
+	isolateCLIEnv(t)
 	for _, path := range apiFeatureCommandPaths {
 		t.Run(path, func(t *testing.T) {
 			args := strings.Fields(strings.TrimPrefix(path, "agentclash "))

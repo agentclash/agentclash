@@ -106,6 +106,13 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash run turn status");
     expect(doc?.content).toContain("agentclash run turn submit");
     expect(doc?.content).toContain("awaiting_human");
+    expect(doc?.content).toContain(
+      "agentclash calibration create --run-agent <RUN_AGENT_ID> --turn 0 --score 4.5",
+    );
+    expect(doc?.content).toContain("agentclash arena vote <TASK_ID> --winner left");
+    expect(doc?.content).toContain(
+      "If `calibration create` exits `75`, run `agentclash calibration list` before a retry.",
+    );
   });
 
   it("generates the dataset workflows skill", () => {
@@ -179,6 +186,14 @@ describe("agent skill docs", () => {
     expect(content).toContain(
       "`--yes` — Revoke the link with no confirmation prompt; necessary in non-interactive mode",
     );
+
+    expect(content).toContain("Record a calibration review for a run agent turn");
+    expect(content).toContain("`--run-agent` (required) — Run agent UUID for the review");
+    expect(content).toContain("`--turn` (required) — Turn index (0 or more)");
+    expect(content).toContain("`--score` (required) — Calibration score from 1 to 5");
+    expect(content).toContain("List recent calibration reviews");
+    expect(content).toContain("List pending arena tasks");
+    expect(content).toContain("Submit a vote for an arena task");
   });
 
   it("generates the security evaluation skill", () => {
