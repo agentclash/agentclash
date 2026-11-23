@@ -10,6 +10,7 @@ import (
 // Each one must declare its own --yes flag, because the helper reads it.
 var largeEffectCommandPaths = []string{
 	"agentclash workspace emergency-stop",
+	"agentclash share revoke",
 }
 
 func TestLargeEffectCommandsDeclareYesFlag(t *testing.T) {

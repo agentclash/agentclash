@@ -166,6 +166,19 @@ describe("agent skill docs", () => {
     expect(content).toContain(
       "`--status` (required) — New status of the finding: open, triaged or dismissed",
     );
+
+    // share links
+    expect(content).toContain(
+      "Make a public share link for a scorecard, replay, pack version, tryout or report",
+    );
+    expect(content).toContain(
+      "`--resource-type` (required) — Type of the resource to share: run_scorecard, run_agent_scorecard, run_agent_replay, challenge_pack_version, agent_tryout or report_snapshot",
+    );
+    expect(content).toContain("Turn search indexing of a share link on or off");
+    expect(content).toContain("Revoke a public share link");
+    expect(content).toContain(
+      "`--yes` — Revoke the link with no confirmation prompt; necessary in non-interactive mode",
+    );
   });
 
   it("generates the security evaluation skill", () => {
@@ -250,6 +263,8 @@ describe("agent skill docs", () => {
       "agentclash evalset finding list <EVAL_SET_ID> --severity high --status open --json",
     );
     expect(doc?.content).toContain("scan_already_running");
+    expect(doc?.content).toContain("agentclash share update <SHARE_ID> --search-indexing=false");
+    expect(doc?.content).toContain("Turn on `--search-indexing` only when the user asks.");
     expect(doc?.content).toContain("agentclash run scorecard <RUN_AGENT_ID> --json");
     expect(doc?.content).toContain("agentclash replay get <RUN_AGENT_ID> --limit 50 --json");
     expect(doc?.content).toContain("artifact list` is workspace-wide");
