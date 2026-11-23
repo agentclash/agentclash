@@ -539,6 +539,46 @@ func TestTryoutPromoteSendsBody(t *testing.T) {
 	}
 }
 
+func TestTryoutPromotePrintsDraftCompileHint(t *testing.T) {
+	isolateCLIEnv(t)
+	for _, tc := range []struct {
+		name, id, selectedWorkspace, want string
+		args                              []string
+	}{
+		{"same workspace", tryoutTestOtherID, tryoutTestWorkspace, tryoutTestOtherID, nil},
+		{"no workspace", tryoutTestOtherID, "", tryoutTestOtherID + " --workspace " + tryoutTestWorkspace, nil},
+		{"other workspace", tryoutTestOtherID, tryoutTestOtherID, tryoutTestOtherID + " --workspace " + tryoutTestWorkspace, nil},
+		{"workspace flag", tryoutTestOtherID, "", tryoutTestOtherID + " --workspace " + tryoutTestWorkspace, []string{"--workspace", tryoutTestWorkspace}},
+		{"upper case", strings.ToUpper(tryoutTestOtherID), strings.ToUpper(tryoutTestWorkspace), tryoutTestOtherID, nil},
+		{"line break", tryoutTestOtherID + "\nInjected", tryoutTestWorkspace, "", nil},
+		{"not a UUID", "draft; rm -rf ~", tryoutTestWorkspace, "", nil},
+		{"no draft", "", "", "", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("AGENTCLASH_WORKSPACE", tc.selectedWorkspace)
+			fixture := map[string]any{"target": "vibe_eval", "workspace_id": tryoutTestWorkspace}
+			if tc.id != "" {
+				fixture["draft_id"] = tc.id
+			}
+			url := tryoutTestAPI(t, 1, map[string]http.HandlerFunc{
+				"POST " + tryoutTestPublic + "/promote-to-eval": jsonHandler(http.StatusCreated, fixture),
+			})
+			stdout := captureStdout(t)
+			err := tryoutTestRun(t, url, append([]string{"promote", tryoutTestID}, tc.args...)...)
+			out := stdout.finish()
+			assertExitCode(t, err, 0)
+			const hint = "agentclash challenge-pack draft compile "
+			if tc.want == "" {
+				if strings.Contains(out, hint) {
+					t.Fatalf("stdout has a hint without a draft ID: %q", out)
+				}
+			} else if !strings.Contains(out, hint+tc.want+"\n") || strings.Contains(out, "\nInjected") {
+				t.Fatalf("stdout lacks a clean draft compile hint: %q", out)
+			}
+		})
+	}
+}
+
 func TestTryoutPromoteNotCompletedExits1(t *testing.T) {
 	isolateCLIEnv(t)
 	tryoutTestAPIError(t, "POST "+tryoutTestPublic+"/promote-to-eval", http.StatusConflict, "agent_tryout_not_promotable", 1, "promote", tryoutTestID)

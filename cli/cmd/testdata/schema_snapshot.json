@@ -989,6 +989,198 @@
           ]
         },
         {
+          "name": "draft",
+          "path": "agentclash challenge-pack draft",
+          "short": "Manage challenge pack drafts",
+          "runnable": false,
+          "example": "  agentclash challenge-pack draft list",
+          "subcommands": [
+            {
+              "name": "compile",
+              "path": "agentclash challenge-pack draft compile",
+              "short": "Compile and validate a challenge pack draft",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "draft-id",
+                  "required": true
+                }
+              ],
+              "example": "  agentclash challenge-pack draft compile \u003cdraft-id\u003e --yaml-out pack.yaml",
+              "flags": [
+                {
+                  "name": "yaml-out",
+                  "usage": "Path for the compiled YAML if the draft is valid",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "create",
+              "path": "agentclash challenge-pack draft create",
+              "short": "Create a challenge pack draft",
+              "runnable": true,
+              "example": "  agentclash challenge-pack draft create --name \"Support eval\" --composition-file composition.yaml\n  agentclash challenge-pack draft create --from-version \u003cversion-id\u003e",
+              "flags": [
+                {
+                  "name": "challenge-pack",
+                  "usage": "Existing challenge pack ID",
+                  "type": "string"
+                },
+                {
+                  "name": "composition-file",
+                  "usage": "Path to a JSON or YAML composition file",
+                  "type": "string"
+                },
+                {
+                  "name": "execution-mode",
+                  "usage": "Draft execution mode",
+                  "type": "string",
+                  "allowed_values": [
+                    "native",
+                    "prompt_eval",
+                    "responses",
+                    "multi_turn"
+                  ]
+                },
+                {
+                  "name": "from-version",
+                  "usage": "Published challenge pack version ID",
+                  "type": "string"
+                },
+                {
+                  "name": "name",
+                  "usage": "Draft name (required unless you use --from-version)",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "delete",
+              "path": "agentclash challenge-pack draft delete",
+              "short": "Delete a challenge pack draft",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "draft-id",
+                  "required": true
+                }
+              ],
+              "example": "  agentclash challenge-pack draft delete \u003cdraft-id\u003e",
+              "flags": [
+                {
+                  "name": "yes",
+                  "usage": "Delete the draft without a confirmation prompt",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            },
+            {
+              "name": "generate",
+              "path": "agentclash challenge-pack draft generate",
+              "short": "Generate a challenge pack draft from a description",
+              "runnable": true,
+              "example": "  agentclash challenge-pack draft generate --description \"Test a support agent\" --provider-account \u003caccount-id\u003e --model \u003cmodel\u003e",
+              "flags": [
+                {
+                  "name": "description",
+                  "usage": "App description (maximum 8000 characters)",
+                  "type": "string",
+                  "required": true
+                },
+                {
+                  "name": "model",
+                  "usage": "Model ID for draft generation",
+                  "type": "string",
+                  "required": true
+                },
+                {
+                  "name": "provider-account",
+                  "usage": "Provider account ID for the draft model",
+                  "type": "string",
+                  "required": true
+                },
+                {
+                  "name": "timeout",
+                  "usage": "Time limit for the HTTP request",
+                  "type": "duration",
+                  "default": "2m0s"
+                }
+              ]
+            },
+            {
+              "name": "get",
+              "path": "agentclash challenge-pack draft get",
+              "short": "Show a challenge pack draft",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "draft-id",
+                  "required": true
+                }
+              ],
+              "example": "  agentclash challenge-pack draft get \u003cdraft-id\u003e --json"
+            },
+            {
+              "name": "list",
+              "path": "agentclash challenge-pack draft list",
+              "short": "List challenge pack drafts in the workspace",
+              "runnable": true,
+              "example": "  agentclash challenge-pack draft list --json"
+            },
+            {
+              "name": "publish",
+              "path": "agentclash challenge-pack draft publish",
+              "short": "Publish a challenge pack draft as a runnable version",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "draft-id",
+                  "required": true
+                }
+              ],
+              "example": "  agentclash challenge-pack draft publish \u003cdraft-id\u003e --json"
+            },
+            {
+              "name": "update",
+              "path": "agentclash challenge-pack draft update",
+              "short": "Update a challenge pack draft",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "draft-id",
+                  "required": true
+                }
+              ],
+              "example": "  agentclash challenge-pack draft update \u003cdraft-id\u003e --composition-file composition.yaml",
+              "flags": [
+                {
+                  "name": "composition-file",
+                  "usage": "Path to a JSON or YAML composition file",
+                  "type": "string"
+                },
+                {
+                  "name": "execution-mode",
+                  "usage": "New draft execution mode",
+                  "type": "string",
+                  "allowed_values": [
+                    "native",
+                    "prompt_eval",
+                    "responses",
+                    "multi_turn"
+                  ]
+                },
+                {
+                  "name": "name",
+                  "usage": "New draft name",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        },
+        {
           "name": "init",
           "path": "agentclash challenge-pack init",
           "short": "Scaffold a minimal challenge pack YAML bundle",

@@ -11,6 +11,7 @@ import (
 var largeEffectCommandPaths = []string{
 	"agentclash workspace emergency-stop",
 	"agentclash share revoke",
+	"agentclash challenge-pack draft delete",
 }
 
 func TestLargeEffectCommandsDeclareYesFlag(t *testing.T) {
