@@ -119,13 +119,21 @@ func TestDatasetBaselineCreateRunNotReadyExitsOne(t *testing.T) {
 
 func TestDatasetBaselineCreateRunNotFoundExits66(t *testing.T) {
 	isolateCLIEnv(t)
+	var called bool
 	srv, _ := countingFakeAPI(t, map[string]http.HandlerFunc{
-		"POST " + datasetBaselinesPath: jsonHandler(http.StatusNotFound, map[string]any{
+		"POST " + datasetBaselinesPath: captureHandler(t, &called, http.StatusNotFound, map[string]any{
 			"error": map[string]any{"code": "run_not_found", "message": "run not found"},
 		}),
 	})
 
 	err := executeCommand(t, []string{"dataset", "baseline", "create", testDatasetID, "--run", testRunID, "-w", "ws-1"}, srv.URL)
+	if !called {
+		t.Fatal("the POST baselines route did not get the request; the 404 came from the fallback route")
+	}
+	var apiErr *cliapi.APIError
+	if !errors.As(err, &apiErr) || apiErr.Code != "run_not_found" {
+		t.Fatalf("error = %v, want API error run_not_found", err)
+	}
 	assertExitCode(t, err, exitNotFound)
 }
 
@@ -232,13 +240,23 @@ func TestDatasetBaselineListJSONPassesServerFieldsThrough(t *testing.T) {
 
 func TestDatasetBaselineListDatasetNotFoundExits66(t *testing.T) {
 	isolateCLIEnv(t)
+	var called bool
+	// The backend answers a missing dataset with the generic code not_found
+	// (handleDatasetError in backend/internal/api/datasets.go).
 	srv, _ := countingFakeAPI(t, map[string]http.HandlerFunc{
-		"GET " + datasetBaselinesPath: jsonHandler(http.StatusNotFound, map[string]any{
-			"error": map[string]any{"code": "dataset_not_found", "message": "dataset not found"},
+		"GET " + datasetBaselinesPath: captureHandler(t, &called, http.StatusNotFound, map[string]any{
+			"error": map[string]any{"code": "not_found", "message": "dataset resource not found"},
 		}),
 	})
 
 	err := executeCommand(t, []string{"dataset", "baseline", "list", testDatasetID, "-w", "ws-1"}, srv.URL)
+	if !called {
+		t.Fatal("the GET baselines route did not get the request; the 404 came from the fallback route")
+	}
+	var apiErr *cliapi.APIError
+	if !errors.As(err, &apiErr) || apiErr.Message != "dataset resource not found" {
+		t.Fatalf("error = %v, want the API error of the baselines route", err)
+	}
 	assertExitCode(t, err, exitNotFound)
 }
 
