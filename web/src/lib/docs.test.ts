@@ -139,6 +139,15 @@ describe("agent skill docs", () => {
       "`--provider-account` (required) — Provider account ID that pays for the model call",
     );
     expect(content).toContain("`--model` (required) — Model ID to call through the provider account");
+
+    // ci setup (GitHub CI setup pull request)
+    expect(content).toContain(
+      "Open a pull request that adds the AgentClash CI files to a GitHub repository",
+    );
+    expect(content).toContain(
+      "`--repo` (required) — GitHub repository as owner/name, or its numeric GitHub repository ID",
+    );
+    expect(content).toContain("`--check-only`");
   });
 
   it("generates the security evaluation skill", () => {
@@ -270,6 +279,8 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain(
       "agentclash ci run --manifest .agentclash/ci.yaml --json --artifact-dir agentclash-artifacts",
     );
+    expect(doc?.content).toContain("agentclash ci setup --repo <OWNER>/<REPO> --check-only --json");
+    expect(doc?.content).toContain("agentclash/ci-setup/*");
     expect(doc?.content).toContain("candidate.build.agent_build_id");
     expect(doc?.content).toContain("candidate.deployment.runtime_profile_id");
     expect(doc?.content).toContain("evaluation.challenge_pack_version_id");

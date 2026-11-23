@@ -1100,6 +1100,73 @@
           ]
         },
         {
+          "name": "setup",
+          "path": "agentclash ci setup",
+          "short": "Open a pull request that adds the AgentClash CI files to a GitHub repository",
+          "runnable": true,
+          "example": "  # Write and check the manifest, then open the setup pull request\n  agentclash ci init .agentclash/ci.yaml\n  agentclash ci validate .agentclash/ci.yaml\n  agentclash ci setup --repo acme/support-agent\n\n  # List the files that already exist on the base branch; open no pull request\n  agentclash ci setup --repo acme/support-agent --check-only\n\n  # Replace the existing files and add the agent spec too\n  agentclash ci setup --repo acme/support-agent --overwrite --file .agentclash/agent.json\n\n  # Print only the URL of the pull request\n  agentclash ci setup --repo acme/support-agent --json --query '.pull_request.html_url'",
+          "flags": [
+            {
+              "name": "base",
+              "usage": "Base branch of the pull request (default: the default branch of the repository)",
+              "type": "string"
+            },
+            {
+              "name": "body",
+              "usage": "Body of the pull request (default: a list of the added files)",
+              "type": "string"
+            },
+            {
+              "name": "check-only",
+              "usage": "Only report the files that already exist on the base branch; open no pull request",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "draft",
+              "usage": "Open the pull request as a draft",
+              "type": "bool",
+              "default": "true"
+            },
+            {
+              "name": "file",
+              "usage": "Another local file to add at the same relative path; may be repeated",
+              "type": "stringArray",
+              "default": "[]"
+            },
+            {
+              "name": "manifest",
+              "usage": "Local CI manifest to add; the same relative path is used in the repository",
+              "type": "string",
+              "default": ".agentclash/ci.yaml"
+            },
+            {
+              "name": "overwrite",
+              "usage": "Replace files that already exist on the base branch",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "repo",
+              "usage": "GitHub repository as owner/name, or its numeric GitHub repository ID",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "title",
+              "usage": "Title of the pull request",
+              "type": "string",
+              "default": "Set up AgentClash CI"
+            },
+            {
+              "name": "workflow",
+              "usage": "Local GitHub Actions workflow to add; pass an empty value to leave it out",
+              "type": "string",
+              "default": ".github/workflows/agentclash.yml"
+            }
+          ]
+        },
+        {
           "name": "should-run",
           "path": "agentclash ci should-run",
           "short": "Decide whether AgentClash CI should run",

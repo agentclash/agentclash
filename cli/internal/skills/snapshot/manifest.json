@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "e03138ddf50c",
+  "snapshot_version": "3747bd05b12f",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -71,7 +71,7 @@
       "name": "agentclash-ci-release-gate",
       "role": "ci",
       "requires_cli": true,
-      "sha256": "905978a29d85f601759f421064a45db6073a1015727aa552e99791bb14fd70d6"
+      "sha256": "b0d7ff4a37115ee25193caf4f0d7ffbfa2fc6ef4676bd8325ed798543f1e2d53"
     },
     {
       "name": "agentclash-cli-setup",
