@@ -1,6 +1,6 @@
 ---
 name: agentclash-scorecard-reader
-description: Use when interpreting AgentClash rankings, scorecards, replay timelines, artifacts, LLM judge results, or failure-review evidence into source-backed findings and next actions.
+description: Use when interpreting AgentClash rankings, scorecards, replay timelines, artifacts, LLM judge results, eval-set scanner findings, or failure-review evidence into source-backed findings and next actions.
 metadata:
   agentclash.role: reviewing
   agentclash.version: "1"
@@ -16,6 +16,7 @@ Turn completed or inspectable AgentClash run evidence into an engineering readou
 - A user asks why an AgentClash run passed, failed, regressed, drifted, or picked a winner.
 - You have a run ID and need to inspect rankings, run agents, scorecards, replay steps, failure-review items, or artifacts.
 - A reviewer needs evidence-first findings instead of raw JSON dumps.
+- You have an eval set ID and need to read or triage the findings of its transcript scanners.
 - A follow-up skill needs a grounded summary before promoting regressions or changing a challenge pack.
 
 ## Do Not Use When
@@ -167,6 +168,23 @@ agentclash run insights <RUN_ID> --provider-account <PROVIDER_ACCOUNT_ID> --mode
 The response has `recommended_winner`, `why_it_won`, `tradeoffs`, optional `best_for_reliability`, `best_for_cost` and `best_for_latency` picks, `model_summaries`, `recommended_next_step`, `confidence_notes`, `provider_key`, `provider_model_id` and `generated_at`. When the deterministic ranking has a winner, the server rejects a `recommended_winner` that is a different agent. All other text comes from the model: compare it with the ranking and the scorecard before you report it as a finding.
 
 Exit codes: `1` for a run that is not a completed comparison run (`invalid_run_status`, `invalid_run_for_insights`, `ranking_unavailable`), a bad provider account or model, or `budget_exceeded`. `66` for an unknown run. `75` for a rate limit (`ranking_insights_rate_limited`, with `retry_after_seconds`) or a provider that is not available. The CLI does not retry the call. Do not retry a `75` in a loop: wait for `retry_after_seconds`, and ask the user before a second paid call.
+
+## Eval Set Scanner Findings
+Scanners read the finished case transcripts of an eval set and write findings. They do not change the scores. The built-in scanners are `reward-hacking`, `tool-misuse`, `sandbox-escape-attempt` and `instruction-injection-compliance`. `instruction-injection-compliance` is an LLM judge: the server sends each case transcript to its judge model.
+
+```bash
+agentclash evalset finding list <EVAL_SET_ID> --severity high --status open --json
+agentclash evalset scan <EVAL_SET_ID> --scanner reward-hacking --json
+agentclash evalset finding update <FINDING_ID> --status triaged --json
+```
+
+- `finding list --json` returns `{"findings": [...]}`, newest first. Each finding has `id`, `scanner`, `severity`, `category`, `matrix_key`, `case_key`, `case_result_id`, `evidence`, `confidence` and `status`. The table leaves out `evidence`.
+- The default `--limit` is 100 and the maximum is 500. If the count is equal to `--limit`, more findings can exist: filter with `--severity` or `--status`, or raise the limit.
+- `scan` returns `status: scan_started` at once and the scan runs in the background. List the findings again later. Without `--scanner`, the server runs the scanners of the manifest.
+- A new scan keeps the triage status of a finding that it finds again, and deletes a finding that it does not find again.
+- A finding is a signal, not proof. Read its `evidence` before you report it, and quote only the minimum.
+
+Exit codes: `64` for an ID that is not a UUID, an unknown scanner name, or a bad `--severity`, `--status` or `--limit` (no request). `66` for an unknown eval set or finding. `1` for `scan_already_running`: a scan runs now, so wait and do not start a loop. `77` for a missing permission. `75` for a temporary server or network failure.
 
 ## Scorecard JSON
 Use `agentclash run scorecard <RUN_AGENT_ID> --json` when you already know the agent ID. The top level mirrors `/v1/scorecards/{runAgentID}`:
@@ -455,6 +473,7 @@ Do not say "the judge proved" something. Say "the scorecard/judge reports X, and
 - Download artifacts only when needed, and prefer targeted artifact IDs from evidence refs.
 - Scorecards and failures can contain model outputs and tool traces. Quote only the minimum needed to support the finding.
 - Read commands are safe, but follow-up mutation commands such as failure promotion belong to `agentclash-regression-flywheel` and should be intentional.
+- Start `agentclash evalset scan` or change a finding with `agentclash evalset finding update` only when the user asks. A scan with `instruction-injection-compliance` makes model calls. Set `dismissed` only when the user agrees that the finding is a false positive.
 
 ## Report Back Format
 ```text
@@ -487,4 +506,5 @@ Next skill: <agentclash-regression-flywheel | challenge-pack skill | none>
 - `/docs-md/concepts/replay-and-scorecards`
 - `/docs-md/concepts/runs-and-evals`
 - `/docs-md/concepts/artifacts`
+- `/docs-md/fleet/budgets-and-scanners`
 - `/docs-md/reference/cli`
