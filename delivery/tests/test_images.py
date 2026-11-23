@@ -223,6 +223,38 @@ class ImageGateTests(unittest.TestCase):
                     )
                 self.assertFalse((root / "input").exists())
 
+    def test_retained_inputs_are_exact_locked_and_documented(self):
+        # Each retained file must be the exact bytes of a locked public input,
+        # so the fallback can never change a platform image.
+        def locked(value):
+            if isinstance(value, dict):
+                if "url" in value and "sha256" in value:
+                    yield value["sha256"]
+                for item in value.values():
+                    yield from locked(item)
+            elif isinstance(value, list):
+                for item in value:
+                    yield from locked(item)
+
+        platform = ROOT / "deploy/aws/platform"
+        hashes = set()
+        for name in ("inputs.lock.json", "pdf-runtime.lock.json"):
+            hashes.update(locked(json.loads((platform / name).read_text())))
+        retained = ROOT / "delivery/pinned-inputs"
+        readme = (retained / "README.md").read_text()
+        files = [
+            path
+            for path in retained.iterdir()
+            if path.name not in ("README.md", "notices")
+        ]
+        self.assertTrue(files)
+        for path in files:
+            with self.subTest(path.name):
+                self.assertTrue(path.is_file() and not path.is_symlink())
+                self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), path.name)
+                self.assertIn(path.name, hashes)
+                self.assertIn("`" + path.name + "`", readme)
+
     def test_temporal_consumed_images_require_scanned_private_derivatives(self):
         ref = "registry.example.com/app@sha256:" + "a" * 64
         lock = json.loads((ROOT / "deploy/aws/images.lock.json").read_text())
