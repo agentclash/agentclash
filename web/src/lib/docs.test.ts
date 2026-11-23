@@ -132,6 +132,13 @@ describe("agent skill docs", () => {
     expect(content).toContain(
       "`--limit` — Maximum baselines to return (1-100; 0 = server default of 50)",
     );
+
+    // run insights (LLM ranking insights)
+    expect(content).toContain("Ask a model to explain the ranking of a completed comparison run");
+    expect(content).toContain(
+      "`--provider-account` (required) — Provider account ID that pays for the model call",
+    );
+    expect(content).toContain("`--model` (required) — Model ID to call through the provider account");
   });
 
   it("generates the security evaluation skill", () => {
@@ -207,6 +214,8 @@ describe("agent skill docs", () => {
 
     expect(doc?.title).toBe("Scorecard Reader Skill");
     expect(doc?.content).toContain("agentclash run ranking <RUN_ID> --json");
+    expect(doc?.content).toContain("agentclash run insights <RUN_ID> --provider-account");
+    expect(doc?.content).toContain("ranking_insights_rate_limited");
     expect(doc?.content).toContain("agentclash run scorecard <RUN_AGENT_ID> --json");
     expect(doc?.content).toContain("agentclash replay get <RUN_AGENT_ID> --limit 50 --json");
     expect(doc?.content).toContain("artifact list` is workspace-wide");

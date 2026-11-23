@@ -12,6 +12,7 @@ import (
 var apiFeatureCommandPaths = []string{
 	"agentclash dataset baseline create",
 	"agentclash dataset baseline list",
+	"agentclash run insights",
 }
 
 func TestAPIFeatureCommandsHaveShortAndExample(t *testing.T) {

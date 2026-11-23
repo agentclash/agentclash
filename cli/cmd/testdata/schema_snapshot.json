@@ -4037,6 +4037,33 @@
           ]
         },
         {
+          "name": "insights",
+          "path": "agentclash run insights",
+          "short": "Ask a model to explain the ranking of a completed comparison run",
+          "runnable": true,
+          "args": [
+            {
+              "name": "runId",
+              "required": true
+            }
+          ],
+          "example": "  # Explain the ranking of a run with a model of your provider account\n  agentclash run insights \u003crunId\u003e --provider-account \u003cproviderAccountId\u003e --model gpt-4.1-mini\n\n  # Print only the recommended winner\n  agentclash run insights \u003crunId\u003e --provider-account \u003cproviderAccountId\u003e --model gpt-4.1-mini --json --query '.recommended_winner.label'",
+          "flags": [
+            {
+              "name": "model",
+              "usage": "Model ID to call through the provider account, for example gpt-4.1-mini",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "provider-account",
+              "usage": "Provider account ID that pays for the model call",
+              "type": "string",
+              "required": true
+            }
+          ]
+        },
+        {
           "name": "list",
           "path": "agentclash run list",
           "short": "List runs in the workspace",
