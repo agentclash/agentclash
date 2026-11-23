@@ -26,6 +26,7 @@ End-to-end dataset operations in a workspace: versioned example banks, eval runs
 ## Inputs Needed
 - Workspace ID and dataset ID (create datasets via API/UI if none exist).
 - For eval/gate: dataset version ID, challenge pack version ID, challenge key, deployment IDs.
+- For a new baseline: a completed dataset eval run ID of the same dataset.
 - For gate: baseline ID and candidate run ID (or `--eval` to start eval inline).
 - For generate: `--count`, `--provider-account`, `--model`.
 
@@ -41,8 +42,9 @@ agentclash dataset view <DATASET_ID> --json
 1. Inspect dataset and versions (`list`, `view`, `version list`).
 2. Import or export examples; optionally create a version snapshot.
 3. Run a dataset eval or attach an existing run.
-4. Gate with `dataset test` against a baseline (CI-friendly `--format junit`).
-5. Optionally generate synthetic examples, import traces, promote candidates, sync regression suite.
+4. Freeze the completed green run as a baseline with `dataset baseline create`, or find an existing one with `dataset baseline list`.
+5. Gate with `dataset test` against a baseline (CI-friendly `--format junit`).
+6. Optionally generate synthetic examples, import traces, promote candidates, sync regression suite.
 
 ## Commands
 
@@ -67,6 +69,10 @@ agentclash dataset eval <dataset-id> \
   --pack <pack-version-id> \
   --challenge <challenge-key> \
   --deployment <deployment-id>
+
+# Freeze the completed eval run as a server-side baseline; prints the baseline ID
+agentclash dataset baseline create <dataset-id> --run <run-id> --label "main baseline" --json --query '.id'
+agentclash dataset baseline list <dataset-id>
 
 agentclash dataset test <dataset-id> \
   --baseline <baseline-id> \
@@ -120,6 +126,9 @@ agentclash dataset sync-regression-suite <dataset-id> \
 - Generate with `--follow` polls job until completion.
 
 ## Failure Modes
+- `dataset baseline create` exit 1 with `run_not_ready` → the run is not completed or has no eval outcomes; wait for the run, then try again.
+- `dataset baseline create` exit 66 → the run is not a dataset eval run of this dataset; use the run from `dataset eval`.
+- `dataset baseline create` adds a new baseline on each call. After a timeout (exit 75), run `dataset baseline list` before a retry, so that you do not make a duplicate.
 - Gate without `--baseline` → required.
 - Gate without `--run` and without `--eval` → provide one.
 - Generate missing provider/model → all three of count, provider-account, and model required.
@@ -128,6 +137,7 @@ agentclash dataset sync-regression-suite <dataset-id> \
 ## Safety Notes
 - Trace imports may contain production data — apply `--redaction` JSON when importing sensitive metadata.
 - Baseline comparisons affect release gates — confirm baseline ID before CI integration.
+- `agentclash baseline set` is a local CLI bookmark, not a dataset baseline. Use `dataset baseline create` for the dataset gate.
 - Exported JSONL may include prompts with secrets — scrub before sharing externally.
 
 ## Report Back Format

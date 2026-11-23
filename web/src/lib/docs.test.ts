@@ -113,8 +113,25 @@ describe("agent skill docs", () => {
 
     expect(doc?.title).toBe("Dataset Workflows Skill");
     expect(doc?.content).toContain("agentclash dataset test");
+    expect(doc?.content).toContain("agentclash dataset baseline create");
     expect(doc?.content).toContain("agentclash dataset sync-regression-suite");
     expect(doc?.content).toContain("agentclash dataset import-traces");
+  });
+
+  it("shows the issue #1418 API feature commands in the CLI reference", () => {
+    const doc = getDocBySlug(["reference", "cli"]);
+    const content = doc?.content ?? "";
+
+    // dataset baseline (server-side dataset baselines)
+    expect(content).toContain("Manage server-side dataset baselines for the dataset gate");
+    expect(content).toContain("Freeze a completed dataset eval run as a dataset baseline");
+    expect(content).toContain(
+      "`--run` (required) — Completed dataset eval run ID to freeze as the baseline",
+    );
+    expect(content).toContain("List the dataset baselines of a dataset");
+    expect(content).toContain(
+      "`--limit` — Maximum baselines to return (1-100; 0 = server default of 50)",
+    );
   });
 
   it("generates the security evaluation skill", () => {
