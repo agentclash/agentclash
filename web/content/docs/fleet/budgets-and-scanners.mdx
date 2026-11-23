@@ -1,7 +1,7 @@
 ---
 title: Budgets and scanners
 description: Cap eval-set spend, emergency-stop a workspace, and run built-in transcript scanners after completion.
-dateModified: 2026-08-09
+dateModified: 2026-11-24
 ---
 
 Fleet adds two optional control surfaces on top of orchestration: **budgets** (stop spending) and **scanners** (analyze finished transcripts).
@@ -27,15 +27,27 @@ Exact settlement status strings are visible in `agentclash evalset status <id> -
 
 ### Workspace emergency stop
 
-Operators can cancel every active eval set in a workspace:
+A workspace admin can cancel every active eval set in a workspace:
+
+```bash
+agentclash workspace emergency-stop
+```
+
+The command asks for confirmation on a terminal. In a CI job, a script or any other non-interactive mode, it exits 64 with the error code `interactive_input_required` and cancels nothing. Pass `--yes` to cancel with no prompt:
+
+```bash
+agentclash workspace emergency-stop -w $WORKSPACE_ID --yes --json
+```
+
+The command cancels the eval sets and their runs only. Standalone runs and agent tryouts continue, so check them with `agentclash run list`. You cannot undo the cancellation.
+
+The response includes how many sets were cancelled, their IDs and an audit event name (`workspace.emergency_stop`). The API form of the same call is:
 
 ```bash
 curl -sS -X POST \
   -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
   "$AGENTCLASH_API_URL/v1/workspaces/$WORKSPACE_ID/emergency-stop"
 ```
-
-The response includes how many sets were cancelled and an audit event name (`workspace.emergency_stop`).
 
 ## Scanners
 

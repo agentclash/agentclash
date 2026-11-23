@@ -4792,6 +4792,21 @@
           ]
         },
         {
+          "name": "emergency-stop",
+          "path": "agentclash workspace emergency-stop",
+          "short": "Cancel every active eval set in the workspace",
+          "runnable": true,
+          "example": "  # Cancel every active eval set in the default workspace, with a prompt\n  agentclash workspace emergency-stop\n\n  # Cancel them in a CI job or a script, with no prompt\n  agentclash workspace emergency-stop -w \u003cworkspaceId\u003e --yes --json",
+          "flags": [
+            {
+              "name": "yes",
+              "usage": "Cancel the eval sets with no confirmation prompt; necessary in non-interactive mode",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        },
+        {
           "name": "get",
           "path": "agentclash workspace get",
           "short": "Get workspace details",
@@ -5127,6 +5142,14 @@
     {
       "code": "missing_workspace",
       "description": "No workspace resolved; pass --workspace, set AGENTCLASH_WORKSPACE, or run 'agentclash link'."
+    },
+    {
+      "code": "interactive_input_required",
+      "description": "The command needs a person at a terminal (a confirmation or a browser login), but it runs in non-interactive mode. For a confirmation, check the effect of the command, then pass --yes. The command did not start its action."
+    },
+    {
+      "code": "aborted",
+      "description": "The person at the terminal did not confirm the command. The command did not start its action."
     },
     {
       "code": "follow_timeout",

@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -69,4 +71,12 @@ func assertCLIErrorCode(t *testing.T, err error, want string) *cliError {
 		t.Fatalf("cliError code = %q, want %q (message: %s)", local.Code, want, local.Message)
 	}
 	return local
+}
+
+// stubConfirmAnswer makes confirmLargeEffect read answer instead of stdin.
+func stubConfirmAnswer(t *testing.T, answer string) {
+	t.Helper()
+	previous := confirmReader
+	confirmReader = func() io.Reader { return strings.NewReader(answer) }
+	t.Cleanup(func() { confirmReader = previous })
 }

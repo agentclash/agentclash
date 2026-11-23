@@ -86,7 +86,7 @@ func TestSchemaPublishesErrorAndStatusRegistries(t *testing.T) {
 	for _, ec := range doc.ErrorCodes {
 		codes[ec.Code] = true
 	}
-	for _, want := range []string{"invalid_argument", "request_failed", "follow_timeout", "stream_reconnect_exhausted", "missing_workspace"} {
+	for _, want := range []string{"invalid_argument", "request_failed", "follow_timeout", "stream_reconnect_exhausted", "missing_workspace", "interactive_input_required", "aborted"} {
 		if !codes[want] {
 			t.Errorf("error_codes missing %q", want)
 		}
@@ -214,7 +214,7 @@ func TestErrorCodeRegistryRetryableMatchesRuntime(t *testing.T) {
 	}
 
 	// cliError-synthesized codes: build the error, classify it, compare.
-	for _, code := range []string{"follow_timeout", "stream_reconnect_exhausted", "missing_workspace", "invalid_argument"} {
+	for _, code := range []string{"follow_timeout", "stream_reconnect_exhausted", "missing_workspace", "invalid_argument", "interactive_input_required", "aborted"} {
 		want, documented := reg[code]
 		if !documented {
 			t.Errorf("error code %q is emitted but absent from the registry", code)
