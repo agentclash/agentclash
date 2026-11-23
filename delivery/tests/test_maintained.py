@@ -121,10 +121,10 @@ class MaintainedBuildTests(unittest.TestCase):
                 self.assertEqual(stage["arguments"]["UPSTREAM"], public[name]["image"])
                 self.assertEqual(stage["dockerfile"], "Dockerfile.packages")
                 self.assertEqual(
-                    stage["packages"]["zlib-1.3.2-r1.apk"],
+                    stage["packages"]["zlib-1.4-r0.apk"],
                     "https://dl-cdn.alpinelinux.org/alpine/"
                     + branch
-                    + "/main/x86_64/zlib-1.3.2-r1.apk",
+                    + "/main/x86_64/zlib-1.4-r0.apk",
                 )
         for name, target in (("temporal", "server"), ("temporal-admin", "admin")):
             self.assertEqual(
@@ -132,7 +132,7 @@ class MaintainedBuildTests(unittest.TestCase):
             )
             self.assertEqual(stages[name]["dockerfile"], "Dockerfile.temporal")
             self.assertEqual(stages[name]["target"], target)
-            apks = ("zlib-1.3.2-r1.apk", "musl-1.2.6-r3.apk", "musl-utils-1.2.6-r3.apk")
+            apks = ("zlib-1.4-r0.apk", "musl-1.2.6-r3.apk", "musl-utils-1.2.6-r3.apk")
             self.assertEqual(
                 stages[name]["packages"],
                 {
@@ -159,6 +159,10 @@ class MaintainedBuildTests(unittest.TestCase):
             "krb5-libs-1.22.3-r0.apk": (
                 "krb5-libs", "1.22.3-r0",
                 "fad5b46a953e6a37a1bb61a84538fa08ecb6a07816f439eb06f2735aebfcbfbf",
+            ),
+            "libxml2-2.13.9-r3.apk": (
+                "libxml2", "2.13.9-r3",
+                "8b37229c4761cf0eef5089045283526ef43bf335073050515010d34a313186ed",
             ),
             "libxslt-1.1.43-r4.apk": (
                 "libxslt", "1.1.43-r4",

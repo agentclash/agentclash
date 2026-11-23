@@ -330,6 +330,7 @@ def build(root, directory, run, gate):
                 "libcrypto3",
                 "libssl3",
                 "krb5-libs",
+                "libxml2",
                 "libxslt",
                 "libuuid",
                 "brotli-libs",

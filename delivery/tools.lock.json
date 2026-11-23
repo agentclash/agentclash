@@ -11,7 +11,7 @@
         }
       },
       "source_build": {
-        "linux_amd64_sha256": "444076767f8475e63ef87485eb6170ef2b6da175afdd8733dfbf0c9d6d019656"
+        "linux_amd64_sha256": "80071be3fd77569cf0ef107bfb028f9820f48e440dd25135d6f2c60355059f4b"
       }
     },
     "gitleaks": {
