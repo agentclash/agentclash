@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.13.0](https://github.com/agentclash/agentclash/compare/v2.12.0...v2.13.0) (2026-11-24)
+
+
+### Features
+
+* archive agent deployments through the API and the CLI ([8c892ad](https://github.com/agentclash/agentclash/commit/8c892ad98397cd37163f3370648131b6a3f1dd16))
+
+
+### Bug Fixes
+
+* **api:** require the admin role to archive a connector deployment ([dce5cc5](https://github.com/agentclash/agentclash/commit/dce5cc574c826ca3a7ac10c5ad2e243bf69bb19d))
+
 ## [2.12.0](https://github.com/agentclash/agentclash/compare/v2.11.0...v2.12.0) (2026-11-24)
 
 
