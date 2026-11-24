@@ -24,11 +24,11 @@
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libcap2-2.78-r0.apk",
       "version": "2.78-r0"
     },
-    "libcrypto3-3.5.9-r0.apk": {
+    "libcrypto3-3.5.9-r1.apk": {
       "name": "libcrypto3",
-      "sha256": "6632d758d8f5e9ea3b650fe966f23bbf9a202f8b8dceecac93da135dec5e3689",
-      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libcrypto3-3.5.9-r0.apk",
-      "version": "3.5.9-r0"
+      "sha256": "042026082cc9bc7872d1baa81755c50efa70b05f03b5369fdc5f0a1303009720",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libcrypto3-3.5.9-r1.apk",
+      "version": "3.5.9-r1"
     },
     "libexpat-2.10.0-r0.apk": {
       "name": "libexpat",
@@ -60,11 +60,11 @@
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libpanelw-6.6_p20260516-r0.apk",
       "version": "6.6_p20260516-r0"
     },
-    "libssl3-3.5.9-r0.apk": {
+    "libssl3-3.5.9-r1.apk": {
       "name": "libssl3",
-      "sha256": "05e3393fb95aa5751ca2f9d242f659f6cff82c1cc7767cc2df4a086f7ad01877",
-      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libssl3-3.5.9-r0.apk",
-      "version": "3.5.9-r0"
+      "sha256": "18c5778cbe52e1991303f8531970b05d4e6e036ea08349322f7422f42a689dc7",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libssl3-3.5.9-r1.apk",
+      "version": "3.5.9-r1"
     },
     "libstdc++-15.2.0-r5.apk": {
       "name": "libstdc++",
@@ -138,17 +138,17 @@
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/py3-cryptography-pyc-47.0.0-r0.apk",
       "version": "47.0.0-r0"
     },
-    "py3-pip-26.1.2-r0.apk": {
+    "py3-pip-26.1.2-r1.apk": {
       "name": "py3-pip",
-      "sha256": "8ab13441fd0abfd625ac4e91eed5648d90a6422359d45469307bd78ad4f1b223",
-      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/py3-pip-26.1.2-r0.apk",
-      "version": "26.1.2-r0"
+      "sha256": "00ad5acb689f23363b48a6a497351ab588df7ccb8ebfeb8a6600d75eabcb534b",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/py3-pip-26.1.2-r1.apk",
+      "version": "26.1.2-r1"
     },
-    "py3-pip-pyc-26.1.2-r0.apk": {
+    "py3-pip-pyc-26.1.2-r1.apk": {
       "name": "py3-pip-pyc",
-      "sha256": "b7a66a9b68224468f9398220df4620f74747ee98e7526c2968c469c09a04cc37",
-      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/py3-pip-pyc-26.1.2-r0.apk",
-      "version": "26.1.2-r0"
+      "sha256": "2517bf59d95c8bd618e1a9f5e9a60662da245b96abfa16c6f121afedfc67b071",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/py3-pip-pyc-26.1.2-r1.apk",
+      "version": "26.1.2-r1"
     },
     "pyc-3.14.10-r1.apk": {
       "name": "pyc",

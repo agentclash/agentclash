@@ -1,6 +1,8 @@
 # Retained public build inputs
 
-These unmodified upstream packages keep the existing pinned build reproducible after mirror removal. The downloader always checks the original SHA256 before use. Upstream provenance and versions remain in `deploy/aws/platform/inputs.lock.json`. Package metadata and license declarations are retained inside each archive.
+These unmodified upstream packages let the build use the same bytes after a mirror removes them. The downloader checks the locked SHA256 before use. The locks in `deploy/aws/platform/inputs.lock.json` and `deploy/aws/platform/pdf-runtime.lock.json` record the source URLs and versions. Each archive includes its package metadata and license declarations.
+
+When a lock changes, remove the retained file and its list entry if neither lock uses its SHA256. The retained input test checks that each file matches its SHA256, a lock entry, and this list.
 
 - v3.23/c-ares 1.34.8-r0 (`7a570d080d05e60b1256ea73586924bf9a25f468c57aae10d1cdfe7fcc3f93a2`); license = MIT.
 - v3.24/ca-certificates 20260909-r0 (`d33f9058111586cea83cb3cca78d24efb36a45e6466fd0228f66e791f1cb79ed`); license = MPL-2.0 AND MIT.

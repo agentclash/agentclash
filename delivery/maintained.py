@@ -330,6 +330,7 @@ def build(root, directory, run, gate):
                 "libcrypto3",
                 "libssl3",
                 "krb5-libs",
+                "libxml2",
                 "libxslt",
                 "libuuid",
                 "brotli-libs",
@@ -431,7 +432,7 @@ def build(root, directory, run, gate):
     # original source versions; only the locked security dependencies change.
     context = directory / "platform-context-temporal"
     (context / "packages").mkdir(mode=0o700, parents=True)
-    for package in ("zlib", "musl", "musl-utils"):
+    for package in ("libcrypto3", "libssl3", "zlib", "musl", "musl-utils"):
         entry = lock["packages"]["v3.24/" + package]
         destination = context / "packages" / (package + "-" + entry["version"] + ".apk")
         shutil.copyfile(cache / ("v3.24-" + package), destination)
