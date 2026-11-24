@@ -182,6 +182,10 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	result.Candidate.AgentBuildID = manifest.Candidate.Build.AgentBuildID
 	result.Candidate.DeploymentName = ciRunDeploymentName(manifest)
 	finishWithReports := func(err error, createdRun, completedRun, scorecard, comparison, gateEnvelope map[string]any) (ciRunResult, error) {
+		var readErr *cliapi.ResponseBodyReadError
+		if errors.As(err, &readErr) {
+			result.ExitCode = exitRetryableFailure
+		}
 		if result.Candidate.RunID != "" {
 			result.ProjectURLs, result.ProjectLinksStatus = ciProjectReturns(cmd, rc, result.Candidate.RunID)
 		}
@@ -205,7 +209,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	if remoteErr != nil {
 		result.ExitCode = ciRunExitAPI
 		result.Errors = append(result.Errors, remoteValidation.Errors...)
-		return finishWithReports(&ExitCodeError{Code: result.ExitCode, Message: remoteErr.Error()}, nil, nil, nil, nil, nil)
+		return finishWithReports(ciRunErrorWithCode(remoteErr, result.ExitCode), nil, nil, nil, nil, nil)
 	}
 	if !remoteValidation.Valid {
 		result.ExitCode = ciRunExitInvalidManifest
@@ -223,7 +227,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 				result.ExitCode = ciRunExitInvalidManifest
 			}
 			result.Errors = append(result.Errors, err.Error())
-			return finishWithReports(&ExitCodeError{Code: result.ExitCode, Message: err.Error()}, nil, nil, nil, nil, nil)
+			return finishWithReports(ciRunErrorWithCode(err, result.ExitCode), nil, nil, nil, nil, nil)
 		}
 		result.Candidate.BuildVersionID = mapString(buildVersion, "id")
 
@@ -257,7 +261,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 			result.ExitCode = ciRunExitAPI
 		}
 		result.Errors = append(result.Errors, err.Error())
-		return finishWithReports(&ExitCodeError{Code: result.ExitCode, Message: err.Error()}, nil, nil, nil, nil, nil)
+		return finishWithReports(ciRunErrorWithCode(err, result.ExitCode), nil, nil, nil, nil, nil)
 	}
 	result.BaselineResolution = &baseline
 	result.Baseline = baseline.Baseline
@@ -292,7 +296,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 		if link := ciRunLink(completedRun); link != "" {
 			result.Candidate.RunURL = link
 		}
-		result.ExitCode = ciRunExitForError(err).Code
+		result.ExitCode = exitCodeForError(ciRunExitForError(err))
 		result.Errors = append(result.Errors, err.Error())
 		return finishWithReports(err, run, completedRun, nil, nil, nil)
 	}
@@ -646,7 +650,7 @@ func ciRunLink(run map[string]any) string {
 	return mapString(run, "url", "web_url", "html_url")
 }
 
-func ciRunExitForError(err error) *ExitCodeError {
+func ciRunExitForError(err error) error {
 	var exitErr *ExitCodeError
 	if errors.As(err, &exitErr) {
 		return exitErr
@@ -654,7 +658,15 @@ func ciRunExitForError(err error) *ExitCodeError {
 	if ciRunIsAPIError(err) {
 		return &ExitCodeError{Code: ciRunExitAPI, Message: err.Error()}
 	}
-	return &ExitCodeError{Code: 1, Message: err.Error()}
+	return ciRunErrorWithCode(err, 1)
+}
+
+func ciRunErrorWithCode(err error, code int) error {
+	var readErr *cliapi.ResponseBodyReadError
+	if errors.As(err, &readErr) {
+		return err
+	}
+	return &ExitCodeError{Code: code, Message: err.Error()}
 }
 
 func ciRunIsAPIError(err error) bool {

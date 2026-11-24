@@ -39,7 +39,7 @@ var documentedExitCodes = []ExitCode{
 	// unless a command-specific code below overrides it.
 	{Code: exitValidationError, Name: "validation_error", Description: "Invalid arguments, flags, input files, or configuration (sysexits EX_USAGE)."},
 	{Code: exitNotFound, Name: "not_found", Description: "The referenced resource or file does not exist (HTTP 404 or a missing local file; sysexits EX_NOINPUT)."},
-	{Code: exitRetryableFailure, Name: "retryable_failure", Description: "Transient failure — rate limiting (429), server errors (5xx), or a network/transport error. Mirrors `error.retryable: true` in the JSON envelope; safe to retry, honoring details.retry_after_seconds when present (sysexits EX_TEMPFAIL)."},
+	{Code: exitRetryableFailure, Name: "retryable_failure", Description: "Transient failure — rate limiting (429), server errors (5xx), a network/transport error, or an incomplete response body. Mirrors `error.retryable: true` in the JSON envelope. Retry a read, honoring details.retry_after_seconds when present; before you repeat a write, check whether the first attempt changed server state (sysexits EX_TEMPFAIL)."},
 	{Code: exitAuthDenied, Name: "auth_denied", Description: "Authentication or permission failure (HTTP 401/403 or a local permission error; sysexits EX_NOPERM)."},
 
 	// `compare gate` — CI regression gate.

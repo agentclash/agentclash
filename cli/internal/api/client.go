@@ -180,6 +180,19 @@ func (r *Response) DecodeJSON(v any) error {
 	return json.Unmarshal(r.Body, v)
 }
 
+// ResponseBodyReadError reports a failure while reading an HTTP response body.
+type ResponseBodyReadError struct {
+	err error
+}
+
+func (e *ResponseBodyReadError) Error() string {
+	return "reading response: " + e.err.Error()
+}
+
+func (e *ResponseBodyReadError) Unwrap() error {
+	return e.err
+}
+
 // APIError represents a structured API error.
 type APIError struct {
 	StatusCode    int        `json:"-"`
@@ -625,7 +638,7 @@ func (c *Client) execute(req *http.Request) (*Response, error) {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading response: %w", err)
+		return nil, &ResponseBodyReadError{err: err}
 	}
 
 	if c.verbose {

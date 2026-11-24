@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "812a6ba57058",
+  "snapshot_version": "f24be1f48f36",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -71,7 +71,7 @@
       "name": "agentclash-ci-release-gate",
       "role": "ci",
       "requires_cli": true,
-      "sha256": "b0d7ff4a37115ee25193caf4f0d7ffbfa2fc6ef4676bd8325ed798543f1e2d53"
+      "sha256": "f859262111e368ad9e0477279ee154269de0703bdf1e500b4524e323888fc030"
     },
     {
       "name": "agentclash-cli-setup",
@@ -131,7 +131,7 @@
       "name": "agentclash-scorecard-reader",
       "role": "reviewing",
       "requires_cli": true,
-      "sha256": "be1d6a19c314943e87685bf98f8e3b14194f5f50850456b3d64df05cf64c2101"
+      "sha256": "2c19df0005e3b0481e387caaf0a3a2c9ee349830dfb9a4af6dcd6ee3127511a9"
     },
     {
       "name": "agentclash-security-evaluation",

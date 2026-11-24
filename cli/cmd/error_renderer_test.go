@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -12,6 +14,97 @@ import (
 
 	"github.com/agentclash/agentclash/cli/internal/config"
 )
+
+func TestRenderErrorTruncatedResponse(t *testing.T) {
+	tests := []struct {
+		method string
+		route  string
+		args   []string
+	}{
+		{http.MethodGet, "/v1/runs/run-1", []string{"run", "get", "run-1", "--json"}},
+		{http.MethodPost, shareLinksPath, shareCreateArgs("--json")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.method, func(t *testing.T) {
+			isolateCLIEnv(t)
+			srv, count := countingFakeAPI(t, map[string]http.HandlerFunc{
+				tc.method + " " + tc.route: func(w http.ResponseWriter, r *http.Request) {
+					if _, err := io.Copy(io.Discard, r.Body); err != nil {
+						t.Errorf("reading request: %v", err)
+						return
+					}
+					conn, buf, err := w.(http.Hijacker).Hijack()
+					if err != nil {
+						t.Errorf("hijacking connection: %v", err)
+						return
+					}
+					defer conn.Close()
+					if _, err := buf.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\n{}"); err != nil {
+						t.Errorf("writing response: %v", err)
+						return
+					}
+					if err := buf.Flush(); err != nil {
+						t.Errorf("flushing response: %v", err)
+					}
+				},
+			})
+
+			err := executeCommand(t, tc.args, srv.URL)
+			if !errors.Is(err, io.ErrUnexpectedEOF) {
+				t.Fatalf("command error = %v, want unexpected EOF", err)
+			}
+			if got := count.Load(); got != 1 {
+				t.Errorf("requests = %d, want 1", got)
+			}
+
+			var stderr bytes.Buffer
+			code, rendered := RenderError(err, &stderr)
+			if code != exitRetryableFailure {
+				t.Errorf("exit code = %d, want %d", code, exitRetryableFailure)
+			}
+			if !rendered {
+				t.Fatal("expected a JSON error envelope")
+			}
+			envelope := decodeStructuredError(t, stderr.String())
+			if !envelope.Error.Retryable || envelope.Error.Code != "request_failed" {
+				t.Errorf("error = %#v, want retryable request_failed", envelope.Error)
+			}
+			if got := envelope.Error.Message; got != "reading response: unexpected EOF" {
+				t.Errorf("message = %q, want reading response: unexpected EOF", got)
+			}
+		})
+	}
+}
+
+func TestRenderErrorInvalidGzipResponse(t *testing.T) {
+	isolateCLIEnv(t)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-1": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Encoding", "gzip")
+			if _, err := io.WriteString(w, "invalidgzip"); err != nil {
+				t.Errorf("writing response: %v", err)
+			}
+		},
+	})
+	t.Cleanup(srv.Close)
+
+	err := executeCommand(t, []string{"run", "get", "run-1", "--json"}, srv.URL)
+	if !errors.Is(err, gzip.ErrHeader) {
+		t.Fatalf("command error = %v, want invalid gzip header", err)
+	}
+	var stderr bytes.Buffer
+	code, rendered := RenderError(err, &stderr)
+	if code != 75 {
+		t.Errorf("exit code = %d, want 75", code)
+	}
+	if !rendered {
+		t.Fatal("expected a JSON error envelope")
+	}
+	envelope := decodeStructuredError(t, stderr.String())
+	if !envelope.Error.Retryable || envelope.Error.Code != "request_failed" {
+		t.Errorf("error = %#v, want retryable request_failed", envelope.Error)
+	}
+}
 
 func TestRenderErrorJSONPreservesAPIError(t *testing.T) {
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
