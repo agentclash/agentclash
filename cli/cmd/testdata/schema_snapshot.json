@@ -1314,6 +1314,72 @@
       "runnable": false,
       "subcommands": [
         {
+          "name": "baseline",
+          "path": "agentclash dataset baseline",
+          "short": "Manage server-side dataset baselines for the dataset gate",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "create",
+              "path": "agentclash dataset baseline create",
+              "short": "Freeze a completed dataset eval run as a dataset baseline",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "datasetId",
+                  "required": true
+                }
+              ],
+              "example": "  # Freeze the run of the current release\n  agentclash dataset baseline create \u003cdatasetId\u003e --run \u003crunId\u003e --label v1.4.0\n\n  # Keep only the outcomes of one deployment of a comparison run\n  agentclash dataset baseline create \u003cdatasetId\u003e --run \u003crunId\u003e --deployment \u003cdeploymentId\u003e\n\n  # Print only the new baseline ID\n  agentclash dataset baseline create \u003cdatasetId\u003e --run \u003crunId\u003e --json --query '.id'",
+              "flags": [
+                {
+                  "name": "deployment",
+                  "usage": "Agent deployment ID; keep only the outcomes of this deployment",
+                  "type": "string"
+                },
+                {
+                  "name": "label",
+                  "usage": "Optional label, for example the release name",
+                  "type": "string"
+                },
+                {
+                  "name": "run",
+                  "usage": "Completed dataset eval run ID to freeze as the baseline",
+                  "type": "string",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "name": "list",
+              "path": "agentclash dataset baseline list",
+              "short": "List the dataset baselines of a dataset",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "datasetId",
+                  "required": true
+                }
+              ],
+              "example": "  agentclash dataset baseline list \u003cdatasetId\u003e\n\n  # Page through the baselines\n  agentclash dataset baseline list \u003cdatasetId\u003e --limit 20 --offset 20\n\n  # IDs only, newest first\n  agentclash dataset baseline list \u003cdatasetId\u003e --json --query '.items[].id'",
+              "flags": [
+                {
+                  "name": "limit",
+                  "usage": "Maximum baselines to return (1-100; 0 = server default of 50)",
+                  "type": "int",
+                  "default": "0"
+                },
+                {
+                  "name": "offset",
+                  "usage": "Number of baselines to skip before the first result",
+                  "type": "int",
+                  "default": "0"
+                }
+              ]
+            }
+          ]
+        },
+        {
           "name": "create",
           "path": "agentclash dataset create",
           "short": "Create a dataset",
