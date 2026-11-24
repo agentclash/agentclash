@@ -189,7 +189,7 @@ const (
 	githubTestAuthorizationCode = "oauth-code-test"
 	githubTestUserToken         = "user-token-test"
 	githubTestTokenResponse     = `{"access_token":"` + githubTestUserToken + `"}`
-	githubTestAdminMembership   = `{"state":"active","role":"admin"}`
+	githubTestAdminMembership   = `{"state":"active","role":"admin","organization":{"id":99}}`
 )
 
 func TestCompleteGitHubInstallationHandlerAuthorization(t *testing.T) {
@@ -282,6 +282,16 @@ func TestCompleteGitHubInstallationHandlerAuthorization(t *testing.T) {
 			account: githubAPIAccount{ID: 99, Login: "acme/team", Type: "Organization"}, oauth: token,
 			accessPath: "/user/memberships/orgs/acme%2Fteam", access: githubTestResponse{status: 200, body: githubTestAdminMembership},
 			wantStatus: 200,
+		},
+		{
+			name: "admin of a different organization ID", code: new(githubTestAuthorizationCode), account: org, oauth: token,
+			accessPath: "/user/memberships/orgs/acme", access: githubTestResponse{status: 200, body: `{"state":"active","role":"admin","organization":{"id":100}}`},
+			wantStatus: 403, wantCode: "github_installation_not_accessible",
+		},
+		{
+			name: "admin membership without organization ID", code: new(githubTestAuthorizationCode), account: org, oauth: token,
+			accessPath: "/user/memberships/orgs/acme", access: githubTestResponse{status: 200, body: `{"state":"active","role":"admin"}`},
+			wantStatus: 403, wantCode: "github_installation_not_accessible",
 		},
 		{
 			name: "active organization member", code: new(githubTestAuthorizationCode), account: org, oauth: token,

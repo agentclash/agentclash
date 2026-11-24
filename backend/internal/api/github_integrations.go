@@ -728,9 +728,12 @@ func (m *GitHubIntegrationManager) verifyGitHubInstallationAuthority(ctx context
 
 	const maxResponseSize = 64 << 10
 	var response struct {
-		ID    int64  `json:"id"`
-		State string `json:"state"`
-		Role  string `json:"role"`
+		ID           int64  `json:"id"`
+		State        string `json:"state"`
+		Role         string `json:"role"`
+		Organization struct {
+			ID int64 `json:"id"`
+		} `json:"organization"`
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize+1))
 	if err != nil || len(body) > maxResponseSize || json.Unmarshal(body, &response) != nil {
@@ -740,7 +743,8 @@ func (m *GitHubIntegrationManager) verifyGitHubInstallationAuthority(ctx context
 		if response.ID > 0 && response.ID == account.ID {
 			return nil
 		}
-	} else if response.State == "active" && response.Role == "admin" {
+	} else if response.State == "active" && response.Role == "admin" &&
+		response.Organization.ID > 0 && response.Organization.ID == account.ID {
 		return nil
 	}
 	return errGitHubInstallationNotAccessible
