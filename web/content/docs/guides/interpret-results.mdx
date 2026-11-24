@@ -1,7 +1,7 @@
 ---
 title: Interpret Results
 description: Read AgentClash run output from top-line score to raw replay evidence without getting lost.
-dateModified: 2026-06-01
+dateModified: 2026-11-24
 ---
 
 Goal: turn a finished run or eval into a decision you can defend.
@@ -123,6 +123,47 @@ Treat that as a platform or setup issue first. Check orchestration, sandbox conf
 ### Two runs disagree, but both look messy
 
 Do not force a ranking conclusion. Clean the workload, rerun under the same conditions, and compare again.
+
+## Share a result
+
+A share link gives a public URL for a run scorecard, a run agent scorecard, or a run agent replay.
+It can also give a public URL for a challenge pack version, an agent tryout, or a report snapshot.
+Anyone who has the URL can see the resource with no login.
+
+| `--resource-type` value | ID for `--resource-id` |
+| --- | --- |
+| `run_scorecard` | Run ID (the run must have a scorecard) |
+| `run_agent_scorecard` | Run agent ID (the run agent must have a scorecard) |
+| `run_agent_replay` | Run agent ID (the run agent must have a replay) |
+| `challenge_pack_version` | Challenge pack version ID |
+| `agent_tryout` | Agent tryout ID (the redaction of its evidence must be complete) |
+| `report_snapshot` | Report snapshot ID (needs `--expires-at` or `--expires-in`) |
+
+Set `RUN_ID` to the run ID. After you create the link, set `SHARE_ID` to the share ID.
+
+```bash
+# Create a link for one week and show its share ID and URL.
+agentclash share create --resource-type run_scorecard --resource-id "$RUN_ID" --expires-in 168h
+
+# To get only the URL, use this form of create.
+agentclash share create --resource-type run_scorecard --resource-id "$RUN_ID" --expires-in 168h --json --query '.url'
+
+agentclash share update "$SHARE_ID" --search-indexing=false
+agentclash share revoke "$SHARE_ID"
+
+# Revoke a link in a script.
+agentclash share revoke "$SHARE_ID" --yes
+```
+
+- A new link has no expiry if you omit `--expires-at` and `--expires-in`.
+- A `report_snapshot` link needs an expiry. It cannot use `--search-indexing`.
+- Search engines never index the share URL. `--search-indexing` also publishes the resource on a separate publication page that search engines can index, and the command gives its URL. It needs the permission to publish public artifacts.
+- The CLI has no share list command. Keep the share ID from the create output. Use the default output or `--json` without a query to see the ID.
+- The server keeps one active link for each resource. If the resource has an active link, `share create` returns that link with its share ID, URL and expiry. A warning shows when the expiry is not the one that you asked for. To set a different expiry, revoke the link, then create a new one.
+- If the active link expired, `share create` gives it a new URL and the expiry of the new request. The share ID does not change.
+- A revoke is permanent. If you share the resource again, the new link has a new URL.
+- A second revoke of the same link exits with code `66`.
+- In non-interactive mode, pass `--yes` to revoke the link.
 
 ## See also
 

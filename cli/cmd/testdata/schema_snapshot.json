@@ -4824,6 +4824,103 @@
       ]
     },
     {
+      "name": "share",
+      "path": "agentclash share",
+      "short": "Create, change and revoke public share links",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "create",
+          "path": "agentclash share create",
+          "short": "Make a public share link for a scorecard, replay, pack version, tryout or report",
+          "runnable": true,
+          "example": "  # Share the scorecard of a run for one week\n  agentclash share create --resource-type run_scorecard --resource-id \u003crun-id\u003e --expires-in 168h\n\n  # Share the replay of one run agent, and get the URL as JSON\n  agentclash share create --resource-type run_agent_replay --resource-id \u003crun-agent-id\u003e --json --query '.url'",
+          "flags": [
+            {
+              "name": "expires-at",
+              "usage": "Time when the link stops, in RFC 3339 format, for example 2026-12-31T00:00:00Z",
+              "type": "string"
+            },
+            {
+              "name": "expires-in",
+              "usage": "Time from now when the link stops, for example 168h",
+              "type": "duration",
+              "default": "0s"
+            },
+            {
+              "name": "resource-id",
+              "usage": "ID of the resource to share; the help text gives the ID that each resource type takes",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "resource-type",
+              "usage": "Type of the resource to share: run_scorecard, run_agent_scorecard, run_agent_replay, challenge_pack_version, agent_tryout or report_snapshot",
+              "type": "string",
+              "required": true,
+              "allowed_values": [
+                "run_scorecard",
+                "run_agent_scorecard",
+                "run_agent_replay",
+                "challenge_pack_version",
+                "agent_tryout",
+                "report_snapshot"
+              ]
+            },
+            {
+              "name": "search-indexing",
+              "usage": "Also publish the resource on a publication page that search engines can index (needs the permission to publish public artifacts)",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        },
+        {
+          "name": "revoke",
+          "path": "agentclash share revoke",
+          "short": "Revoke a public share link",
+          "runnable": true,
+          "args": [
+            {
+              "name": "share-id",
+              "required": true
+            }
+          ],
+          "example": "  # Revoke a link after a confirmation prompt\n  agentclash share revoke \u003cshare-id\u003e\n\n  # Revoke a link in a script\n  agentclash share revoke \u003cshare-id\u003e --yes",
+          "flags": [
+            {
+              "name": "yes",
+              "usage": "Revoke the link with no confirmation prompt; necessary in non-interactive mode",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        },
+        {
+          "name": "update",
+          "path": "agentclash share update",
+          "short": "Turn search indexing of a share link on or off",
+          "runnable": true,
+          "args": [
+            {
+              "name": "share-id",
+              "required": true
+            }
+          ],
+          "example": "  # Stop search engines from indexing a shared page\n  agentclash share update \u003cshare-id\u003e --search-indexing=false",
+          "flags": [
+            {
+              "name": "search-indexing",
+              "usage": "Turn the indexable publication page of the link on (true) or off (false)",
+              "type": "bool",
+              "default": "false",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "skills",
       "path": "agentclash skills",
       "short": "Export bundled AgentClash Agent Skills",

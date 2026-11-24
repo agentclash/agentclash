@@ -1,6 +1,6 @@
 ---
 name: agentclash-scorecard-reader
-description: Use when interpreting AgentClash rankings, scorecards, replay timelines, artifacts, LLM judge results, eval-set scanner findings, or failure-review evidence into source-backed findings and next actions.
+description: Use when interpreting AgentClash rankings, scorecards, replay timelines, artifacts, LLM judge results, eval-set scanner findings, or failure-review evidence into source-backed findings and next actions. Also use it to make, change or revoke public share links of results.
 metadata:
   agentclash.role: reviewing
   agentclash.version: "1"
@@ -17,6 +17,7 @@ Turn completed or inspectable AgentClash run evidence into an engineering readou
 - You have a run ID and need to inspect rankings, run agents, scorecards, replay steps, failure-review items, or artifacts.
 - A reviewer needs evidence-first findings instead of raw JSON dumps.
 - You have an eval set ID and need to read or triage the findings of its transcript scanners.
+- The user asks to make, change, or revoke a share link.
 - A follow-up skill needs a grounded summary before promoting regressions or changing a challenge pack.
 
 ## Do Not Use When
@@ -185,6 +186,34 @@ agentclash evalset finding update <FINDING_ID> --status triaged --json
 - A finding is a signal, not proof. Read its `evidence` before you report it, and quote only the minimum.
 
 Exit codes: `64` for an ID that is not a UUID, an unknown scanner name, or a bad `--severity`, `--status` or `--limit` (no request). `66` for an unknown eval set or finding. `1` for `scan_already_running`: a scan runs now, so wait and do not start a loop. `77` for a missing permission. `75` for a temporary server or network failure.
+
+## Share Links
+
+A share URL is public. Anyone who has it can see the resource with no login.
+
+```bash
+agentclash share create --resource-type run_scorecard --resource-id <RUN_ID> --expires-in 168h --json
+agentclash share update <SHARE_ID> --search-indexing=false
+agentclash share revoke <SHARE_ID>
+```
+
+- Make or revoke a share link only when the user asks.
+- Turn on `--search-indexing` only when the user asks. It publishes the resource on a separate publication page that search engines can index. Search engines never index the share URL itself.
+- Keep the share ID from `share.id` in the create response.
+- The server keeps one active link for each resource. If the resource has an active link, `share create` returns that link with its share ID, URL and expiry. A warning on stderr shows when the expiry is not the one that you asked for. To set a different expiry, revoke the link, then create a new one.
+- Pass `--yes` to revoke only after the user approves the revoke.
+
+The share commands use these exit codes.
+
+| Code | Cause |
+| --- | --- |
+| `64` | The CLI rejects local input, such as an invalid UUID, or has no confirmation to revoke. |
+| `66` | The resource or link does not exist, or the link is already revoked. |
+| `77` | The user lacks permission. |
+| `1` | HTTP `409` with `agent_tryout_redaction_not_ready`. |
+| `75` | A network error or an HTTP `5xx` response. |
+
+If `share create` exits `75`, you can run the same command again. While the first link is active and not expired, the retry returns that link, so it does not make a second link. If the first link expired, the retry gives it a new URL and a new expiry. A retry with `--search-indexing` turns indexing on for the link.
 
 ## Scorecard JSON
 Use `agentclash run scorecard <RUN_AGENT_ID> --json` when you already know the agent ID. The top level mirrors `/v1/scorecards/{runAgentID}`:
@@ -507,4 +536,5 @@ Next skill: <agentclash-regression-flywheel | challenge-pack skill | none>
 - `/docs-md/concepts/runs-and-evals`
 - `/docs-md/concepts/artifacts`
 - `/docs-md/fleet/budgets-and-scanners`
+- `/docs-md/guides/interpret-results`
 - `/docs-md/reference/cli`

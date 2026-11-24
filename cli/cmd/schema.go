@@ -97,6 +97,9 @@ var flagAllowedValues = map[string]map[string][]string{
 	"agentclash evalset finding update": {
 		"status": findingStatusValues,
 	},
+	"agentclash share create": {
+		"resource-type": shareResourceTypeValues,
+	},
 }
 
 // parseArgsFromUse extracts positional arguments from a cobra Use line.

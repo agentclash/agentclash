@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "5b3acdc41ba7",
+  "snapshot_version": "d49240af5284",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -131,7 +131,7 @@
       "name": "agentclash-scorecard-reader",
       "role": "reviewing",
       "requires_cli": true,
-      "sha256": "e259f39297e39c2b125bb96c2f867b618d51464c0daba957c828de6d0225318d"
+      "sha256": "be1d6a19c314943e87685bf98f8e3b14194f5f50850456b3d64df05cf64c2101"
     },
     {
       "name": "agentclash-security-evaluation",
