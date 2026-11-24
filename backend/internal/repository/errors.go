@@ -36,6 +36,7 @@ var (
 	ErrDatasetSlugConflict                   = errors.New("dataset slug already exists in workspace")
 	ErrInvalidDatasetEvalInput               = errors.New("invalid dataset eval input")
 	ErrEvaluationSpecNotFound                = errors.New("evaluation spec not found")
+	ErrChallengePackNotFound                 = errors.New("challenge pack not found")
 	ErrChallengePackVersionNotFound          = errors.New("challenge pack version not found")
 	ErrChallengeInputSetNotFound             = errors.New("challenge input set not found")
 	ErrChallengePackVersionExists            = errors.New("challenge pack version already exists")

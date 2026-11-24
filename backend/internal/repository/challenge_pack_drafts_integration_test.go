@@ -8,7 +8,68 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func TestRepositoryGetChallengePackWorkspaceID(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	version, err := repo.GetRunnableChallengePackVersionByID(ctx, fixture.challengePackVersionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packID := version.ChallengePackID
+
+	owner, err := repo.GetChallengePackWorkspaceID(ctx, packID)
+	if err != nil || owner != nil {
+		t.Fatalf("global pack owner = %v, err = %v, want nil owner", owner, err)
+	}
+
+	if _, err := db.Exec(ctx, "UPDATE challenge_packs SET workspace_id = $1 WHERE id = $2", fixture.workspaceID, packID); err != nil {
+		t.Fatal(err)
+	}
+	owner, err = repo.GetChallengePackWorkspaceID(ctx, packID)
+	if err != nil || owner == nil || *owner != fixture.workspaceID {
+		t.Fatalf("workspace pack owner = %v, err = %v, want %s", owner, err, fixture.workspaceID)
+	}
+
+	if _, err := db.Exec(ctx, "UPDATE challenge_packs SET archived_at = now() WHERE id = $1", packID); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []uuid.UUID{packID, uuid.New()} {
+		if _, err := repo.GetChallengePackWorkspaceID(ctx, id); !errors.Is(err, repository.ErrChallengePackNotFound) {
+			t.Errorf("lookup for unavailable pack %s: error = %v, want ErrChallengePackNotFound", id, err)
+		}
+	}
+}
+
+func TestRepositoryCreateChallengePackDraftPackForeignKey(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	missingPackID := uuid.New()
+	_, err := repo.CreateChallengePackDraft(ctx, repository.CreateChallengePackDraftParams{
+		WorkspaceID:     fixture.workspaceID,
+		Name:            "Draft with missing pack",
+		ChallengePackID: &missingPackID,
+	})
+	if !errors.Is(err, repository.ErrChallengePackNotFound) {
+		t.Fatalf("missing pack error = %v, want ErrChallengePackNotFound", err)
+	}
+
+	_, err = repo.CreateChallengePackDraft(ctx, repository.CreateChallengePackDraftParams{
+		WorkspaceID: uuid.New(),
+		Name:        "Draft with missing workspace",
+	})
+	var pgErr *pgconn.PgError
+	if errors.Is(err, repository.ErrChallengePackNotFound) || !errors.As(err, &pgErr) || pgErr.Code != "23503" {
+		t.Fatalf("missing workspace error = %v, want a workspace foreign key violation", err)
+	}
+}
 
 func TestRepositoryPublishChallengePackBundleMarksSourceDraftFinalInSameTransaction(t *testing.T) {
 	ctx := context.Background()

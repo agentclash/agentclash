@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -34,6 +35,17 @@ type PublishedChallengePack struct {
 	EvaluationSpecID       uuid.UUID
 	InputSetIDs            []uuid.UUID
 	BundleArtifactID       *uuid.UUID
+}
+
+func (r *Repository) GetChallengePackWorkspaceID(ctx context.Context, id uuid.UUID) (*uuid.UUID, error) {
+	workspaceID, err := r.queries.GetChallengePackWorkspaceID(ctx, repositorysqlc.GetChallengePackWorkspaceIDParams{ID: id})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrChallengePackNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get challenge pack workspace: %w", err)
+	}
+	return workspaceID, nil
 }
 
 func (r *Repository) ListVisibleChallengePacks(ctx context.Context, workspaceID uuid.UUID) ([]ChallengePackSummary, error) {
