@@ -67,6 +67,7 @@ import { cn } from "@/lib/utils";
 
 interface CISetupClientProps {
   workspaceId: string;
+  canManageGitHubApp: boolean;
 }
 
 const textAreaClass =
@@ -74,7 +75,20 @@ const textAreaClass =
 const selectClass =
   "block h-9 w-full rounded-lg border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50";
 
-export function CISetupClient({ workspaceId }: CISetupClientProps) {
+function parseHttpsUrl(value: unknown): URL | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+export function CISetupClient({
+  workspaceId,
+  canManageGitHubApp,
+}: CISetupClientProps) {
   const { getAccessToken } = useAccessToken();
   const [workflowPath, setWorkflowPath] = useState(
     defaultCISetupConfig.workflowPath,
@@ -478,6 +492,12 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   const savedProfiles = ciProfiles.data?.items ?? [];
   const selectedProfile =
     savedProfiles.find((profile) => profile.id === selectedProfileId) ?? null;
+  const githubInstallationLabel =
+    repositories.isLoading || repositories.error || !repositories.data
+      ? "Manage GitHub App"
+      : githubRepositories.length > 0
+        ? "Add repositories on GitHub"
+        : "Install GitHub App";
 
   async function startGitHubInstallation() {
     setStartingGitHubInstallation(true);
@@ -491,7 +511,14 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
           return_path: `/workspaces/${workspaceId}/ci-setup`,
         } satisfies StartGitHubInstallationRequest,
       );
-      window.location.assign(result.install_url);
+      const installUrl = parseHttpsUrl(result?.install_url);
+      if (!installUrl) {
+        setGitHubInstallationError(
+          "The server returned no GitHub install link. Try again.",
+        );
+        return;
+      }
+      window.location.assign(installUrl.href);
     } catch (err) {
       if (err instanceof ApiError && err.code === "github_app_not_configured") {
         setGitHubInstallationError("This AgentClash server has no GitHub App.");
@@ -808,33 +835,37 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
             title="Repository"
             meta={repositories.data?.items?.length ? "GitHub connected" : "Manual entry"}
           >
-            <div className="mb-4 space-y-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={startingGitHubInstallation}
-                onClick={startGitHubInstallation}
-              >
-                {startingGitHubInstallation ? (
-                  <Loader2 data-icon="inline-start" className="size-4 animate-spin" />
-                ) : (
-                  <GitHubIcon data-icon="inline-start" className="size-4" />
+            {canManageGitHubApp ? (
+              <div className="mb-4 space-y-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={startingGitHubInstallation}
+                  onClick={startGitHubInstallation}
+                >
+                  {startingGitHubInstallation ? (
+                    <Loader2 data-icon="inline-start" className="size-4 animate-spin" />
+                  ) : (
+                    <GitHubIcon data-icon="inline-start" className="size-4" />
+                  )}
+                  {githubInstallationLabel}
+                </Button>
+                {githubInstallationError && (
+                  <div role="alert">
+                    <StatusPanel
+                      tone="danger"
+                      title="Unable to connect GitHub"
+                      body={githubInstallationError}
+                    />
+                  </div>
                 )}
-                {githubRepositories.length > 0
-                  ? "Add repositories on GitHub"
-                  : "Install GitHub App"}
-              </Button>
-              {githubInstallationError && (
-                <div role="alert">
-                  <StatusPanel
-                    tone="danger"
-                    title="Unable to connect GitHub"
-                    body={githubInstallationError}
-                  />
-                </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <p className="mb-4 text-sm text-muted-foreground">
+                Ask a workspace admin to install the GitHub App.
+              </p>
+            )}
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Repository">
                 <select

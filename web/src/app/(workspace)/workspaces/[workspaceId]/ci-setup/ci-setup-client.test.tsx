@@ -2,8 +2,14 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/errors";
-import type { StartGitHubInstallationResponse } from "@/lib/api/types";
+import type {
+  SessionResponse,
+  StartGitHubInstallationResponse,
+  UserMeOrganization,
+} from "@/lib/api/types";
+import { getServerSession, getServerUserMe } from "@/lib/auth/server";
 import { CISetupClient } from "./ci-setup-client";
+import CISetupPage from "./page";
 
 const {
   mockGetAccessToken,
@@ -11,6 +17,7 @@ const {
   mockListResponse,
   mockPatch,
   mockPost,
+  mockRepositoryQueryState,
   mockRunsResponse,
   toast,
 } = vi.hoisted(() => ({
@@ -19,6 +26,7 @@ const {
   mockListResponse: vi.fn(),
   mockPatch: vi.fn(),
   mockPost: vi.fn(),
+  mockRepositoryQueryState: vi.fn(),
   mockRunsResponse: vi.fn(),
   toast: Object.assign(vi.fn(), {
     success: vi.fn(),
@@ -35,6 +43,11 @@ vi.mock("@/lib/api/client", () => ({
   createApiClient: (...args: unknown[]) => mockCreateApiClient(...args),
 }));
 
+vi.mock("@/lib/auth/server", () => ({
+  getServerSession: vi.fn(),
+  getServerUserMe: vi.fn(),
+}));
+
 vi.mock("@/lib/api/swr", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/swr")>();
   return {
@@ -44,6 +57,7 @@ vi.mock("@/lib/api/swr", async (importOriginal) => {
       isLoading: false,
       error: null,
       mutate: vi.fn(),
+      ...(path.endsWith("/github/repositories") && mockRepositoryQueryState()),
     }),
     usePaginatedApiQuery: () => ({
       data: mockRunsResponse(),
@@ -115,9 +129,11 @@ vi.mock("lucide-react", () => {
 const cleanups: Array<() => void> = [];
 
 beforeEach(() => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   document.body.innerHTML = "";
   mockPost.mockReset();
   mockPatch.mockReset();
+  mockRepositoryQueryState.mockReset();
   mockGetAccessToken.mockResolvedValue("token");
   mockCreateApiClient.mockReturnValue({
     get: vi.fn(async (path: string) => {
@@ -217,6 +233,56 @@ afterEach(() => {
 });
 
 describe("CISetupClient", () => {
+  it.each([
+    {
+      scenario: "loading",
+      query: { data: undefined, isLoading: true },
+    },
+    {
+      scenario: "in error",
+      query: { error: new Error("Could not load repositories") },
+    },
+    {
+      scenario: "awaiting initial data",
+      query: { data: undefined },
+    },
+  ])("shows Manage GitHub App when the repository query is $scenario", async ({ query }) => {
+    mockRepositoryQueryState.mockReturnValue(query);
+
+    renderClient();
+    await flushEffects();
+
+    expect(findGitHubButton("Manage GitHub App").disabled).toBe(false);
+  });
+
+  it.each([
+    { scenario: "missing link", response: {} },
+    {
+      scenario: "HTTP link",
+      response: { install_url: "http://github.com/apps/agentclash" },
+    },
+    { scenario: "relative link", response: { install_url: "/apps/agentclash" } },
+    { scenario: "malformed link", response: { install_url: "https://[" } },
+    { scenario: "empty link", response: { install_url: "" } },
+    { scenario: "non-string link", response: { install_url: 7 } },
+    { scenario: "null response", response: null },
+  ])("shows an inline error and skips navigation for $scenario", async ({ response }) => {
+    const assign = mockLocationAssign();
+    mockPost.mockResolvedValueOnce(response);
+
+    renderClient();
+    await flushEffects();
+
+    const button = findGitHubButton("Add repositories on GitHub");
+    await act(async () => button.click());
+
+    expect(document.querySelector('[role="alert"]')?.textContent ?? "").toContain(
+      "The server returned no GitHub install link. Try again.",
+    );
+    expect(assign).not.toHaveBeenCalled();
+    expect(button.disabled).toBe(false);
+  });
+
   it("starts installation and redirects to GitHub when no repositories are installed", async () => {
     mockListResponse.mockImplementation((path: string) =>
       path.endsWith("/github/repositories") ? [] : listResponse(path),
@@ -456,6 +522,118 @@ describe("CISetupClient", () => {
   });
 });
 
+describe("CISetupPage GitHub App access", () => {
+  beforeEach(() => {
+    mockRoles();
+  });
+
+  it.each([
+    { adminType: "a workspace admin", workspaceRole: "workspace_admin", orgRole: "org_member" },
+    { adminType: "an owning organization admin", workspaceRole: undefined, orgRole: "org_admin" },
+  ])("shows the button for $adminType", async ({ workspaceRole, orgRole }) => {
+    mockRoles(workspaceRole, orgRole);
+
+    await renderPage();
+
+    expect(findGitHubButton("Add repositories on GitHub")).toBeTruthy();
+    expect(document.body.textContent).not.toContain(
+      "Ask a workspace admin to install the GitHub App.",
+    );
+  });
+
+  it("shows muted guidance to a workspace member", async () => {
+    mockRoles("workspace_member");
+
+    await renderPage();
+
+    expectAdminGuidance();
+  });
+
+  it("shows muted guidance to admins of a different workspace and organization", async () => {
+    mockRoles("workspace_member");
+    vi.mocked(getServerSession).mockResolvedValue({
+      user_id: "user-1",
+      workspace_memberships: [
+        { workspace_id: "ws-1", role: "workspace_member" },
+        { workspace_id: "ws-2", role: "workspace_admin" },
+      ],
+      organization_memberships: [{ organization_id: "org-2", role: "org_admin" }],
+    });
+    vi.mocked(getServerUserMe).mockResolvedValue({
+      user_id: "user-1",
+      organizations: [
+        organization("org-1", "org_member", "ws-1", "workspace_member"),
+        organization("org-2", "org_admin", "ws-2", "workspace_admin"),
+      ],
+    });
+
+    await renderPage();
+
+    expectAdminGuidance();
+  });
+
+  it.each([
+    { lookup: "session", getRoles: getServerSession },
+    { lookup: "user profile", getRoles: getServerUserMe },
+  ])(
+    "shows muted guidance when the $lookup lookup fails",
+    async ({ getRoles }) => {
+      mockRoles("workspace_admin", "org_admin");
+      vi.mocked(getRoles).mockRejectedValueOnce(new Error("Role lookup failed"));
+
+      await renderPage();
+
+      expectAdminGuidance();
+    },
+  );
+});
+
+function organization(
+  id: string,
+  role: string,
+  workspaceId: string,
+  workspaceRole: string,
+): UserMeOrganization {
+  return {
+    id,
+    name: id,
+    slug: id,
+    role,
+    workspaces: [{ id: workspaceId, name: workspaceId, slug: workspaceId, role: workspaceRole }],
+  };
+}
+
+function mockRoles(workspaceRole?: string, orgRole = "org_member") {
+  const session: SessionResponse = {
+    user_id: "user-1",
+    workspace_memberships: workspaceRole
+      ? [{ workspace_id: "ws-1", role: workspaceRole }]
+      : [],
+    organization_memberships: [{ organization_id: "org-1", role: orgRole }],
+  };
+  vi.mocked(getServerSession).mockResolvedValue(session);
+  vi.mocked(getServerUserMe).mockResolvedValue({
+    user_id: "user-1",
+    organizations: [organization("org-1", orgRole, "ws-1", workspaceRole ?? orgRole)],
+  });
+}
+
+async function renderPage() {
+  renderClient(await CISetupPage({ params: Promise.resolve({ workspaceId: "ws-1" }) }));
+  await flushEffects();
+}
+
+function expectAdminGuidance() {
+  const buttonLabels = Array.from(document.querySelectorAll("button"), (button) => button.textContent);
+  expect(buttonLabels).not.toContain("Install GitHub App");
+  expect(buttonLabels).not.toContain("Add repositories on GitHub");
+  expect(buttonLabels).not.toContain("Manage GitHub App");
+  const guidance = Array.from(document.querySelectorAll("p")).find(
+    (paragraph) => paragraph.textContent === "Ask a workspace admin to install the GitHub App.",
+  );
+  expect(guidance?.classList.contains("text-muted-foreground")).toBe(true);
+}
+
 function mockLocationAssign() {
   const assign = vi.fn();
   const browser = Object.create(window);
@@ -472,12 +650,14 @@ function findGitHubButton(label: string) {
   return button;
 }
 
-function renderClient() {
+function renderClient(
+  page = <CISetupClient workspaceId="ws-1" canManageGitHubApp />,
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root: Root = createRoot(container);
   act(() => {
-    root.render(React.createElement(CISetupClient, { workspaceId: "ws-1" }));
+    root.render(page);
   });
   const rendered = {
     cleanup: () => {
