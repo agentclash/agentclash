@@ -148,6 +148,37 @@ describe("agent skill docs", () => {
       "`--repo` (required) — GitHub repository as owner/name, or its numeric GitHub repository ID",
     );
     expect(content).toContain("`--check-only`");
+
+    // workspace emergency-stop (cancel every active eval set)
+    expect(content).toContain("Cancel every active eval set in the workspace");
+    expect(content).toContain(
+      "`--yes` — Cancel the eval sets with no confirmation prompt; necessary in non-interactive mode",
+    );
+
+    // evalset scan and finding (transcript scanners)
+    expect(content).toContain("Run the built-in transcript scanners on an eval set");
+    expect(content).toContain(
+      "`--scanner` — Built-in scanner to run; may be repeated (default: the scanners of the eval set manifest)",
+    );
+    expect(content).toContain("List the scanner findings of an eval set");
+    expect(content).toContain("`--limit` — Maximum findings to return, newest first (1-500)");
+    expect(content).toContain("Change the triage status of a scanner finding");
+    expect(content).toContain(
+      "`--status` (required) — New status of the finding: open, triaged or dismissed",
+    );
+
+    // share links
+    expect(content).toContain(
+      "Make a public share link for a scorecard, replay, pack version, tryout or report",
+    );
+    expect(content).toContain(
+      "`--resource-type` (required) — Type of the resource to share: run_scorecard, run_agent_scorecard, run_agent_replay, challenge_pack_version, agent_tryout or report_snapshot",
+    );
+    expect(content).toContain("Turn search indexing of a share link on or off");
+    expect(content).toContain("Revoke a public share link");
+    expect(content).toContain(
+      "`--yes` — Revoke the link with no confirmation prompt; necessary in non-interactive mode",
+    );
   });
 
   it("generates the security evaluation skill", () => {
@@ -169,6 +200,9 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash workspace create");
     expect(doc?.content).toContain("agentclash workspace members invite");
     expect(doc?.content).toContain("agentclash link");
+    expect(doc?.content).toContain("agentclash workspace emergency-stop -w <workspace-id> --json");
+    expect(doc?.content).toContain("interactive_input_required");
+    expect(doc?.content).toContain("Never add `--yes` on your own decision");
   });
 
   it("generates the quickstart skill with readiness checks", () => {
@@ -225,6 +259,12 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash run ranking <RUN_ID> --json");
     expect(doc?.content).toContain("agentclash run insights <RUN_ID> --provider-account");
     expect(doc?.content).toContain("ranking_insights_rate_limited");
+    expect(doc?.content).toContain(
+      "agentclash evalset finding list <EVAL_SET_ID> --severity high --status open --json",
+    );
+    expect(doc?.content).toContain("scan_already_running");
+    expect(doc?.content).toContain("agentclash share update <SHARE_ID> --search-indexing=false");
+    expect(doc?.content).toContain("Turn on `--search-indexing` only when the user asks.");
     expect(doc?.content).toContain("agentclash run scorecard <RUN_AGENT_ID> --json");
     expect(doc?.content).toContain("agentclash replay get <RUN_AGENT_ID> --limit 50 --json");
     expect(doc?.content).toContain("artifact list` is workspace-wide");

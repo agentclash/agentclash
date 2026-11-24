@@ -2525,6 +2525,82 @@
           ]
         },
         {
+          "name": "finding",
+          "path": "agentclash evalset finding",
+          "short": "Triage the scanner findings of an eval set",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "list",
+              "path": "agentclash evalset finding list",
+              "short": "List the scanner findings of an eval set",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "eval-set-id",
+                  "required": true
+                }
+              ],
+              "example": "  # List the open findings of high severity\n  agentclash evalset finding list \u003ceval-set-id\u003e --severity high --status open\n\n  # Get the full findings, with the evidence, as JSON\n  agentclash evalset finding list \u003ceval-set-id\u003e --json",
+              "flags": [
+                {
+                  "name": "limit",
+                  "usage": "Maximum findings to return, newest first (1-500)",
+                  "type": "int",
+                  "default": "100"
+                },
+                {
+                  "name": "severity",
+                  "usage": "Show only the findings of this severity: low, medium, high or critical",
+                  "type": "string",
+                  "allowed_values": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                {
+                  "name": "status",
+                  "usage": "Show only the findings with this status: open, triaged or dismissed",
+                  "type": "string",
+                  "allowed_values": [
+                    "open",
+                    "triaged",
+                    "dismissed"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "update",
+              "path": "agentclash evalset finding update",
+              "short": "Change the triage status of a scanner finding",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "finding-id",
+                  "required": true
+                }
+              ],
+              "example": "  # Mark a finding as triaged\n  agentclash evalset finding update \u003cfinding-id\u003e --status triaged\n\n  # Dismiss a false positive\n  agentclash evalset finding update \u003cfinding-id\u003e --status dismissed --json",
+              "flags": [
+                {
+                  "name": "status",
+                  "usage": "New status of the finding: open, triaged or dismissed",
+                  "type": "string",
+                  "required": true,
+                  "allowed_values": [
+                    "open",
+                    "triaged",
+                    "dismissed"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
           "name": "init",
           "path": "agentclash evalset init",
           "short": "Write a commented starter evalset/v1 manifest",
@@ -2599,6 +2675,33 @@
                 "table",
                 "json",
                 "csv"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "scan",
+          "path": "agentclash evalset scan",
+          "short": "Run the built-in transcript scanners on an eval set",
+          "runnable": true,
+          "args": [
+            {
+              "name": "eval-set-id",
+              "required": true
+            }
+          ],
+          "example": "  # Run the scanners of the eval set manifest\n  agentclash evalset scan \u003ceval-set-id\u003e\n\n  # Run two built-in scanners\n  agentclash evalset scan \u003ceval-set-id\u003e --scanner reward-hacking --scanner tool-misuse\n\n  # Look at the findings when the scan is complete\n  agentclash evalset finding list \u003ceval-set-id\u003e --severity high",
+          "flags": [
+            {
+              "name": "scanner",
+              "usage": "Built-in scanner to run; may be repeated (default: the scanners of the eval set manifest)",
+              "type": "stringArray",
+              "default": "[]",
+              "allowed_values": [
+                "instruction-injection-compliance",
+                "reward-hacking",
+                "sandbox-escape-attempt",
+                "tool-misuse"
               ]
             }
           ]
@@ -4721,6 +4824,103 @@
       ]
     },
     {
+      "name": "share",
+      "path": "agentclash share",
+      "short": "Create, change and revoke public share links",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "create",
+          "path": "agentclash share create",
+          "short": "Make a public share link for a scorecard, replay, pack version, tryout or report",
+          "runnable": true,
+          "example": "  # Share the scorecard of a run for one week\n  agentclash share create --resource-type run_scorecard --resource-id \u003crun-id\u003e --expires-in 168h\n\n  # Share the replay of one run agent, and get the URL as JSON\n  agentclash share create --resource-type run_agent_replay --resource-id \u003crun-agent-id\u003e --json --query '.url'",
+          "flags": [
+            {
+              "name": "expires-at",
+              "usage": "Time when the link stops, in RFC 3339 format, for example 2026-12-31T00:00:00Z",
+              "type": "string"
+            },
+            {
+              "name": "expires-in",
+              "usage": "Time from now when the link stops, for example 168h",
+              "type": "duration",
+              "default": "0s"
+            },
+            {
+              "name": "resource-id",
+              "usage": "ID of the resource to share; the help text gives the ID that each resource type takes",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "resource-type",
+              "usage": "Type of the resource to share: run_scorecard, run_agent_scorecard, run_agent_replay, challenge_pack_version, agent_tryout or report_snapshot",
+              "type": "string",
+              "required": true,
+              "allowed_values": [
+                "run_scorecard",
+                "run_agent_scorecard",
+                "run_agent_replay",
+                "challenge_pack_version",
+                "agent_tryout",
+                "report_snapshot"
+              ]
+            },
+            {
+              "name": "search-indexing",
+              "usage": "Also publish the resource on a publication page that search engines can index (needs the permission to publish public artifacts)",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        },
+        {
+          "name": "revoke",
+          "path": "agentclash share revoke",
+          "short": "Revoke a public share link",
+          "runnable": true,
+          "args": [
+            {
+              "name": "share-id",
+              "required": true
+            }
+          ],
+          "example": "  # Revoke a link after a confirmation prompt\n  agentclash share revoke \u003cshare-id\u003e\n\n  # Revoke a link in a script\n  agentclash share revoke \u003cshare-id\u003e --yes",
+          "flags": [
+            {
+              "name": "yes",
+              "usage": "Revoke the link with no confirmation prompt; necessary in non-interactive mode",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        },
+        {
+          "name": "update",
+          "path": "agentclash share update",
+          "short": "Turn search indexing of a share link on or off",
+          "runnable": true,
+          "args": [
+            {
+              "name": "share-id",
+              "required": true
+            }
+          ],
+          "example": "  # Stop search engines from indexing a shared page\n  agentclash share update \u003cshare-id\u003e --search-indexing=false",
+          "flags": [
+            {
+              "name": "search-indexing",
+              "usage": "Turn the indexable publication page of the link on (true) or off (false)",
+              "type": "bool",
+              "default": "false",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "skills",
       "path": "agentclash skills",
       "short": "Export bundled AgentClash Agent Skills",
@@ -4788,6 +4988,21 @@
               "name": "slug",
               "usage": "Workspace slug (optional)",
               "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "emergency-stop",
+          "path": "agentclash workspace emergency-stop",
+          "short": "Cancel every active eval set in the workspace",
+          "runnable": true,
+          "example": "  # Cancel every active eval set in the default workspace, with a prompt\n  agentclash workspace emergency-stop\n\n  # Cancel them in a CI job or a script, with no prompt\n  agentclash workspace emergency-stop -w \u003cworkspaceId\u003e --yes --json",
+          "flags": [
+            {
+              "name": "yes",
+              "usage": "Cancel the eval sets with no confirmation prompt; necessary in non-interactive mode",
+              "type": "bool",
+              "default": "false"
             }
           ]
         },
@@ -5127,6 +5342,14 @@
     {
       "code": "missing_workspace",
       "description": "No workspace resolved; pass --workspace, set AGENTCLASH_WORKSPACE, or run 'agentclash link'."
+    },
+    {
+      "code": "interactive_input_required",
+      "description": "The command needs a person at a terminal (a confirmation or a browser login), but it runs in non-interactive mode. For a confirmation, check the effect of the command, then pass --yes. The command did not start its action."
+    },
+    {
+      "code": "aborted",
+      "description": "The person at the terminal did not confirm the command. The command did not start its action."
     },
     {
       "code": "follow_timeout",
