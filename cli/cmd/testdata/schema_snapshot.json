@@ -5059,6 +5059,256 @@
       ]
     },
     {
+      "name": "tryout",
+      "path": "agentclash tryout",
+      "short": "Run and inspect agent tryouts",
+      "runnable": false,
+      "example": "  agentclash tryout templates",
+      "subcommands": [
+        {
+          "name": "artifacts",
+          "path": "agentclash tryout artifacts",
+          "short": "List artifacts for an agent tryout",
+          "runnable": true,
+          "args": [
+            {
+              "name": "tryout-id",
+              "required": true
+            }
+          ],
+          "example": "  agentclash tryout artifacts \u003ctryout-id\u003e --json"
+        },
+        {
+          "name": "compare",
+          "path": "agentclash tryout compare",
+          "short": "Compare two to four agent tryouts",
+          "runnable": true,
+          "args": [
+            {
+              "name": "tryout-id",
+              "required": true
+            },
+            {
+              "name": "tryout-id",
+              "required": true
+            },
+            {
+              "name": "tryout-id",
+              "required": false,
+              "variadic": true
+            }
+          ],
+          "example": "  agentclash tryout compare \u003cfirst-id\u003e \u003csecond-id\u003e --json"
+        },
+        {
+          "name": "create",
+          "path": "agentclash tryout create",
+          "short": "Create an agent tryout from a template",
+          "runnable": true,
+          "example": "  agentclash tryout create --template meeting-minutes --input '{\"notes\":\"Review the release plan.\"}' --follow",
+          "flags": [
+            {
+              "name": "follow",
+              "usage": "Wait for the tryout to finish",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "input",
+              "usage": "Input as a JSON object",
+              "type": "string"
+            },
+            {
+              "name": "input-file",
+              "usage": "Path to a JSON input file",
+              "type": "string"
+            },
+            {
+              "name": "poll-interval",
+              "usage": "Time between status requests",
+              "type": "duration",
+              "default": "2s"
+            },
+            {
+              "name": "template",
+              "usage": "Template slug",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "timeout",
+              "usage": "Time limit for --follow (0 means no limit)",
+              "type": "duration",
+              "default": "0s"
+            }
+          ]
+        },
+        {
+          "name": "events",
+          "path": "agentclash tryout events",
+          "short": "List events for an agent tryout",
+          "runnable": true,
+          "args": [
+            {
+              "name": "tryout-id",
+              "required": true
+            }
+          ],
+          "example": "  agentclash tryout events \u003ctryout-id\u003e --after 10 --limit 50",
+          "flags": [
+            {
+              "name": "after",
+              "usage": "Return events after this cursor (0 starts at the first event)",
+              "type": "int64",
+              "default": "0"
+            },
+            {
+              "name": "limit",
+              "usage": "Maximum events to scan (1-200, or 0 for the server default of 100)",
+              "type": "int",
+              "default": "0"
+            }
+          ]
+        },
+        {
+          "name": "get",
+          "path": "agentclash tryout get",
+          "short": "Show an agent tryout",
+          "runnable": true,
+          "args": [
+            {
+              "name": "tryout-id",
+              "required": true
+            }
+          ],
+          "example": "  agentclash tryout get \u003ctryout-id\u003e --follow --timeout 5m",
+          "flags": [
+            {
+              "name": "follow",
+              "usage": "Wait for the tryout to finish",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "poll-interval",
+              "usage": "Time between status requests",
+              "type": "duration",
+              "default": "2s"
+            },
+            {
+              "name": "timeout",
+              "usage": "Time limit for --follow (0 means no limit)",
+              "type": "duration",
+              "default": "0s"
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "path": "agentclash tryout list",
+          "short": "List agent tryouts in the workspace",
+          "runnable": true,
+          "example": "  agentclash tryout list --limit 20 --offset 40",
+          "flags": [
+            {
+              "name": "limit",
+              "usage": "Maximum tryouts to return (1-100, or 0 for the server default of 50)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "offset",
+              "usage": "Number of tryouts to skip (default 0, maximum 2147483647)",
+              "type": "int",
+              "default": "0"
+            }
+          ]
+        },
+        {
+          "name": "promote",
+          "path": "agentclash tryout promote",
+          "short": "Create an eval draft from a completed tryout",
+          "runnable": true,
+          "args": [
+            {
+              "name": "tryout-id",
+              "required": true
+            }
+          ],
+          "example": "  agentclash tryout promote \u003ctryout-id\u003e --title \"Release notes eval\"",
+          "flags": [
+            {
+              "name": "title",
+              "usage": "Title of the eval draft",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "rerun",
+          "path": "agentclash tryout rerun",
+          "short": "Rerun an agent tryout with a model policy",
+          "runnable": true,
+          "args": [
+            {
+              "name": "tryout-id",
+              "required": true
+            }
+          ],
+          "example": "  agentclash tryout rerun \u003ctryout-id\u003e --model openai/gpt-5 --follow\n  agentclash tryout rerun \u003ctryout-id\u003e --policy-file policy.json",
+          "flags": [
+            {
+              "name": "follow",
+              "usage": "Wait for the new tryout to finish",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "max-models",
+              "usage": "Maximum models in the policy (1-8)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "mode",
+              "usage": "Mode of the model policy",
+              "type": "string"
+            },
+            {
+              "name": "model",
+              "usage": "Model in provider/model form (repeat for each model)",
+              "type": "stringArray",
+              "default": "[]"
+            },
+            {
+              "name": "policy-file",
+              "usage": "Path to a JSON model policy file",
+              "type": "string"
+            },
+            {
+              "name": "poll-interval",
+              "usage": "Time between status requests",
+              "type": "duration",
+              "default": "2s"
+            },
+            {
+              "name": "timeout",
+              "usage": "Time limit for --follow (0 means no limit)",
+              "type": "duration",
+              "default": "0s"
+            }
+          ]
+        },
+        {
+          "name": "templates",
+          "path": "agentclash tryout templates",
+          "short": "List agent tryout templates",
+          "runnable": true,
+          "example": "  agentclash tryout templates --json"
+        }
+      ]
+    },
+    {
       "name": "version",
       "path": "agentclash version",
       "short": "Show CLI version information",

@@ -25,6 +25,15 @@ var apiFeatureCommandPaths = []string{
 	"agentclash calibration list",
 	"agentclash arena tasks",
 	"agentclash arena vote",
+	"agentclash tryout templates",
+	"agentclash tryout create",
+	"agentclash tryout list",
+	"agentclash tryout get",
+	"agentclash tryout events",
+	"agentclash tryout artifacts",
+	"agentclash tryout rerun",
+	"agentclash tryout compare",
+	"agentclash tryout promote",
 }
 
 func TestAPIFeatureCommandsHaveShortAndExample(t *testing.T) {

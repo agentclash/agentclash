@@ -88,6 +88,9 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash-compare-and-triage");
     expect(doc?.content).toContain("agentclash-dataset-workflows");
     expect(doc?.content).toContain("https://www.agentclash.dev/docs/agent-skills");
+    expect(doc?.content).toContain(
+      "Use `agentclash tryout` to start, inspect, and compare workspace tryouts.",
+    );
   });
 
   it("generates the agent harness setup skill", () => {
@@ -194,6 +197,10 @@ describe("agent skill docs", () => {
     expect(content).toContain("List recent calibration reviews");
     expect(content).toContain("List pending arena tasks");
     expect(content).toContain("Submit a vote for an arena task");
+    expect(content).toContain("Create an agent tryout from a template");
+    expect(content).toContain("Rerun an agent tryout with a model policy");
+    expect(content).toContain("Compare two to four agent tryouts");
+    expect(content).toContain("`--template` (required) — Template slug");
   });
 
   it("generates the security evaluation skill", () => {
