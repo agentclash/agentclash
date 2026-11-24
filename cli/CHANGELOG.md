@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.0](https://github.com/agentclash/agentclash/compare/v2.7.0...v2.8.0) (2026-11-24)
+
+
+### Features
+
+* **cli:** add workspace emergency-stop with a confirmation prompt ([1c1c226](https://github.com/agentclash/agentclash/commit/1c1c22648218a9d7861c924b5e854de5e432d650)), closes [#1418](https://github.com/agentclash/agentclash/issues/1418)
+
 ## [2.7.0](https://github.com/agentclash/agentclash/compare/v2.6.0...v2.7.0) (2026-11-24)
 
 
