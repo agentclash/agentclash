@@ -102,20 +102,6 @@ func TestVibeLibraryOriginalBytesAndFrozenExport(t *testing.T) {
 		t.Fatal("published case IDs unresolved", count, err)
 	}
 
-	// Publishing an edited builder copy must not claim the original version's mapping.
-	comp.Version.Number = 2
-	edited, err := challengepack.ComposeBundle(comp, challengepack.ResolvedPieces{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	publishedEdited, err := repo.PublishChallengePackBundle(h.ctx, repository.PublishChallengePackBundleParams{OrganizationID: org, WorkspaceID: ws, Bundle: edited, Source: &repository.PackPublicationSource{DraftID: receipt.DraftID, Composition: mustJSON(t, comp)}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = h.db.QueryRow(h.ctx, "SELECT count(*) FROM vibe_published_case_bindings WHERE draft_id=$1 AND challenge_pack_version_id=$2", receipt.DraftID, publishedEdited.ChallengePackVersionID).Scan(&count); err != nil || count != 0 {
-		t.Fatal("edited draft claimed original IDs", count, err)
-	}
-
 	// Exercise the canonical HTTP deletion owner with real repository persistence.
 	builder := NewChallengePackBuilderManager(NewCallerWorkspaceAuthorizer(), repo, nil)
 	router := chi.NewRouter()
@@ -154,6 +140,33 @@ func TestVibeLibraryOriginalBytesAndFrozenExport(t *testing.T) {
 	w = request("POST", base+"/advanced", advancedRequest)
 	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte(replacement.DraftID.String())) {
 		t.Fatal("replacement save not idempotent", w.Code, w.Body.String())
+	}
+	w = request("GET", "/saved-originals/"+replacement.DraftID.String(), nil)
+	if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), original) {
+		t.Fatal("replacement draft lost original bytes", w.Code)
+	}
+
+	// A draft can publish once. Use the replacement draft to test the edit.
+	comp.Version.Number = composed.Version.Number + 1
+	editedDraft, err := repo.PatchChallengePackDraft(h.ctx, repository.PatchChallengePackDraftParams{ID: replacement.DraftID, Composition: mustJSON(t, comp)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited, err := challengepack.ComposeBundle(comp, challengepack.ResolvedPieces{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	publishedEdited, err := repo.PublishChallengePackBundle(h.ctx, repository.PublishChallengePackBundleParams{
+		OrganizationID: org,
+		WorkspaceID:    ws,
+		Bundle:         edited,
+		Source:         &repository.PackPublicationSource{DraftID: editedDraft.ID, Composition: editedDraft.Composition},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = h.db.QueryRow(h.ctx, "SELECT count(*) FROM vibe_published_case_bindings WHERE challenge_pack_version_id=$1", publishedEdited.ChallengePackVersionID).Scan(&count); err != nil || count != 0 {
+		t.Fatal("edited draft claimed original IDs", count, err)
 	}
 	if err = h.db.QueryRow(h.ctx, "SELECT count(*) FROM vibe_published_case_bindings WHERE draft_id=$1 AND challenge_pack_version_id=$2", receipt.DraftID, published.ChallengePackVersionID).Scan(&count); err != nil || count != len(composed.InputSets[0].Cases) {
 		t.Fatal("earlier immutable mapping lost", count, err)
