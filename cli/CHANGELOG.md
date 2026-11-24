@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.0.0](https://github.com/agentclash/agentclash/compare/v2.13.1...v3.0.0) (2026-11-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** Cobra usage errors exit 64 instead of 1.
+
+### Bug Fixes
+
+* **cli:** exit 64 for Cobra usage errors ([4577b1d](https://github.com/agentclash/agentclash/commit/4577b1de7090eea01db1902f9b1b261273ce9622)), closes [#1429](https://github.com/agentclash/agentclash/issues/1429)
+* **cli:** keep usage-error output rules consistent with other errors ([f7f6135](https://github.com/agentclash/agentclash/commit/f7f61354f5f018f610abba21a63a07089cc39608)), closes [#1429](https://github.com/agentclash/agentclash/issues/1429)
+
 ## [2.13.1](https://github.com/agentclash/agentclash/compare/v2.13.0...v2.13.1) (2026-11-24)
 
 
