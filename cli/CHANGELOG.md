@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.10.0](https://github.com/agentclash/agentclash/compare/v2.9.0...v2.10.0) (2026-11-24)
+
+
+### Features
+
+* **cli:** add calibration and arena commands for multi-turn reviews ([58091e7](https://github.com/agentclash/agentclash/commit/58091e79fb62a4c49e32b73ec17b56b4b3676946)), closes [#1418](https://github.com/agentclash/agentclash/issues/1418)
+
 ## [2.9.0](https://github.com/agentclash/agentclash/compare/v2.8.0...v2.9.0) (2026-11-24)
 
 
