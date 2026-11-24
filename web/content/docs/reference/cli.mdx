@@ -6,6 +6,10 @@ dateModified: 2026-06-01
 
 Intro-oriented readers should still start from [Hosted quickstart](/docs/getting-started/quickstart); this page focuses on mechanically listing what `cli/cmd` exposes after each docs rebuild. For repo layout around the CLI, see [Codebase tour](/docs/contributing/codebase-tour).
 
+## Usage errors
+
+The CLI exits `64` for missing required flags, unknown flags or commands, incorrect argument counts, and flag values it cannot parse. With `--json`, `--output json`, or `--output yaml`, it writes a JSON error with `error.code` set to `invalid_argument` on stderr. Run `agentclash schema --json` for the exit code registry.
+
 ## See also
 
 - [CLI evalset workflow](/docs/fleet/cli-evalset) — Fleet `evalset` commands with examples
