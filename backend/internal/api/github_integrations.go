@@ -72,10 +72,11 @@ type GitHubIntegrationConfig struct {
 }
 
 type GitHubIntegrationManager struct {
-	authorizer WorkspaceAuthorizer
-	repo       GitHubIntegrationRepository
-	config     GitHubIntegrationConfig
-	client     GitHubAppClient
+	authorizer         WorkspaceAuthorizer
+	repo               GitHubIntegrationRepository
+	config             GitHubIntegrationConfig
+	client             GitHubAppClient
+	userRequestTimeout time.Duration
 }
 
 type StartGitHubInstallationInput struct {
@@ -230,7 +231,12 @@ func NewGitHubIntegrationManager(authorizer WorkspaceAuthorizer, repo GitHubInte
 	if config.HTTPClient == nil {
 		config.HTTPClient = http.DefaultClient
 	}
-	manager := &GitHubIntegrationManager{authorizer: authorizer, repo: repo, config: config}
+	manager := &GitHubIntegrationManager{
+		authorizer:         authorizer,
+		repo:               repo,
+		config:             config,
+		userRequestTimeout: 15 * time.Second,
+	}
 	if config.AppID > 0 && strings.TrimSpace(config.PrivateKeyPEM) != "" {
 		manager.client = newGitHubAppHTTPClient(config)
 	}
@@ -293,19 +299,19 @@ func (m *GitHubIntegrationManager) CompleteGitHubInstallation(ctx context.Contex
 	if strings.TrimSpace(m.config.AppClientID) == "" || strings.TrimSpace(m.config.AppClientSecret) == "" {
 		return CompleteGitHubInstallationResult{}, GitHubIntegrationConfigError("github app OAuth credentials are not configured")
 	}
-	if err := m.verifyGitHubInstallationAccess(ctx, input.InstallationID, input.Code); err != nil {
-		return CompleteGitHubInstallationResult{}, err
-	}
-	orgID, err := m.repo.GetOrganizationIDByWorkspaceID(ctx, workspaceID)
-	if err != nil {
-		return CompleteGitHubInstallationResult{}, err
-	}
 	installation, err := m.client.GetInstallation(ctx, input.InstallationID)
 	if err != nil {
 		return CompleteGitHubInstallationResult{}, err
 	}
 	if installation.ID != input.InstallationID {
 		return CompleteGitHubInstallationResult{}, GitHubIntegrationValidationError{Code: "installation_mismatch", Message: "github installation response did not match requested installation"}
+	}
+	if err := m.verifyGitHubInstallationAuthority(ctx, installation.Account, input.Code); err != nil {
+		return CompleteGitHubInstallationResult{}, err
+	}
+	orgID, err := m.repo.GetOrganizationIDByWorkspaceID(ctx, workspaceID)
+	if err != nil {
+		return CompleteGitHubInstallationResult{}, err
 	}
 	installedBy := caller.UserID
 	record, err := m.repo.UpsertGitHubInstallation(ctx, repository.UpsertGitHubInstallationParams{
@@ -678,7 +684,17 @@ func (e GitHubIntegrationValidationError) Error() string {
 
 var errGitHubInstallationNotAccessible = errors.New("the GitHub user cannot access this installation")
 
-func (m *GitHubIntegrationManager) verifyGitHubInstallationAccess(ctx context.Context, installationID int64, code string) error {
+func (m *GitHubIntegrationManager) verifyGitHubInstallationAuthority(ctx context.Context, account githubAPIAccount, code string) error {
+	var path string
+	switch account.Type {
+	case "User":
+		path = "/user"
+	case "Organization":
+		path = "/user/memberships/orgs/" + url.PathEscape(account.Login)
+	default:
+		return errGitHubInstallationNotAccessible
+	}
+
 	client := *m.config.HTTPClient
 	// Keep credentials on the configured GitHub endpoints.
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
@@ -687,8 +703,9 @@ func (m *GitHubIntegrationManager) verifyGitHubInstallationAccess(ctx context.Co
 		return err
 	}
 
-	endpoint := strings.TrimRight(m.config.APIBaseURL, "/") +
-		fmt.Sprintf("/user/installations/%d/repositories?per_page=1", installationID)
+	ctx, cancel := context.WithTimeout(ctx, m.userRequestTimeout)
+	defer cancel()
+	endpoint := strings.TrimRight(m.config.APIBaseURL, "/") + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return errors.New("could not create GitHub installation access request")
@@ -702,16 +719,37 @@ func (m *GitHubIntegrationManager) verifyGitHubInstallationAccess(ctx context.Co
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
-	case http.StatusOK:
-		return nil
-	case http.StatusForbidden, http.StatusNotFound:
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
 		return errGitHubInstallationNotAccessible
-	default:
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("GitHub installation access request returned HTTP %d", resp.StatusCode)
 	}
+
+	const maxResponseSize = 64 << 10
+	var response struct {
+		ID    int64  `json:"id"`
+		State string `json:"state"`
+		Role  string `json:"role"`
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize+1))
+	if err != nil || len(body) > maxResponseSize || json.Unmarshal(body, &response) != nil {
+		return errors.New("invalid GitHub installation access response")
+	}
+	if account.Type == "User" {
+		if response.ID > 0 && response.ID == account.ID {
+			return nil
+		}
+	} else if response.State == "active" && response.Role == "admin" {
+		return nil
+	}
+	return errGitHubInstallationNotAccessible
 }
 
 func (m *GitHubIntegrationManager) exchangeGitHubAuthorizationCode(ctx context.Context, client *http.Client, code string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, m.userRequestTimeout)
+	defer cancel()
+
 	endpoint := strings.TrimRight(m.config.OAuthBaseURL, "/") + "/login/oauth/access_token"
 	form := url.Values{
 		"client_id":     {m.config.AppClientID},

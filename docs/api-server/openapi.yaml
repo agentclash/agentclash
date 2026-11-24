@@ -1286,7 +1286,10 @@ paths:
       operationId: completeGitHubInstallation
       tags: [GitHubIntegrations]
       summary: Complete a GitHub App installation link
-      description: Verifies the signed state and GitHub user access before linking the installation to the workspace.
+      description: >
+        Verifies the signed state and confirms that the GitHub user completing the installation
+        owns the personal account or is an owner of the GitHub organization before linking the
+        installation to the workspace.
       security:
         - bearerJWT: []
       parameters:
@@ -1313,7 +1316,7 @@ paths:
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
-          description: Insufficient workspace permissions or the GitHub user cannot access the installation (github_installation_not_accessible).
+          description: Insufficient workspace permissions or GitHub installation ownership could not be verified (github_installation_not_accessible).
           content:
             application/json:
               schema:

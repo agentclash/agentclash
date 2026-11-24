@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -93,7 +92,7 @@ func TestGitHubIntegrationManagerCompleteInstallationVerifiesStateAndSyncsReposi
 	orgID := uuid.New()
 	caller := testAgentHarnessCaller(workspaceID)
 	repo := &fakeGitHubIntegrationRepo{organizationID: orgID}
-	github := newGitHubUserEndpoints(t, http.StatusOK, githubTestTokenResponse, http.StatusOK)
+	github := newGitHubUserEndpoints(t, githubTestResponse{status: 200, body: githubTestTokenResponse}, "/user/memberships/orgs/acme", githubTestResponse{status: 200, body: githubTestAdminMembership})
 	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, github.config)
 	manager.client = &fakeGitHubAppClient{
 		installation: githubAPIInstallation{
@@ -154,7 +153,7 @@ func TestGitHubIntegrationManagerCompleteInstallationReportsCrossOrgConflict(t *
 		organizationID: uuid.New(),
 		upsertErr:      repository.ErrGitHubInstallationOwnedByOtherOrg,
 	}
-	github := newGitHubUserEndpoints(t, http.StatusOK, githubTestTokenResponse, http.StatusOK)
+	github := newGitHubUserEndpoints(t, githubTestResponse{status: 200, body: githubTestTokenResponse}, "/user/memberships/orgs/acme", githubTestResponse{status: 200, body: githubTestAdminMembership})
 	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, github.config)
 	manager.client = &fakeGitHubAppClient{
 		installation: githubAPIInstallation{
@@ -190,21 +189,26 @@ const (
 	githubTestAuthorizationCode = "oauth-code-test"
 	githubTestUserToken         = "user-token-test"
 	githubTestTokenResponse     = `{"access_token":"` + githubTestUserToken + `"}`
+	githubTestAdminMembership   = `{"state":"active","role":"admin"}`
 )
 
-func TestCompleteGitHubInstallationHandlerAuthorizationFailures(t *testing.T) {
+func TestCompleteGitHubInstallationHandlerAuthorization(t *testing.T) {
 	const invalidCodeResponse = `{"error":"bad_verification_code","error_description":"` + githubTestAuthorizationCode + `"}`
+	const upstreamErrorBody = `{"message":"` + githubTestUserToken + " " + githubTestAuthorizationCode + `"}`
+	token := githubTestResponse{status: 200, body: githubTestTokenResponse}
+	user := githubAPIAccount{ID: 99, Login: "octocat", Type: "User"}
+	org := githubAPIAccount{ID: 99, Login: "acme", Type: "Organization"}
 	for _, tc := range []struct {
-		name       string
-		code       *string
-		configure  func(*GitHubIntegrationConfig)
-		oauthCode  int
-		oauthBody  string
-		accessCode int
-		wantStatus int
-		wantCode   string
-		wantOAuth  int32
-		wantAccess int32
+		name           string
+		code           *string
+		configure      func(*GitHubIntegrationConfig)
+		installationID int64
+		account        githubAPIAccount
+		oauth          githubTestResponse
+		accessPath     string
+		access         githubTestResponse
+		wantStatus     int
+		wantCode       string
 	}{
 		{name: "missing code", wantStatus: 400, wantCode: "github_authorization_required"},
 		{name: "blank code", code: new(" \t "), wantStatus: 400, wantCode: "github_authorization_required"},
@@ -219,48 +223,119 @@ func TestCompleteGitHubInstallationHandlerAuthorizationFailures(t *testing.T) {
 			wantStatus: 503, wantCode: "github_app_not_configured",
 		},
 		{
+			name: "installation ID mismatch", code: new(githubTestAuthorizationCode), installationID: 43,
+			wantStatus: 400, wantCode: "installation_mismatch",
+		},
+		{
 			name: "OAuth error", code: new(githubTestAuthorizationCode),
-			oauthCode: 200, oauthBody: invalidCodeResponse,
-			wantStatus: 400, wantCode: "invalid_github_authorization", wantOAuth: 1,
+			oauth:      githubTestResponse{status: 200, body: invalidCodeResponse},
+			wantStatus: 400, wantCode: "invalid_github_authorization",
 		},
 		{
 			name: "OAuth error with non-200 status", code: new(githubTestAuthorizationCode),
-			oauthCode: 400, oauthBody: invalidCodeResponse,
-			wantStatus: 400, wantCode: "invalid_github_authorization", wantOAuth: 1,
+			oauth:      githubTestResponse{status: 400, body: invalidCodeResponse},
+			wantStatus: 400, wantCode: "invalid_github_authorization",
 		},
 		{
 			name: "malformed OAuth response", code: new(githubTestAuthorizationCode),
-			oauthCode: 200, oauthBody: githubTestAuthorizationCode,
-			wantStatus: 500, wantCode: "internal_error", wantOAuth: 1,
+			oauth:      githubTestResponse{status: 200, body: githubTestAuthorizationCode},
+			wantStatus: 500, wantCode: "internal_error",
 		},
 		{
 			name: "missing user token", code: new(githubTestAuthorizationCode),
-			oauthCode: 200, oauthBody: `{}`,
-			wantStatus: 500, wantCode: "internal_error", wantOAuth: 1,
+			oauth:      githubTestResponse{status: 200, body: `{}`},
+			wantStatus: 500, wantCode: "internal_error",
 		},
 		{
-			name: "installation not found", code: new(githubTestAuthorizationCode),
-			oauthCode: 200, oauthBody: githubTestTokenResponse, accessCode: 404,
-			wantStatus: 403, wantCode: "github_installation_not_accessible", wantOAuth: 1, wantAccess: 1,
+			name: "OAuth timeout reading response", code: new(githubTestAuthorizationCode),
+			oauth:      githubTestResponse{status: 200, stall: true},
+			wantStatus: 500, wantCode: "internal_error",
 		},
 		{
-			name: "installation forbidden", code: new(githubTestAuthorizationCode),
-			oauthCode: 200, oauthBody: githubTestTokenResponse, accessCode: 403,
-			wantStatus: 403, wantCode: "github_installation_not_accessible", wantOAuth: 1, wantAccess: 1,
+			name: "personal account owner", code: new(githubTestAuthorizationCode), account: user, oauth: token,
+			accessPath: "/user", access: githubTestResponse{status: 200, body: `{"id":99}`},
+			wantStatus: 200,
 		},
 		{
-			name: "access check failed", code: new(githubTestAuthorizationCode),
-			oauthCode: 200, oauthBody: githubTestTokenResponse, accessCode: 500,
-			wantStatus: 500, wantCode: "internal_error", wantOAuth: 1, wantAccess: 1,
+			name: "read-only collaborator on a personal repository", code: new(githubTestAuthorizationCode), account: user, oauth: token,
+			accessPath: "/user", access: githubTestResponse{status: 200, body: `{"id":101}`},
+			wantStatus: 403, wantCode: "github_installation_not_accessible",
 		},
 		{
-			name: "access check redirected", code: new(githubTestAuthorizationCode),
-			oauthCode: 200, oauthBody: githubTestTokenResponse, accessCode: 307,
-			wantStatus: 500, wantCode: "internal_error", wantOAuth: 1, wantAccess: 1,
+			name: "personal account user token unauthorized", code: new(githubTestAuthorizationCode), account: user, oauth: token,
+			accessPath: "/user", access: githubTestResponse{status: 401, body: upstreamErrorBody},
+			wantStatus: 403, wantCode: "github_installation_not_accessible",
+		},
+		{
+			name: "personal account response missing id", code: new(githubTestAuthorizationCode),
+			account: githubAPIAccount{Type: "User"}, oauth: token,
+			accessPath: "/user", access: githubTestResponse{status: 200, body: `{}`},
+			wantStatus: 403, wantCode: "github_installation_not_accessible",
+		},
+		{
+			name: "active organization admin", code: new(githubTestAuthorizationCode), account: org, oauth: token,
+			accessPath: "/user/memberships/orgs/acme", access: githubTestResponse{status: 200, body: githubTestAdminMembership},
+			wantStatus: 200,
+		},
+		{
+			name: "escaped organization login", code: new(githubTestAuthorizationCode),
+			account: githubAPIAccount{ID: 99, Login: "acme/team", Type: "Organization"}, oauth: token,
+			accessPath: "/user/memberships/orgs/acme%2Fteam", access: githubTestResponse{status: 200, body: githubTestAdminMembership},
+			wantStatus: 200,
+		},
+		{
+			name: "active organization member", code: new(githubTestAuthorizationCode), account: org, oauth: token,
+			accessPath: "/user/memberships/orgs/acme", access: githubTestResponse{status: 200, body: `{"state":"active","role":"member"}`},
+			wantStatus: 403, wantCode: "github_installation_not_accessible",
+		},
+		{
+			name: "pending organization admin", code: new(githubTestAuthorizationCode), account: org, oauth: token,
+			accessPath: "/user/memberships/orgs/acme", access: githubTestResponse{status: 200, body: `{"state":"pending","role":"admin"}`},
+			wantStatus: 403, wantCode: "github_installation_not_accessible",
+		},
+		{
+			name: "organization membership not found", code: new(githubTestAuthorizationCode), account: org, oauth: token,
+			accessPath: "/user/memberships/orgs/acme", access: githubTestResponse{status: 404, body: upstreamErrorBody},
+			wantStatus: 403, wantCode: "github_installation_not_accessible",
+		},
+		{
+			name: "organization membership forbidden", code: new(githubTestAuthorizationCode), account: org, oauth: token,
+			accessPath: "/user/memberships/orgs/acme", access: githubTestResponse{status: 403, body: upstreamErrorBody},
+			wantStatus: 403, wantCode: "github_installation_not_accessible",
+		},
+		{
+			name: "organization membership server error", code: new(githubTestAuthorizationCode), account: org, oauth: token,
+			accessPath: "/user/memberships/orgs/acme", access: githubTestResponse{status: 500, body: upstreamErrorBody},
+			wantStatus: 500, wantCode: "internal_error",
+		},
+		{
+			name: "organization membership redirected", code: new(githubTestAuthorizationCode), account: org, oauth: token,
+			accessPath: "/user/memberships/orgs/acme", access: githubTestResponse{status: 307, body: upstreamErrorBody},
+			wantStatus: 500, wantCode: "internal_error",
+		},
+		{
+			name: "malformed organization membership response", code: new(githubTestAuthorizationCode), account: org, oauth: token,
+			accessPath: "/user/memberships/orgs/acme", access: githubTestResponse{status: 200, body: githubTestUserToken},
+			wantStatus: 500, wantCode: "internal_error",
+		},
+		{
+			name: "oversized organization membership response", code: new(githubTestAuthorizationCode), account: org, oauth: token,
+			accessPath: "/user/memberships/orgs/acme", access: githubTestResponse{status: 200, body: strings.Repeat(" ", 64<<10) + githubTestAdminMembership},
+			wantStatus: 500, wantCode: "internal_error",
+		},
+		{
+			name: "organization membership timeout reading response", code: new(githubTestAuthorizationCode), account: org, oauth: token,
+			accessPath: "/user/memberships/orgs/acme", access: githubTestResponse{status: 200, stall: true},
+			wantStatus: 500, wantCode: "internal_error",
+		},
+		{
+			name: "unknown account type", code: new(githubTestAuthorizationCode),
+			account:    githubAPIAccount{ID: 99, Login: "acme", Type: "Enterprise"},
+			wantStatus: 403, wantCode: "github_installation_not_accessible",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			github := newGitHubUserEndpoints(t, tc.oauthCode, tc.oauthBody, tc.accessCode)
+			github := newGitHubUserEndpoints(t, tc.oauth, tc.accessPath, tc.access)
 			if tc.configure != nil {
 				tc.configure(&github.config)
 			}
@@ -268,7 +343,18 @@ func TestCompleteGitHubInstallationHandlerAuthorizationFailures(t *testing.T) {
 			caller := testAgentHarnessCaller(workspaceID)
 			repo := &fakeGitHubIntegrationRepo{organizationID: uuid.New()}
 			manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, github.config)
-			manager.client = &fakeGitHubAppClient{installation: githubAPIInstallation{ID: 42}}
+			if tc.oauth.stall || tc.access.stall {
+				manager.userRequestTimeout = 100 * time.Millisecond
+			}
+			account := tc.account
+			if account.Type == "" {
+				account = org
+			}
+			installationID := tc.installationID
+			if installationID == 0 {
+				installationID = 42
+			}
+			manager.client = &fakeGitHubAppClient{installation: githubAPIInstallation{ID: installationID, Account: account}}
 			started, err := manager.StartGitHubInstallation(t.Context(), caller, workspaceID, StartGitHubInstallationInput{})
 			if err != nil {
 				t.Fatalf("StartGitHubInstallation: %v", err)
@@ -282,46 +368,86 @@ func TestCompleteGitHubInstallationHandlerAuthorizationFailures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			req := httptest.NewRequest(http.MethodPost, "/github/installations/complete", bytes.NewReader(body))
-			ctx := context.WithValue(req.Context(), callerContextKey{}, caller)
+			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+			defer cancel()
+			ctx = context.WithValue(ctx, callerContextKey{}, caller)
 			ctx = context.WithValue(ctx, workspaceIDContextKey{}, workspaceID)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/github/installations/complete", bytes.NewReader(body))
 			w := httptest.NewRecorder()
 			var logs bytes.Buffer
 			logger := slog.New(slog.NewTextHandler(&logs, nil))
-			completeGitHubInstallationHandler(logger, manager).ServeHTTP(w, req.WithContext(ctx))
+			completeGitHubInstallationHandler(logger, manager).ServeHTTP(w, req)
+			if ctx.Err() != nil {
+				t.Error("installation completion exceeded the test deadline")
+			}
 
 			for _, secret := range []string{githubTestAuthorizationCode, githubTestUserToken, "test-client-secret"} {
 				if strings.Contains(w.Body.String(), secret) || strings.Contains(logs.String(), secret) {
 					t.Fatal("GitHub credential exposed in response or logs")
 				}
 			}
-			var response errorEnvelope
-			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-				t.Fatalf("decode error response: %v", err)
+			if w.Code != tc.wantStatus {
+				t.Errorf("status = %d, want %d", w.Code, tc.wantStatus)
 			}
-			if w.Code != tc.wantStatus || response.Error.Code != tc.wantCode {
-				t.Errorf("status and code = %d %s, want %d %s", w.Code, response.Error.Code, tc.wantStatus, tc.wantCode)
+			if tc.wantStatus == http.StatusOK {
+				if repo.upsertInstallation.GitHubInstallationID != 42 ||
+					repo.binding.GitHubInstallationID != 42 || repo.binding.WorkspaceID != workspaceID {
+					t.Error("installation was not linked to the workspace")
+				}
+			} else {
+				var response errorEnvelope
+				if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+					t.Fatalf("decode error response: %v", err)
+				}
+				if response.Error.Code != tc.wantCode {
+					t.Errorf("error code = %q, want %q", response.Error.Code, tc.wantCode)
+				}
+				if repo.upsertInstallation.GitHubInstallationID != 0 || repo.binding.GitHubInstallationID != 0 ||
+					repo.upsertRepositories != nil {
+					t.Error("installation was persisted without verified authority")
+				}
 			}
-			if repo.upsertInstallation.GitHubInstallationID != 0 || repo.binding.GitHubInstallationID != 0 {
-				t.Error("installation was persisted without verified access")
+			var wantOAuth, wantAccess int32
+			if tc.oauth.status != 0 {
+				wantOAuth = 1
 			}
-			github.assertCalls(t, tc.wantOAuth, tc.wantAccess)
+			if tc.access.status != 0 {
+				wantAccess = 1
+			}
+			github.assertCalls(t, wantOAuth, wantAccess)
 		})
 	}
+}
+
+type githubTestResponse struct {
+	status int
+	body   string
+	stall  bool
+}
+
+func (response githubTestResponse) write(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(response.status)
+	if response.stall {
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+		return
+	}
+	_, _ = io.WriteString(w, response.body)
 }
 
 type githubUserTestEndpoints struct {
 	config      GitHubIntegrationConfig
 	oauthCalls  atomic.Int32
 	accessCalls atomic.Int32
+	legacyCalls atomic.Int32
 }
 
-func newGitHubUserEndpoints(t *testing.T, oauthStatus int, oauthBody string, accessStatus int) *githubUserTestEndpoints {
+func newGitHubUserEndpoints(t *testing.T, oauthResponse githubTestResponse, accessPath string, accessResponse githubTestResponse) *githubUserTestEndpoints {
 	t.Helper()
 	endpoints := &githubUserTestEndpoints{}
 	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		endpoints.oauthCalls.Add(1)
-		if oauthStatus == 0 {
+		if oauthResponse.status == 0 {
 			t.Error("unexpected OAuth call")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -337,27 +463,30 @@ func newGitHubUserEndpoints(t *testing.T, oauthStatus int, oauthBody string, acc
 			r.PostForm.Get("code") != githubTestAuthorizationCode {
 			t.Error("unexpected OAuth form values")
 		}
-		w.WriteHeader(oauthStatus)
-		_, _ = io.WriteString(w, oauthBody)
+		oauthResponse.write(w, r)
 	}))
 	t.Cleanup(oauth.Close)
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/user/installations/42/repositories" {
+			endpoints.legacyCalls.Add(1)
+			_, _ = io.WriteString(w, `{"total_count":1,"repositories":[{"permissions":{"pull":true}}]}`)
+			return
+		}
 		endpoints.accessCalls.Add(1)
-		if accessStatus == 0 {
+		if accessResponse.status == 0 {
 			t.Error("unexpected installation access check")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		if r.Method != http.MethodGet || r.URL.Path != "/user/installations/42/repositories" ||
-			r.URL.Query().Get("per_page") != "1" || r.Header.Get("Authorization") != "Bearer "+githubTestUserToken ||
+		if r.Method != http.MethodGet || r.URL.EscapedPath() != accessPath ||
+			r.URL.RawQuery != "" || r.Header.Get("Authorization") != "Bearer "+githubTestUserToken ||
 			r.Header.Get("Accept") != "application/vnd.github+json" || r.Header.Get("X-GitHub-Api-Version") != "2022-11-28" {
 			t.Error("unexpected installation access check request")
 		}
-		if accessStatus == http.StatusTemporaryRedirect {
+		if accessResponse.status == http.StatusTemporaryRedirect {
 			w.Header().Set("Location", "/unexpected")
 		}
-		w.WriteHeader(accessStatus)
-		_, _ = fmt.Fprintf(w, `{"message":"%s %s"}`, githubTestUserToken, githubTestAuthorizationCode)
+		accessResponse.write(w, r)
 	}))
 	t.Cleanup(api.Close)
 	endpoints.config = GitHubIntegrationConfig{
@@ -378,6 +507,9 @@ func (g *githubUserTestEndpoints) assertCalls(t *testing.T, oauth, access int32)
 	}
 	if got := g.accessCalls.Load(); got != access {
 		t.Errorf("installation access checks = %d, want %d", got, access)
+	}
+	if got := g.legacyCalls.Load(); got != 0 {
+		t.Errorf("legacy repository access checks = %d, want 0", got)
 	}
 }
 

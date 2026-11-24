@@ -61,6 +61,11 @@ Use the client ID and client secret of the App configured by `GITHUB_APP_SLUG`,
 
 In the GitHub App settings, enable **Request user authorization (OAuth) during
 installation** and set the **Callback URL** to `<web origin>/github/setup`.
+The GitHub user who completes the installation must own the personal account or
+be an owner of the GitHub organization where the App is installed. For organization
+installations, grant the App the **Members** organization permission with **Read-only**
+access so it can verify the user's membership. The organization owner must approve
+the new permission for an existing installation.
 
 ## Sizing guidance
 
