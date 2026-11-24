@@ -199,6 +199,21 @@ The action installs the published `agentclash` npm package by default, runs `ci 
 
 `--artifact-dir` writes stable JSON files intended for `actions/upload-artifact`: `result.json` for the final CLI envelope, `run.json` for run creation/completion payloads, `scorecard.json` for candidate scorecard evidence, `comparison.json` for baseline/candidate comparison evidence, and `gate.json` for the release-gate verdict and policy metadata. The summary and artifacts include the challenge pack version, baseline, candidate, policy, verdict, top evidence lines, regression candidate promotion outcomes, and AgentClash links when the API returns them. Use `--ci-repository`, `--ci-pull-request`, `--ci-branch`, `--ci-default-branch`, `--ci-commit`, and the other `--ci-*` flags when running from another CI system or a custom wrapper.
 
+## Open the setup pull request
+
+`agentclash ci setup` puts the manifest and the workflow into the GitHub repository through a pull request. The server uses the AgentClash GitHub App of the workspace, so the app must be installed on the repository. Save the workflow above as `.github/workflows/agentclash.yml`, then run the command from the root of your local clone:
+
+```bash
+agentclash ci setup --repo acme/support-agent --check-only
+agentclash ci setup --repo acme/support-agent
+```
+
+Each file goes into the repository at the same relative path. `--check-only` lists the files that already exist on the base branch and opens no pull request. If a file already exists, the server opens no pull request and the command exits 1. Pass `--overwrite` to replace the files. Add more files, for example the agent spec, with `--file .agentclash/agent.json`.
+
+The pull request is a draft unless you pass `--draft=false`. After it opens, add the `AGENTCLASH_TOKEN` and `AGENTCLASH_WORKSPACE` repository secrets that the workflow reads, then merge the pull request.
+
+The CLI does not retry the request. If the command exits 75, look for an `agentclash/ci-setup/*` branch in the repository before you run it again.
+
 ## Regression promotion policy
 
 Do not auto-promote every PR failure by default. A bad run, flaky dependency, or weak evaluator could pollute the regression suite. Use this conservative progression:

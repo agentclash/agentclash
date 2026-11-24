@@ -91,7 +91,14 @@ func resetFlagValue(f *pflag.Flag) {
 
 func fakeAPI(t *testing.T, routes map[string]http.HandlerFunc) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(fakeAPIRouter(t, routes))
+}
+
+// fakeAPIRouter dispatches on "METHOD /path" first, then on "/path". An
+// unknown route gets a 404 error envelope.
+func fakeAPIRouter(t *testing.T, routes map[string]http.HandlerFunc) http.HandlerFunc {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := r.Method + " " + r.URL.Path
 		if handler, ok := routes[key]; ok {
 			handler(w, r)
@@ -104,7 +111,7 @@ func fakeAPI(t *testing.T, routes map[string]http.HandlerFunc) *httptest.Server 
 		t.Logf("unhandled request: %s %s", r.Method, r.URL.Path)
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(`{"error":{"code":"not_found","message":"not found"}}`))
-	}))
+	})
 }
 
 func jsonHandler(status int, body any) http.HandlerFunc {

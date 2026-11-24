@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "4330341ca70b",
+  "snapshot_version": "325c861c109e",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -71,7 +71,7 @@
       "name": "agentclash-ci-release-gate",
       "role": "ci",
       "requires_cli": true,
-      "sha256": "905978a29d85f601759f421064a45db6073a1015727aa552e99791bb14fd70d6"
+      "sha256": "b0d7ff4a37115ee25193caf4f0d7ffbfa2fc6ef4676bd8325ed798543f1e2d53"
     },
     {
       "name": "agentclash-cli-setup",
@@ -89,7 +89,7 @@
       "name": "agentclash-dataset-workflows",
       "role": "dataset",
       "requires_cli": true,
-      "sha256": "1db19cf8279a53823ceb183f5459c27ba0df71ebf8263361e8002ca3ab65ad02"
+      "sha256": "42d74124674217e1665788d56f8b72a09e19e4d896b1cb6cf3c2f0b750519b33"
     },
     {
       "name": "agentclash-eval-runner",
@@ -101,7 +101,7 @@
       "name": "agentclash-hub",
       "role": "hub",
       "requires_cli": false,
-      "sha256": "f4defd0888c4e0e9a6ebccdbc4e53216c0009e5fd2df03726bb1a91ec853605e"
+      "sha256": "6f08314535b001efa572b3d0ef33f00e3af42cbc6e57d7124165835018c0c70c"
     },
     {
       "name": "agentclash-multi-turn-operator",
@@ -131,7 +131,7 @@
       "name": "agentclash-scorecard-reader",
       "role": "reviewing",
       "requires_cli": true,
-      "sha256": "24d6695d95ca6f604b787bef9859c4851e54896e6ff4dd4148f25073dfdcab1d"
+      "sha256": "d91bc46d37cd241c1dc5a9f3e44b0d3772f87e4548cb7a67c62a9d8101d3de35"
     },
     {
       "name": "agentclash-security-evaluation",
@@ -143,7 +143,7 @@
       "name": "agentclash-workspace-admin",
       "role": "admin",
       "requires_cli": true,
-      "sha256": "b04757ba43f0938a9948121a7082e1d80c62bb5c5959ec7669659ff03c6325d0"
+      "sha256": "55572ca09be3b2b07b02223a4e58b7ae65c7967011e93c22f066e62f9c28a138"
     }
   ]
 }

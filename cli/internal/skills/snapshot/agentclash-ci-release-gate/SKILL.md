@@ -17,6 +17,7 @@ Wire an AgentClash candidate build/deployment into a repo-tracked CI manifest, c
 - A user needs a `.agentclash/ci.yaml` manifest for a candidate agent, workload, baseline, gate, and regression promotion policy.
 - CI should fail on AgentClash release gate failures, warnings, insufficient evidence, setup errors, run timeouts, or candidate run failures.
 - A GitHub Actions workflow should use the repo-local `.github/actions/agentclash-ci` composite action.
+- The CI manifest and workflow should go into a GitHub repository through a setup pull request (`agentclash ci setup`).
 
 ## Do Not Use When
 - The agent build spec does not exist yet; use `agentclash-agent-build-author`.
@@ -320,6 +321,27 @@ Action inputs are exactly `manifest`, `token`, `workspace`, `api-url`, `install-
 Action outputs are exactly `should-run`, `skip-reason`, `run-id`, `gate-verdict`, `exit-code`, `result-file`, and `artifact-dir`.
 
 The action exports `AGENTCLASH_TOKEN`, `AGENTCLASH_WORKSPACE`, and `AGENTCLASH_API_URL`, installs `agentclash@<cli-version>` when `install-cli` is true, runs `ci validate` with `--remote` by default, runs `ci should-run --json`, exits `0` when unmatched and `skip-if-unmatched` is true, then runs `ci run --json --artifact-dir`.
+
+## Open The Setup Pull Request
+`agentclash ci setup` adds the local manifest and workflow to a GitHub repository through a pull request. The server uses the AgentClash GitHub App of the workspace. The app must be installed on the repository, and the caller needs the permission to manage integrations in the workspace.
+
+Run the command from the root of the local clone. Each file goes into the repository at the same relative path.
+
+```bash
+agentclash ci validate .agentclash/ci.yaml
+agentclash ci setup --repo <OWNER>/<REPO> --check-only --json
+agentclash ci setup --repo <OWNER>/<REPO> --json
+```
+
+- `--repo` takes `owner/name` or the numeric GitHub repository ID. For `owner/name`, the CLI finds the installed repository first.
+- Defaults: `--manifest .agentclash/ci.yaml`, `--workflow .github/workflows/agentclash.yml` and `--draft=true`. If the default workflow file is absent, the CLI writes a warning and sends the manifest only. Add more files with `--file <path>`.
+- `--check-only` opens no pull request. The `conflicts` field lists the files that already exist on the base branch. Exit `0`.
+- If a file already exists and `--overwrite` is not set, the server opens no pull request and the command exits `1`. Ask the user before you pass `--overwrite`, because it replaces their files in the pull request.
+- Exit `64`: a local check failed. Examples: a bad `--repo`, a path outside the repository, an empty or binary file, a file larger than 1 MiB, an invalid manifest, or an `owner/name` that is not installed. For a name that is not installed, `details.candidates` lists the installed names that matched the search.
+- Exit `66`: the manifest, an explicit `--workflow` or a `--file` does not exist.
+- Exit `1`: `github_repo_not_installed`, `missing_base_branch` or another HTTP 400 from the server.
+- Exit `75`: `github_app_not_configured`, a 5xx or a timeout. The CLI does not retry the POST. The first call can have opened the pull request, so look for an `agentclash/ci-setup/*` branch in the repository before a second run.
+- After the pull request opens, the workflow needs the `AGENTCLASH_TOKEN` and `AGENTCLASH_WORKSPACE` repository secrets. Tell the user to add them. Do not print tokens.
 
 ## Failure Modes
 - Missing token or API access: confirm `AGENTCLASH_TOKEN` and hosted API URL.

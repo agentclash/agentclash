@@ -155,6 +155,19 @@ Important exact CLI shapes:
 
 Read `evidence_quality.warnings` before declaring a winner as conclusive. A low `sort_value`, missing `rank`, `sort_state: "unavailable"`, `has_scorecard: false`, or missing score fields means the ranking may be partial even if the run itself completed.
 
+## Model-Written Ranking Insights
+`agentclash run insights` asks a model to explain the ranking of a completed comparison run with two or more ranked agents. It is optional, and each call is a paid model call on the provider account that you give. Use it only when the user asks for a written explanation or approves the cost.
+
+```bash
+agentclash infra provider-account list --json
+agentclash infra provider-account models <PROVIDER_ACCOUNT_ID> --json
+agentclash run insights <RUN_ID> --provider-account <PROVIDER_ACCOUNT_ID> --model <MODEL_ID> --json
+```
+
+The response has `recommended_winner`, `why_it_won`, `tradeoffs`, optional `best_for_reliability`, `best_for_cost` and `best_for_latency` picks, `model_summaries`, `recommended_next_step`, `confidence_notes`, `provider_key`, `provider_model_id` and `generated_at`. When the deterministic ranking has a winner, the server rejects a `recommended_winner` that is a different agent. All other text comes from the model: compare it with the ranking and the scorecard before you report it as a finding.
+
+Exit codes: `1` for a run that is not a completed comparison run (`invalid_run_status`, `invalid_run_for_insights`, `ranking_unavailable`), a bad provider account or model, or `budget_exceeded`. `66` for an unknown run. `75` for a rate limit (`ranking_insights_rate_limited`, with `retry_after_seconds`) or a provider that is not available. The CLI does not retry the call. Do not retry a `75` in a loop: wait for `retry_after_seconds`, and ask the user before a second paid call.
+
 ## Scorecard JSON
 Use `agentclash run scorecard <RUN_AGENT_ID> --json` when you already know the agent ID. The top level mirrors `/v1/scorecards/{runAgentID}`:
 

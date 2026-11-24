@@ -8,20 +8,29 @@ Dataset CI gates close the loop between pinned dataset evals and release safety.
 
 ## Record a baseline
 
-Baselines capture per-example outcomes from a **completed** dataset eval run. Record one through the API (or the web app once baseline creation UI ships):
+Baselines capture per-example outcomes from a **completed** dataset eval run. Record one with the CLI:
 
 ```bash
-export AGENTCLASH_API_URL="https://api.agentclash.dev"
-export AGENTCLASH_TOKEN="<token>"
 export AGENTCLASH_WORKSPACE="<workspace-id>"
 
-curl -sS -X POST "$AGENTCLASH_API_URL/v1/workspaces/$AGENTCLASH_WORKSPACE/datasets/<datasetId>/baselines" \
-  -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"run_id":"<completed-eval-run-id>","label":"main baseline"}'
+agentclash dataset baseline create <datasetId> \
+  --run <completed-eval-run-id> \
+  --label "main baseline"
 ```
 
-List baselines from the API or the dataset detail **Regression / CI** tab in the web app.
+Add `--deployment <deploymentId>` to keep only the outcomes of one deployment of a comparison run. Add `--json --query '.id'` to print only the new baseline ID in a script.
+
+The exit code tells a script what went wrong:
+
+| Exit | Cause |
+| --- | --- |
+| `0` | The baseline was created. |
+| `1` | `run_not_ready`: the run is not completed, or it has no eval outcomes. |
+| `64` | A dataset, run or deployment ID is not a UUID. No request was sent. |
+| `66` | The dataset or the run does not exist, or the run is not a dataset eval run of this dataset. |
+| `77` | The token has no access to the workspace, or the run belongs to a different workspace. |
+
+List baselines with `agentclash dataset baseline list <datasetId>` or in the dataset detail **Regression / CI** tab in the web app.
 
 ## Sync into a regression suite
 

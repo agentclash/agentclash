@@ -143,6 +143,21 @@ func (c *Client) NewDownloadClient() *http.Client {
 	}
 }
 
+// WithRequestTimeout returns a copy of the client whose requests time out
+// after d instead of the default 30 seconds. The copy keeps the transport
+// (proxy and TLS settings), the strict redirect policy, the credentials and
+// the User-Agent. Use it for a route that calls a model synchronously and can
+// take longer than the default. The original client does not change.
+func (c *Client) WithRequestTimeout(d time.Duration) *Client {
+	clone := *c
+	clone.httpClient = &http.Client{
+		Transport:     c.httpClient.Transport,
+		CheckRedirect: StrictRedirectPolicy,
+		Timeout:       d,
+	}
+	return &clone
+}
+
 // Token returns the client's auth token.
 func (c *Client) Token() string {
 	return c.token
