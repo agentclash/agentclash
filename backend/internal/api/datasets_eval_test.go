@@ -20,12 +20,13 @@ import (
 func TestStartDatasetEvalHandlerReturnsCreateRunResponse(t *testing.T) {
 	workspaceID, datasetID, versionID := uuid.New(), uuid.New(), uuid.New()
 	packVersionID, inputSetID, runID := uuid.New(), uuid.New(), uuid.New()
+	materializedID := uuid.New()
 	createdAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	repo := &datasetEvalFakeRepo{
 		dataset: repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
 		version: repository.DatasetVersion{ID: versionID, DatasetID: datasetID},
 		materialized: repository.DatasetVersionInputSet{
-			DatasetID: datasetID, DatasetVersionID: versionID, ChallengeInputSetID: inputSetID,
+			ID: materializedID, DatasetID: datasetID, DatasetVersionID: versionID, ChallengeInputSetID: inputSetID,
 		},
 	}
 	run := domain.Run{
@@ -44,6 +45,52 @@ func TestStartDatasetEvalHandlerReturnsCreateRunResponse(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body = %s", rec.Code, rec.Body.String())
+	}
+
+	var rawResponse map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &rawResponse); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"Run", "DatasetVersionInputSet"} {
+		if _, exists := rawResponse[key]; exists {
+			t.Errorf("unexpected top-level key %q", key)
+		}
+	}
+	rawRun, ok := rawResponse["run"].(map[string]any)
+	if !ok {
+		t.Fatalf("run = %v, want a JSON object", rawResponse["run"])
+	}
+	for key, want := range map[string]string{
+		"id":           runID.String(),
+		"workspace_id": workspaceID.String(),
+		"status":       string(run.Status),
+		"created_at":   createdAt.Format(time.RFC3339Nano),
+	} {
+		if got := rawRun[key]; got != want {
+			t.Errorf("run.%s = %v, want %q", key, got, want)
+		}
+	}
+	for _, key := range []string{"ID", "WorkspaceID", "Status", "CreatedAt"} {
+		if _, exists := rawRun[key]; exists {
+			t.Errorf("unexpected run key %q", key)
+		}
+	}
+	rawInputSet, ok := rawResponse["dataset_version_input_set"].(map[string]any)
+	if !ok {
+		t.Fatalf("dataset_version_input_set = %v, want a JSON object", rawResponse["dataset_version_input_set"])
+	}
+	for key, want := range map[string]string{
+		"id":                     materializedID.String(),
+		"challenge_input_set_id": inputSetID.String(),
+	} {
+		if got := rawInputSet[key]; got != want {
+			t.Errorf("dataset_version_input_set.%s = %v, want %q", key, got, want)
+		}
+	}
+	for _, key := range []string{"ID", "ChallengeInputSetID"} {
+		if _, exists := rawInputSet[key]; exists {
+			t.Errorf("unexpected dataset_version_input_set key %q", key)
+		}
 	}
 
 	var response struct {
