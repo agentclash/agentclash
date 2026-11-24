@@ -6095,6 +6095,15 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+        "404":
+          description: >
+            The pack is missing or unavailable to this workspace
+            (`challenge_pack_not_found`), or the source version is missing or
+            unavailable (`challenge_pack_version_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
@@ -14819,7 +14828,10 @@ components:
         challenge_pack_id:
           type: string
           format: uuid
-          description: Optionally link the draft to an existing challenge pack.
+          description: >
+            Optionally link the draft to a pack in this workspace or a global
+            pack when public packs are enabled. When a source version is
+            provided, the draft links to that version's pack.
         composition:
           type: object
           additionalProperties: true

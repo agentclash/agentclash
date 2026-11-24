@@ -162,7 +162,7 @@ type RegressionManager struct {
 	repo       RegressionRepository
 }
 
-var ErrChallengePackNotFound = errors.New("challenge pack not found")
+var ErrChallengePackNotFound = repository.ErrChallengePackNotFound
 
 var (
 	ErrFailureReviewItemNotFound       = errors.New("failure review item not found")

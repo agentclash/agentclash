@@ -5,24 +5,38 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
 var errBuilderHydrateNotImpl = errors.New("not implemented")
 
-// fakeBuilderHydrateRepository is a minimal ChallengePackBuilderRepository for
-// exercising CreateDraft's hydrate-from-version branch. Only the version lookup,
-// public-packs flag, and draft creation are meaningful; the rest are stubs.
 type fakeBuilderHydrateRepository struct {
+	packOwners  map[uuid.UUID]*uuid.UUID
 	version     repository.RunnableChallengePackVersion
 	versionErr  error
 	publicPacks bool
 	lastCreate  repository.CreateChallengePackDraftParams
 	createCalls int
+	createErr   error
+}
+
+func (f *fakeBuilderHydrateRepository) GetChallengePackWorkspaceID(_ context.Context, packID uuid.UUID) (*uuid.UUID, error) {
+	owner, ok := f.packOwners[packID]
+	if !ok {
+		return nil, ErrChallengePackNotFound
+	}
+	return owner, nil
 }
 
 func (f *fakeBuilderHydrateRepository) GetRunnableChallengePackVersionByID(_ context.Context, _ uuid.UUID) (repository.RunnableChallengePackVersion, error) {
@@ -39,6 +53,9 @@ func (f *fakeBuilderHydrateRepository) WorkspacePublicPacksEnabled(_ context.Con
 func (f *fakeBuilderHydrateRepository) CreateChallengePackDraft(_ context.Context, params repository.CreateChallengePackDraftParams) (repository.ChallengePackDraft, error) {
 	f.lastCreate = params
 	f.createCalls++
+	if f.createErr != nil {
+		return repository.ChallengePackDraft{}, f.createErr
+	}
 	return repository.ChallengePackDraft{
 		ID:              uuid.New(),
 		WorkspaceID:     params.WorkspaceID,
@@ -110,6 +127,76 @@ func adminCaller(workspaceID uuid.UUID) Caller {
 		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
 			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceAdmin},
 		},
+	}
+}
+
+func TestCreateChallengePackDraftEndpointPackLink(t *testing.T) {
+	workspaceID, foreignWorkspaceID := uuid.New(), uuid.New()
+	ownID, foreignID, globalID, unknownID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	caller := adminCaller(workspaceID)
+	path := "/v1/workspaces/" + workspaceID.String() + "/challenge-pack-drafts"
+	for _, tc := range []struct {
+		name        string
+		packID      *uuid.UUID
+		publicPacks bool
+		createErr   error
+		wantStatus  int
+		wantCalls   int
+	}{
+		{name: "own pack", packID: &ownID, wantStatus: http.StatusCreated, wantCalls: 1},
+		{name: "enabled global pack", packID: &globalID, publicPacks: true, wantStatus: http.StatusCreated, wantCalls: 1},
+		{name: "no link", wantStatus: http.StatusCreated, wantCalls: 1},
+		{name: "unknown pack", packID: &unknownID, wantStatus: http.StatusNotFound},
+		{name: "foreign pack", packID: &foreignID, publicPacks: true, wantStatus: http.StatusNotFound},
+		{name: "disabled global pack", packID: &globalID, wantStatus: http.StatusNotFound},
+		{name: "pack deleted before insert", packID: &ownID, createErr: ErrChallengePackNotFound, wantStatus: http.StatusNotFound, wantCalls: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &fakeBuilderHydrateRepository{
+				packOwners: map[uuid.UUID]*uuid.UUID{
+					ownID: &workspaceID, foreignID: &foreignWorkspaceID, globalID: nil,
+				},
+				publicPacks: tc.publicPacks,
+				createErr:   tc.createErr,
+			}
+			manager := NewChallengePackBuilderManager(NewCallerWorkspaceAuthorizer(), repo, nil)
+			router := chi.NewRouter()
+			router.Post("/v1/workspaces/{workspaceID}/challenge-pack-drafts", createChallengePackDraftHandler(slog.Default(), manager))
+
+			body := `{"name":"Test draft"}`
+			if tc.packID != nil {
+				body = fmt.Sprintf(`{"name":"Test draft","challenge_pack_id":%q}`, tc.packID.String())
+			}
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, caller))
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.wantStatus || rec.Header().Get("Content-Type") != "application/json" {
+				t.Fatalf("response = %d %v %s, want %d application/json", rec.Code, rec.Header(), rec.Body, tc.wantStatus)
+			}
+			if repo.createCalls != tc.wantCalls {
+				t.Fatalf("draft inserts = %d, want %d", repo.createCalls, tc.wantCalls)
+			}
+			if tc.wantStatus == http.StatusNotFound {
+				var envelope errorEnvelope
+				if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+					t.Fatal(err)
+				}
+				if envelope.Error.Code != "challenge_pack_not_found" || envelope.Error.Message != "challenge pack not found" {
+					t.Fatalf("unexpected error envelope: %s", rec.Body)
+				}
+				return
+			}
+			var draft challengePackDraftResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &draft); err != nil {
+				t.Fatal(err)
+			}
+			if draft.ID == uuid.Nil || !reflect.DeepEqual(draft.ChallengePackID, tc.packID) {
+				t.Fatalf("unexpected draft response: %s", rec.Body)
+			}
+		})
 	}
 }
 
