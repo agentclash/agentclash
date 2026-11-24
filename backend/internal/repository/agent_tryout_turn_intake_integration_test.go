@@ -8,6 +8,7 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -19,6 +20,28 @@ func agentTryoutTurnStatus(t *testing.T, ctx context.Context, db *pgxpool.Pool, 
 		t.Fatalf("load turn %d: %v", id, err)
 	}
 	return status, processed
+}
+
+// appendAgentTryoutTurnInTx runs the two statements of an append in an open
+// transaction, so the test controls when the append commits.
+func appendAgentTryoutTurnInTx(t *testing.T, ctx context.Context, tx pgx.Tx, tryout repository.AgentTryout, message string) repositorysqlc.AgentTryoutTurn {
+	t.Helper()
+	queries := repositorysqlc.New(tx)
+	if _, err := queries.LockAppendableAgentTryout(ctx, repositorysqlc.LockAppendableAgentTryoutParams{
+		AgentTryoutID:  tryout.ID,
+		OwnerProofHash: *tryout.AnonymousOwnerProofHash,
+	}); err != nil {
+		t.Fatalf("lock tryout in transaction: %v", err)
+	}
+	turn, err := queries.InsertAgentTryoutTurn(ctx, repositorysqlc.InsertAgentTryoutTurnParams{
+		AgentTryoutID: tryout.ID,
+		Role:          "user",
+		Message:       message,
+	})
+	if err != nil {
+		t.Fatalf("insert turn in transaction: %v", err)
+	}
+	return turn
 }
 
 // TestRepositoryCloseAgentTryoutTurnIntakeDropsPendingTurns covers issue
@@ -138,15 +161,7 @@ func TestRepositoryCloseAgentTryoutTurnIntakeWaitsForOpenAppend(t *testing.T) {
 		t.Fatalf("begin append transaction: %v", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	turn, err := repositorysqlc.New(tx).AppendAgentTryoutTurn(ctx, repositorysqlc.AppendAgentTryoutTurnParams{
-		AgentTryoutID:  tryout.ID,
-		OwnerProofHash: *tryout.AnonymousOwnerProofHash,
-		Role:           "user",
-		Message:        "sent as the loop ended",
-	})
-	if err != nil {
-		t.Fatalf("append in transaction: %v", err)
-	}
+	turn := appendAgentTryoutTurnInTx(t, ctx, tx, tryout, "sent as the loop ended")
 
 	type closeResult struct {
 		dropped int
@@ -177,6 +192,102 @@ func TestRepositoryCloseAgentTryoutTurnIntakeWaitsForOpenAppend(t *testing.T) {
 	}
 	if status, _ := agentTryoutTurnStatus(t, ctx, db, turn.ID); status != "dropped" {
 		t.Fatalf("turn = %q, want dropped", status)
+	}
+}
+
+// TestRepositoryAppendAgentTryoutTurnWaitsForOpenAppend covers issue 1402.
+// An append waits for an open append on the same tryout. After the first
+// append commits, the second append must get the next turn index, not the
+// same index.
+func TestRepositoryAppendAgentTryoutTurnWaitsForOpenAppend(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	repo := repository.New(db)
+	tryout := createQueuedAnonymousAgentTryout(t, ctx, repo)
+	proof := *tryout.AnonymousOwnerProofHash
+
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin first append transaction: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	first := appendAgentTryoutTurnInTx(t, ctx, tx, tryout, "first")
+
+	type appendResult struct {
+		turn repository.AgentTryoutTurn
+		err  error
+	}
+	done := make(chan appendResult, 1)
+	go func() {
+		turn, err := repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{AgentTryoutID: tryout.ID, OwnerProofHash: proof, Message: "second"})
+		done <- appendResult{turn, err}
+	}()
+
+	select {
+	case result := <-done:
+		t.Fatalf("second append returned %+v before the first append committed, want it to wait for the row lock", result)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit first append: %v", err)
+	}
+
+	select {
+	case result := <-done:
+		if result.err != nil {
+			t.Fatalf("second append returned error: %v", result.err)
+		}
+		if result.turn.TurnIndex != first.TurnIndex+1 {
+			t.Fatalf("second turn index = %d, want %d", result.turn.TurnIndex, first.TurnIndex+1)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("second append did not return after the first append committed")
+	}
+}
+
+// Many appends at the same time must all succeed, each with its own index.
+func TestRepositoryAppendAgentTryoutTurnConcurrentAppends(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	repo := repository.New(db)
+	tryout := createQueuedAnonymousAgentTryout(t, ctx, repo)
+	proof := *tryout.AnonymousOwnerProofHash
+
+	const appends = 8
+	start := make(chan struct{})
+	indexes := make(chan int32, appends)
+	errs := make(chan error, appends)
+	for i := 0; i < appends; i++ {
+		go func() {
+			<-start
+			turn, err := repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{AgentTryoutID: tryout.ID, OwnerProofHash: proof, Message: "hello"})
+			if err != nil {
+				errs <- err
+				return
+			}
+			indexes <- turn.TurnIndex
+		}()
+	}
+	close(start)
+
+	seen := make(map[int32]bool, appends)
+	for i := 0; i < appends; i++ {
+		select {
+		case err := <-errs:
+			t.Fatalf("append returned error: %v", err)
+		case index := <-indexes:
+			if seen[index] {
+				t.Fatalf("turn index %d returned two times", index)
+			}
+			seen[index] = true
+		case <-time.After(10 * time.Second):
+			t.Fatal("appends did not return")
+		}
+	}
+	for index := int32(0); index < appends; index++ {
+		if !seen[index] {
+			t.Fatalf("turn indexes = %v, want 0 to %d", seen, appends-1)
+		}
 	}
 }
 

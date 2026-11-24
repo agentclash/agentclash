@@ -12,7 +12,6 @@ import (
 
 type Querier interface {
 	AggregateCaseResultsByEvalSet(ctx context.Context, arg AggregateCaseResultsByEvalSetParams) ([]AggregateCaseResultsByEvalSetRow, error)
-	AppendAgentTryoutTurn(ctx context.Context, arg AppendAgentTryoutTurnParams) (AgentTryoutTurn, error)
 	ArchiveChallengePiece(ctx context.Context, arg ArchiveChallengePieceParams) (ChallengePiece, error)
 	ArchiveDataset(ctx context.Context, arg ArchiveDatasetParams) (Dataset, error)
 	AttachEvalSessionToEvalSet(ctx context.Context, arg AttachEvalSessionToEvalSetParams) error
@@ -139,6 +138,12 @@ type Querier interface {
 	GetVibeEvalDraftByID(ctx context.Context, arg GetVibeEvalDraftByIDParams) (VibeEvalDraft, error)
 	GetWorkspaceChallengePackVersionBySlug(ctx context.Context, arg GetWorkspaceChallengePackVersionBySlugParams) (GetWorkspaceChallengePackVersionBySlugRow, error)
 	GetWorkspaceUsageWindowRaceCount(ctx context.Context, arg GetWorkspaceUsageWindowRaceCountParams) (int32, error)
+	// Run this only in a transaction that holds the lock of
+	// LockAppendableAgentTryout. This statement starts after the lock, so its
+	// snapshot shows each turn of an earlier append, and MAX gives a free index.
+	// In one statement with the lock, MAX would use the snapshot from before the
+	// lock wait, and two appends would get the same index.
+	InsertAgentTryoutTurn(ctx context.Context, arg InsertAgentTryoutTurnParams) (AgentTryoutTurn, error)
 	InsertDatasetBaseline(ctx context.Context, arg InsertDatasetBaselineParams) (DatasetBaseline, error)
 	InsertDatasetExample(ctx context.Context, arg InsertDatasetExampleParams) (DatasetExample, error)
 	InsertDatasetExampleRevision(ctx context.Context, arg InsertDatasetExampleRevisionParams) (DatasetExampleRevision, error)
@@ -207,6 +212,9 @@ type Querier interface {
 	ListVibeEvalConversationsByWorkspaceID(ctx context.Context, arg ListVibeEvalConversationsByWorkspaceIDParams) ([]VibeEvalConversation, error)
 	ListVibeEvalDraftsByConversationID(ctx context.Context, arg ListVibeEvalDraftsByConversationIDParams) ([]VibeEvalDraft, error)
 	LockActiveDatasetForVersion(ctx context.Context, arg LockActiveDatasetForVersionParams) (uuid.UUID, error)
+	// Locks an anonymous tryout that accepts a new turn. Run it first in the
+	// append transaction, then run InsertAgentTryoutTurn as a second statement.
+	LockAppendableAgentTryout(ctx context.Context, arg LockAppendableAgentTryoutParams) (uuid.UUID, error)
 	MarkAgentBuildVersionReady(ctx context.Context, arg MarkAgentBuildVersionReadyParams) error
 	// Only a processing turn can become done.
 	MarkAgentTryoutTurnProcessed(ctx context.Context, arg MarkAgentTryoutTurnProcessedParams) (int64, error)
