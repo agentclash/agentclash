@@ -36,7 +36,8 @@ they need: `run`, `challenge-pack`, `deployment`, `build`, `infra`, `artifact`,
 
 - Auth and workspace setup: `auth login`, `link`, `init`, `config`, and `doctor`.
 - Evaluation workflow: `eval start`, `eval scorecard`, `baseline set/show/clear`,
-  `run create`, `run agents`, `run ranking`, `run scorecard`, `run failures`,
+  `run create`, `run agents`, `run ranking`, `run insights` (model-written
+  ranking insights, a paid model call), `run scorecard`, `run failures`,
   `run compare`, `run replay`, `run transcript`, and `run promote-failure`.
 - Repeated eval creation: `eval start --repetitions N` creates eval sessions.
 - Durable eval series: `run series create` and `run series report` expose
