@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.9.0](https://github.com/agentclash/agentclash/compare/v2.8.0...v2.9.0) (2026-11-24)
+
+
+### Features
+
+* **cli:** add evalset scan and finding commands ([40c98d9](https://github.com/agentclash/agentclash/commit/40c98d91c37fe7794f2ec3b29466a7e14b3e8d36)), closes [#1418](https://github.com/agentclash/agentclash/issues/1418)
+* **cli:** add share create, update and revoke commands ([3d88544](https://github.com/agentclash/agentclash/commit/3d885447d0f35ce38e0825bcf5912a742dae47f4)), closes [#1418](https://github.com/agentclash/agentclash/issues/1418)
+
 ## [2.8.0](https://github.com/agentclash/agentclash/compare/v2.7.0...v2.8.0) (2026-11-24)
 
 
