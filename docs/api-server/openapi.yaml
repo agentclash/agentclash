@@ -4004,6 +4004,7 @@ paths:
       operationId: createCalibrationReview
       tags: [MultiTurn]
       summary: Record a human calibration score for a multi-turn turn
+      description: The run agent must belong to the workspace in the URL, and the turn must have completed.
       security:
         - bearerJWT: []
       parameters:
@@ -4027,10 +4028,13 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
     get:
       operationId: listCalibrationReviews
       tags: [MultiTurn]
       summary: List recent calibration reviews for a workspace
+      description: Returns reviews whose run agents belong to the workspace in the URL.
       security:
         - bearerJWT: []
       parameters:
@@ -13450,7 +13454,9 @@ components:
           format: uuid
         turn_index:
           type: integer
+          description: Zero-based index of a completed turn for the run agent.
           minimum: 0
+          maximum: 2147483647
         score:
           type: number
           minimum: 1

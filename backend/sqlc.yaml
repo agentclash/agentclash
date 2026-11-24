@@ -13,6 +13,7 @@ sql:
       - "db/queries/worker_execution_context.sql"
       - "db/queries/hosted_runs.sql"
       - "db/queries/run_events.sql"
+      - "db/queries/calibration_reviews.sql"
       - "db/queries/replay_reads.sql"
       - "db/queries/evaluation_specs.sql"
       - "db/queries/scoring_results.sql"
