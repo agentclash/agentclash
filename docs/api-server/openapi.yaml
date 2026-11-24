@@ -7196,9 +7196,10 @@ paths:
                 $ref: "#/components/schemas/AgentTryoutResponse"
         "400":
           description: >-
-            Invalid request or model policy. A policy that selects multiple
-            models or a known provider the workspace harness cannot run returns
-            `unsupported_workspace_model_policy`.
+            Invalid request or model policy. Duplicate keys in a policy object
+            are matched case-insensitively and return `invalid_model_policy`.
+            A policy that selects multiple models or a known provider the
+            workspace harness cannot run returns `unsupported_workspace_model_policy`.
           content:
             application/json:
               schema:
@@ -7212,7 +7213,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          $ref: "#/components/responses/ForbiddenError"
+          description: Permission to create runs in the source workspace is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           $ref: "#/components/responses/NotFoundError"
         "422":
