@@ -23,8 +23,13 @@ license files and their dependency manifests.
 [Caddy custom-build entrypoint](https://github.com/caddyserver/caddy/blob/v2.11.4/cmd/caddy/main.go),
 [gosu release/source](https://github.com/tianon/gosu/releases/tag/1.19).
 
-zlib 1.3.2-r1 and the fixed musl (CVE-2026-107891) patch the maintained images; Temporal server/admin apply
-the locked APKs inside `Dockerfile.temporal` to preserve upstream runtime users.
+The maintained images use zlib 1.4-r0 (CVE-2026-4738) and the fixed musl
+(CVE-2026-107891). The Temporal server and admin images apply the locked OpenSSL,
+zlib and musl APKs in `Dockerfile.temporal` and keep the upstream runtime users.
+PostgreSQL uses libxml2 2.13.9-r3 (CVE-2026-86144). The worker PDF runtime uses
+py3-pip and py3-pip-pyc 26.1.2-r1 (CVE-2026-133949). The Alpine locks for v3.22,
+v3.23 and v3.24 use OpenSSL 3.5.9-r1. The platform builder uses Go 1.26.11.
+The host bootstrap uses Compose v5.5.1 with containerd v2.3.7 (CVE-2026-95839).
 Valkey is pinned to 8.1.11-alpine for CVE-2026-85091.
 
 The driver verifies input hashes before constructing private, minimal build
