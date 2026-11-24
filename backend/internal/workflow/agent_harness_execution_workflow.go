@@ -322,7 +322,11 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 	runnerEnv := maputil.CloneStringMap(env)
 	applyOpenClawRunnerEnv(runnerEnv, harness, timeout)
 	applyHermesRunnerEnv(runnerEnv, harness)
-	runnerResult, err := a.execHarnessCommandWithOptions(ctx, execution.ID, session, runner.EventType, runner.Command, workdir, timeout, runnerEnv, agentHarnessCommandRecordOptions{Hidden: replayRedaction, RedactOutput: replayRedaction})
+	runnerResult, err := a.execHarnessCommandWithOptions(ctx, execution.ID, session, runner.EventType, runner.Command, workdir, timeout, runnerEnv, agentHarnessCommandRecordOptions{
+		Hidden:          replayRedaction,
+		RedactOutput:    replayRedaction,
+		ProviderModelID: runner.ProviderModelID,
+	})
 	if err != nil {
 		return err
 	}
@@ -655,18 +659,25 @@ func (a *Activities) prepareGitHubGitAuth(ctx context.Context, executionID uuid.
 }
 
 type agentHarnessRunner struct {
-	DisplayName string
-	EventType   string
-	Command     []string
+	DisplayName     string
+	EventType       string
+	Command         []string
+	ProviderModelID string
 }
 
 func agentHarnessRunnerFor(h agentHarnessSnapshot, workdir string) (agentHarnessRunner, error) {
 	switch domain.NormalizeAgentHarnessKind(h.HarnessKind) {
-	case "codex_e2b":
+	case domain.AgentHarnessKindCodexE2B:
+		command := []string{"codex", "exec", "--full-auto", "--skip-git-repo-check", "--json", "-C", workdir}
+		model := strings.TrimSpace(derefString(h.CodexModel))
+		if model != "" {
+			command = append(command, "--model", model)
+		}
 		return agentHarnessRunner{
-			DisplayName: "codex exec",
-			EventType:   "codex.exec",
-			Command:     []string{"codex", "exec", "--full-auto", "--skip-git-repo-check", "--json", "-C", workdir, h.TaskPrompt},
+			DisplayName:     "codex exec",
+			EventType:       "codex.exec",
+			Command:         append(command, h.TaskPrompt),
+			ProviderModelID: model,
 		}, nil
 	case domain.AgentHarnessKindOpenClawE2B:
 		script := strings.Join([]string{
@@ -876,8 +887,9 @@ func parseGitHubFullName(fullName string) (string, string, bool) {
 }
 
 type agentHarnessCommandRecordOptions struct {
-	Hidden       bool
-	RedactOutput bool
+	Hidden          bool
+	RedactOutput    bool
+	ProviderModelID string
 }
 
 func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UUID, session sandbox.Session, eventType string, command []string, workdir string, timeout time.Duration, env map[string]string) (sandbox.ExecResult, error) {
@@ -923,6 +935,9 @@ func (a *Activities) execHarnessCommandWithOptions(ctx context.Context, executio
 
 func agentHarnessCommandStartPayload(command []string, workdir string, options agentHarnessCommandRecordOptions) map[string]any {
 	payload := map[string]any{"working_directory": workdir}
+	if options.ProviderModelID != "" {
+		payload["provider_model_id"] = options.ProviderModelID
+	}
 	if options.Hidden {
 		payload["command_hidden"] = true
 		payload["visibility"] = "hidden"

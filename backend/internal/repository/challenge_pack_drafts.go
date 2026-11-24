@@ -12,6 +12,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // ChallengePackDraft is an in-progress, resumable pack composition for the
@@ -65,6 +66,10 @@ func (r *Repository) CreateChallengePackDraft(ctx context.Context, params Create
 		CreatedByUserID: params.CreatedByUserID,
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" && pgErr.ConstraintName == "challenge_pack_drafts_challenge_pack_id_fkey" {
+			return ChallengePackDraft{}, ErrChallengePackNotFound
+		}
 		return ChallengePackDraft{}, fmt.Errorf("create challenge pack draft: %w", err)
 	}
 	return mapChallengePackDraft(row)
