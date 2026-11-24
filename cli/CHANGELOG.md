@@ -42,8 +42,7 @@
 
 ### Features
 
-* **cli:** add ci setup command for the GitHub CI setup pull request ([1c87f13](https://github.com/agentclash/agentclash/commit/1c87f131eb3dbd52a562f694e71d0666abc55663))
-* **cli:** add ci setup command for the GitHub CI setup pull request ([063b71b](https://github.com/agentclash/agentclash/commit/063b71b4b8249de136cf7638357a39b33119b6d5))
+* **cli:** add ci setup command for the GitHub CI setup pull request ([e087ac8](https://github.com/agentclash/agentclash/commit/e087ac846b2da25cce7a91409cb6f7d452f719db)), closes [#1418](https://github.com/agentclash/agentclash/issues/1418)
 
 ## [2.6.0](https://github.com/agentclash/agentclash/compare/v2.5.0...v2.6.0) (2026-11-24)
 
