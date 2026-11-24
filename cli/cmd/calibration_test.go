@@ -133,8 +133,7 @@ func TestCalibrationCreateReadsTurnInBase10(t *testing.T) {
 	}
 }
 
-// A value that the flag parser rejects is a Cobra flag error. It exits 1
-// for every command now (#1429), but no request goes out.
+// Malformed flag values exit 64 with invalid_argument before any request.
 func TestCalibrationCreateFlagParseErrorMakesNoRequest(t *testing.T) {
 	for _, args := range [][]string{
 		calibrationCreateArgs(calibrationRunAgentID, "0", "high"),
@@ -146,9 +145,9 @@ func TestCalibrationCreateFlagParseErrorMakesNoRequest(t *testing.T) {
 			isolateCLIEnv(t)
 			srv, count := countingFakeAPI(t, nil)
 
-			if err := executeCommand(t, args, srv.URL); err == nil {
-				t.Fatal("want a flag error")
-			}
+			err := executeCommand(t, args, srv.URL)
+			assertExitCode(t, err, exitValidationError)
+			assertCLIErrorCode(t, err, "invalid_argument")
 			if count.Load() != 0 {
 				t.Fatalf("requests = %d, want 0", count.Load())
 			}

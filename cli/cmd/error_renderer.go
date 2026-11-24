@@ -59,7 +59,7 @@ type structuredError struct {
 // rendered or intentionally suppressed output for a silent ExitCodeError.
 func RenderError(err error, w io.Writer) (int, bool) {
 	code := exitCodeForError(err)
-	if err == nil || !structuredErrorOutputRequested() {
+	if err == nil || !structuredErrorOutputRequested(err) {
 		return code, false
 	}
 
@@ -74,7 +74,11 @@ func RenderError(err error, w io.Writer) (int, bool) {
 	return code, true
 }
 
-func structuredErrorOutputRequested() bool {
+func structuredErrorOutputRequested(err error) bool {
+	var usageErr *cobraUsageError
+	if errors.As(err, &usageErr) {
+		return usageErr.jsonOutput
+	}
 	return flagJSON || flagOutput == "json" || runtimeOutputJSON
 }
 

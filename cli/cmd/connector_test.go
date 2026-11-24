@@ -227,7 +227,7 @@ func TestConnectorListRejectsArgumentsLocally(t *testing.T) {
 	isolateCLIEnv(t)
 	srv, count := countingFakeAPI(t, nil)
 	err := executeCommand(t, connectorArgs("list", "unexpected"), srv.URL)
-	assertExitCode(t, err, 1)
+	assertExitCode(t, err, exitValidationError)
 	assertConnectorRequests(t, count, 0)
 }
 
