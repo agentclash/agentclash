@@ -113,8 +113,41 @@ describe("agent skill docs", () => {
 
     expect(doc?.title).toBe("Dataset Workflows Skill");
     expect(doc?.content).toContain("agentclash dataset test");
+    expect(doc?.content).toContain("agentclash dataset baseline create");
     expect(doc?.content).toContain("agentclash dataset sync-regression-suite");
     expect(doc?.content).toContain("agentclash dataset import-traces");
+  });
+
+  it("shows the issue #1418 API feature commands in the CLI reference", () => {
+    const doc = getDocBySlug(["reference", "cli"]);
+    const content = doc?.content ?? "";
+
+    // dataset baseline (server-side dataset baselines)
+    expect(content).toContain("Manage server-side dataset baselines for the dataset gate");
+    expect(content).toContain("Freeze a completed dataset eval run as a dataset baseline");
+    expect(content).toContain(
+      "`--run` (required) — Completed dataset eval run ID to freeze as the baseline",
+    );
+    expect(content).toContain("List the dataset baselines of a dataset");
+    expect(content).toContain(
+      "`--limit` — Maximum baselines to return (1-100; 0 = server default of 50)",
+    );
+
+    // run insights (LLM ranking insights)
+    expect(content).toContain("Ask a model to explain the ranking of a completed comparison run");
+    expect(content).toContain(
+      "`--provider-account` (required) — Provider account ID that pays for the model call",
+    );
+    expect(content).toContain("`--model` (required) — Model ID to call through the provider account");
+
+    // ci setup (GitHub CI setup pull request)
+    expect(content).toContain(
+      "Open a pull request that adds the AgentClash CI files to a GitHub repository",
+    );
+    expect(content).toContain(
+      "`--repo` (required) — GitHub repository as owner/name, or its numeric GitHub repository ID",
+    );
+    expect(content).toContain("`--check-only`");
   });
 
   it("generates the security evaluation skill", () => {
@@ -190,6 +223,8 @@ describe("agent skill docs", () => {
 
     expect(doc?.title).toBe("Scorecard Reader Skill");
     expect(doc?.content).toContain("agentclash run ranking <RUN_ID> --json");
+    expect(doc?.content).toContain("agentclash run insights <RUN_ID> --provider-account");
+    expect(doc?.content).toContain("ranking_insights_rate_limited");
     expect(doc?.content).toContain("agentclash run scorecard <RUN_AGENT_ID> --json");
     expect(doc?.content).toContain("agentclash replay get <RUN_AGENT_ID> --limit 50 --json");
     expect(doc?.content).toContain("artifact list` is workspace-wide");
@@ -244,6 +279,8 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain(
       "agentclash ci run --manifest .agentclash/ci.yaml --json --artifact-dir agentclash-artifacts",
     );
+    expect(doc?.content).toContain("agentclash ci setup --repo <OWNER>/<REPO> --check-only --json");
+    expect(doc?.content).toContain("agentclash/ci-setup/*");
     expect(doc?.content).toContain("candidate.build.agent_build_id");
     expect(doc?.content).toContain("candidate.deployment.runtime_profile_id");
     expect(doc?.content).toContain("evaluation.challenge_pack_version_id");

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestClientGetSendsAuthHeader(t *testing.T) {
@@ -337,5 +338,49 @@ func TestClientBaseURL(t *testing.T) {
 	client := NewClient("https://api.example.com/", "tok")
 	if client.BaseURL() != "https://api.example.com" {
 		t.Fatalf("base url = %q, want trailing slash trimmed", client.BaseURL())
+	}
+}
+
+func TestWithRequestTimeoutReturnsIndependentClient(t *testing.T) {
+	release := make(chan struct{})
+	var gotAuth, gotUA atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth.Store(r.Header.Get("Authorization"))
+		gotUA.Store(r.Header.Get("User-Agent"))
+		if r.URL.Path == "/slow" {
+			<-release
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	base := NewClient(srv.URL, "tok-1", WithUserAgent("agentclash-test/1"))
+	short := base.WithRequestTimeout(50 * time.Millisecond)
+
+	if short == base {
+		t.Fatal("WithRequestTimeout returned the same pointer, want a copy")
+	}
+	if base.httpClient.Timeout != 30*time.Second {
+		t.Fatalf("original timeout = %s, want 30s (the copy must not change it)", base.httpClient.Timeout)
+	}
+	if short.httpClient.Timeout != 50*time.Millisecond {
+		t.Fatalf("copy timeout = %s, want 50ms", short.httpClient.Timeout)
+	}
+	if short.httpClient.CheckRedirect == nil {
+		t.Fatal("copy lost the strict redirect policy")
+	}
+
+	if _, err := short.Post(context.Background(), "/fast", map[string]string{"a": "b"}); err != nil {
+		t.Fatalf("fast POST with the copy: %v", err)
+	}
+	if gotAuth.Load() != "Bearer tok-1" || gotUA.Load() != "agentclash-test/1" {
+		t.Fatalf("copy headers: Authorization=%v User-Agent=%v, want the original credentials and User-Agent", gotAuth.Load(), gotUA.Load())
+	}
+
+	_, err := short.Post(context.Background(), "/slow", map[string]string{"a": "b"})
+	if err == nil || !strings.Contains(err.Error(), "request failed:") {
+		t.Fatalf("slow POST with a 50ms timeout: err = %v, want a request failed timeout", err)
 	}
 }

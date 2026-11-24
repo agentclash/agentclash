@@ -1100,6 +1100,73 @@
           ]
         },
         {
+          "name": "setup",
+          "path": "agentclash ci setup",
+          "short": "Open a pull request that adds the AgentClash CI files to a GitHub repository",
+          "runnable": true,
+          "example": "  # Write and check the manifest, then open the setup pull request\n  agentclash ci init .agentclash/ci.yaml\n  agentclash ci validate .agentclash/ci.yaml\n  agentclash ci setup --repo acme/support-agent\n\n  # List the files that already exist on the base branch; open no pull request\n  agentclash ci setup --repo acme/support-agent --check-only\n\n  # Replace the existing files and add the agent spec too\n  agentclash ci setup --repo acme/support-agent --overwrite --file .agentclash/agent.json\n\n  # Print only the URL of the pull request\n  agentclash ci setup --repo acme/support-agent --json --query '.pull_request.html_url'",
+          "flags": [
+            {
+              "name": "base",
+              "usage": "Base branch of the pull request (default: the default branch of the repository)",
+              "type": "string"
+            },
+            {
+              "name": "body",
+              "usage": "Body of the pull request (default: a list of the added files)",
+              "type": "string"
+            },
+            {
+              "name": "check-only",
+              "usage": "Only report the files that already exist on the base branch; open no pull request",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "draft",
+              "usage": "Open the pull request as a draft",
+              "type": "bool",
+              "default": "true"
+            },
+            {
+              "name": "file",
+              "usage": "Another local file to add at the same relative path; may be repeated",
+              "type": "stringArray",
+              "default": "[]"
+            },
+            {
+              "name": "manifest",
+              "usage": "Local CI manifest to add; the same relative path is used in the repository",
+              "type": "string",
+              "default": ".agentclash/ci.yaml"
+            },
+            {
+              "name": "overwrite",
+              "usage": "Replace files that already exist on the base branch",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "repo",
+              "usage": "GitHub repository as owner/name, or its numeric GitHub repository ID",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "title",
+              "usage": "Title of the pull request",
+              "type": "string",
+              "default": "Set up AgentClash CI"
+            },
+            {
+              "name": "workflow",
+              "usage": "Local GitHub Actions workflow to add; pass an empty value to leave it out",
+              "type": "string",
+              "default": ".github/workflows/agentclash.yml"
+            }
+          ]
+        },
+        {
           "name": "should-run",
           "path": "agentclash ci should-run",
           "short": "Decide whether AgentClash CI should run",
@@ -1313,6 +1380,72 @@
       "short": "Manage eval datasets",
       "runnable": false,
       "subcommands": [
+        {
+          "name": "baseline",
+          "path": "agentclash dataset baseline",
+          "short": "Manage server-side dataset baselines for the dataset gate",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "create",
+              "path": "agentclash dataset baseline create",
+              "short": "Freeze a completed dataset eval run as a dataset baseline",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "datasetId",
+                  "required": true
+                }
+              ],
+              "example": "  # Freeze the run of the current release\n  agentclash dataset baseline create \u003cdatasetId\u003e --run \u003crunId\u003e --label v1.4.0\n\n  # Keep only the outcomes of one deployment of a comparison run\n  agentclash dataset baseline create \u003cdatasetId\u003e --run \u003crunId\u003e --deployment \u003cdeploymentId\u003e\n\n  # Print only the new baseline ID\n  agentclash dataset baseline create \u003cdatasetId\u003e --run \u003crunId\u003e --json --query '.id'",
+              "flags": [
+                {
+                  "name": "deployment",
+                  "usage": "Agent deployment ID; keep only the outcomes of this deployment",
+                  "type": "string"
+                },
+                {
+                  "name": "label",
+                  "usage": "Optional label, for example the release name",
+                  "type": "string"
+                },
+                {
+                  "name": "run",
+                  "usage": "Completed dataset eval run ID to freeze as the baseline",
+                  "type": "string",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "name": "list",
+              "path": "agentclash dataset baseline list",
+              "short": "List the dataset baselines of a dataset",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "datasetId",
+                  "required": true
+                }
+              ],
+              "example": "  agentclash dataset baseline list \u003cdatasetId\u003e\n\n  # Page through the baselines\n  agentclash dataset baseline list \u003cdatasetId\u003e --limit 20 --offset 20\n\n  # IDs only, newest first\n  agentclash dataset baseline list \u003cdatasetId\u003e --json --query '.items[].id'",
+              "flags": [
+                {
+                  "name": "limit",
+                  "usage": "Maximum baselines to return (1-100; 0 = server default of 50)",
+                  "type": "int",
+                  "default": "0"
+                },
+                {
+                  "name": "offset",
+                  "usage": "Number of baselines to skip before the first result",
+                  "type": "int",
+                  "default": "0"
+                }
+              ]
+            }
+          ]
+        },
         {
           "name": "create",
           "path": "agentclash dataset create",
@@ -3966,6 +4099,33 @@
           "args": [
             {
               "name": "id",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "insights",
+          "path": "agentclash run insights",
+          "short": "Ask a model to explain the ranking of a completed comparison run",
+          "runnable": true,
+          "args": [
+            {
+              "name": "runId",
+              "required": true
+            }
+          ],
+          "example": "  # Explain the ranking of a run with a model of your provider account\n  agentclash run insights \u003crunId\u003e --provider-account \u003cproviderAccountId\u003e --model gpt-4.1-mini\n\n  # Print only the recommended winner\n  agentclash run insights \u003crunId\u003e --provider-account \u003cproviderAccountId\u003e --model gpt-4.1-mini --json --query '.recommended_winner.label'",
+          "flags": [
+            {
+              "name": "model",
+              "usage": "Model ID to call through the provider account, for example gpt-4.1-mini",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "provider-account",
+              "usage": "Provider account ID that pays for the model call",
+              "type": "string",
               "required": true
             }
           ]

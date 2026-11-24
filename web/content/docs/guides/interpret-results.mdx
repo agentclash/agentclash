@@ -74,6 +74,20 @@ When you compare two runs, make sure both have:
 
 If one side is missing replay evidence or has an incomplete artifact trail, the comparison is weak even if the ranking UI still renders.
 
+## Ask a model to explain a ranking
+
+For a completed comparison run with two or more ranked agents, a model can write a summary of the ranking: the recommended winner, the tradeoffs, the pick for reliability, cost and latency, and a next step.
+
+```bash
+agentclash run insights <runId> \
+  --provider-account <providerAccountId> \
+  --model gpt-4.1-mini
+```
+
+Each call is a paid model call on the provider account that you select. The server limits the number of calls for each run. A rate-limited call exits `75` and the JSON error gives `retry_after_seconds`. The CLI does not retry the call.
+
+The text comes from a model. Compare it with the deterministic ranking from `agentclash run ranking <runId>` before you use it to make a decision.
+
 ## What to do with a useful failure
 
 A good failure is not just something to fix. It is something to preserve.

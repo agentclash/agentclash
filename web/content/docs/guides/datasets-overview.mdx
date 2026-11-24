@@ -29,15 +29,20 @@ agentclash dataset eval <datasetId> \
 
 ## Record a baseline
 
-A baseline snapshots the per-example outcomes of one completed, green eval run so later candidates can be compared against it. Recording a baseline is an API call (no CLI subcommand yet): `POST /v1/workspaces/{workspaceID}/datasets/{datasetID}/baselines` with the eval `run_id` and an optional `label`. The response returns a baseline `id` — pass that to `agentclash dataset test --baseline <id>` to gate candidates against it.
+A baseline snapshots the per-example outcomes of one completed, green eval run so later candidates can be compared against it. Record it with `agentclash dataset baseline create`. The command prints the baseline `id`. Give that ID to `agentclash dataset test --baseline <id>` to gate candidates against it.
 
 ```bash
-curl -sS -X POST \
-  "$AGENTCLASH_API_URL/v1/workspaces/$AGENTCLASH_WORKSPACE/datasets/<datasetId>/baselines" \
-  -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"run_id": "<eval-run-id>", "label": "support v1 baseline"}'
+agentclash dataset baseline create <datasetId> \
+  --run <eval-run-id> \
+  --label "support v1 baseline"
+
+# List the baselines of the dataset, newest first
+agentclash dataset baseline list <datasetId>
 ```
+
+Each call adds a new baseline. The server does not replace an older one. A server-side dataset baseline is not the same as `agentclash baseline set`, which saves a local bookmark of a run in your CLI config.
+
+The API form is `POST /v1/workspaces/{workspaceID}/datasets/{datasetID}/baselines` with the eval `run_id` and an optional `label`.
 
 ## Baselines and regression suites
 
