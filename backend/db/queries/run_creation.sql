@@ -20,6 +20,17 @@ WHERE challenge_pack_version_id = @challenge_pack_version_id
   AND archived_at IS NULL
 ORDER BY created_at ASC;
 
+-- name: ListDefaultChallengeInputSetIDsByVersionID :many
+SELECT cis.id
+FROM challenge_input_sets AS cis
+WHERE cis.challenge_pack_version_id = @challenge_pack_version_id
+  AND cis.archived_at IS NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM dataset_version_input_sets AS dvis
+      WHERE dvis.challenge_input_set_id = cis.id
+  );
+
 -- name: ListChallengeIdentityIDsByPackVersionID :many
 SELECT challenge_identity_id
 FROM challenge_pack_version_challenges

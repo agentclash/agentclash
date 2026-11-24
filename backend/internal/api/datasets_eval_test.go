@@ -2,13 +2,72 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/domain"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
+
+func TestStartDatasetEvalHandlerReturnsCreateRunResponse(t *testing.T) {
+	workspaceID, datasetID, versionID := uuid.New(), uuid.New(), uuid.New()
+	packVersionID, inputSetID, runID := uuid.New(), uuid.New(), uuid.New()
+	createdAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	repo := &datasetEvalFakeRepo{
+		dataset: repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
+		version: repository.DatasetVersion{ID: versionID, DatasetID: datasetID},
+		materialized: repository.DatasetVersionInputSet{
+			DatasetID: datasetID, DatasetVersionID: versionID, ChallengeInputSetID: inputSetID,
+		},
+	}
+	run := domain.Run{
+		ID: runID, WorkspaceID: workspaceID, ChallengePackVersionID: packVersionID, ChallengeInputSetID: &inputSetID,
+		Status: domain.RunStatusQueued, CreatedAt: createdAt,
+	}
+	manager := NewDatasetManager(datasetEvalAllowAuthorizer{}, repo).WithRunCreationService(&datasetEvalFakeRunCreator{run: run})
+	router := chi.NewRouter()
+	router.Post("/v1/workspaces/{workspaceID}/datasets/{datasetID}/evals", startDatasetEvalHandler(catalogTestLogger(), manager))
+
+	body := fmt.Sprintf(`{"version_id":%q,"challenge_pack_version_id":%q,"challenge_id":"support","agent_deployment_ids":[%q]}`, versionID, packVersionID, uuid.New())
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/workspaces/%s/datasets/%s/evals", workspaceID, datasetID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, datasetEvalCaller(workspaceID)))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body = %s", rec.Code, rec.Body.String())
+	}
+
+	var response struct {
+		Run                    map[string]json.RawMessage        `json:"run"`
+		DatasetVersionInputSet repository.DatasetVersionInputSet `json:"dataset_version_input_set"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	expectedRun, err := json.Marshal(buildCreateRunResponse(run))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var expectedKeys map[string]json.RawMessage
+	if err := json.Unmarshal(expectedRun, &expectedKeys); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(response.Run, expectedKeys) {
+		t.Fatalf("run = %s, want %s", rec.Body.String(), expectedRun)
+	}
+	if response.DatasetVersionInputSet.ChallengeInputSetID != inputSetID {
+		t.Fatalf("materialized input set = %s, want %s", response.DatasetVersionInputSet.ChallengeInputSetID, inputSetID)
+	}
+}
 
 func TestDatasetManagerStartDatasetEvalMaterializesAndCreatesRun(t *testing.T) {
 	workspaceID := uuid.New()

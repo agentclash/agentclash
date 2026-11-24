@@ -147,6 +147,42 @@ func (q *Queries) ListChallengeInputSetsByVersionID(ctx context.Context, arg Lis
 	return items, nil
 }
 
+const listDefaultChallengeInputSetIDsByVersionID = `-- name: ListDefaultChallengeInputSetIDsByVersionID :many
+SELECT cis.id
+FROM challenge_input_sets AS cis
+WHERE cis.challenge_pack_version_id = $1
+  AND cis.archived_at IS NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM dataset_version_input_sets AS dvis
+      WHERE dvis.challenge_input_set_id = cis.id
+  )
+`
+
+type ListDefaultChallengeInputSetIDsByVersionIDParams struct {
+	ChallengePackVersionID uuid.UUID
+}
+
+func (q *Queries) ListDefaultChallengeInputSetIDsByVersionID(ctx context.Context, arg ListDefaultChallengeInputSetIDsByVersionIDParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listDefaultChallengeInputSetIDsByVersionID, arg.ChallengePackVersionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRunnableDeploymentsWithLatestSnapshot = `-- name: ListRunnableDeploymentsWithLatestSnapshot :many
 SELECT DISTINCT ON (agent_deployments.id)
     agent_deployments.id,
