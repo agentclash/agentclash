@@ -35,7 +35,7 @@ type MultiTurnService interface {
 
 type CalibrationReviewRequest struct {
 	RunAgentID uuid.UUID `json:"run_agent_id"`
-	TurnIndex  int       `json:"turn_index"`
+	TurnIndex  *int      `json:"turn_index"`
 	Score      float64   `json:"score"`
 	RubricKey  string    `json:"rubric_key,omitempty"`
 	Notes      string    `json:"notes,omitempty"`
@@ -234,7 +234,7 @@ func (m *MultiTurnManager) CreateCalibrationReview(ctx context.Context, caller C
 	if math.IsNaN(req.Score) || req.Score < 1 || req.Score > 5 {
 		return errInvalidCalibrationScore
 	}
-	if req.TurnIndex < 0 || req.TurnIndex > math.MaxInt32 {
+	if req.TurnIndex == nil || *req.TurnIndex < 0 || *req.TurnIndex > math.MaxInt32 {
 		return errInvalidTurnIndex
 	}
 	runAgent, err := m.repo.GetRunAgentByID(ctx, req.RunAgentID)
@@ -251,7 +251,7 @@ func (m *MultiTurnManager) CreateCalibrationReview(ctx context.Context, caller C
 	if run.WorkspaceID != workspaceID {
 		return repository.ErrRunAgentNotFound
 	}
-	turnIndex := int32(req.TurnIndex)
+	turnIndex := int32(*req.TurnIndex)
 	completed, err := m.repo.HasCompletedCalibrationTurn(ctx, req.RunAgentID, turnIndex)
 	if err != nil {
 		return err

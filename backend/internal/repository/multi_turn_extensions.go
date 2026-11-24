@@ -8,6 +8,7 @@ import (
 	"time"
 
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
+	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -58,22 +59,53 @@ func (r *Repository) HasCompletedCalibrationTurn(ctx context.Context, runAgentID
 	if err != nil {
 		return false, err
 	}
+	var offloaded [][]byte
+	var payloadErr error
 	for _, payload := range payloads {
-		event := RunEvent{Payload: payload}
-		if err := r.hydrateRunEventPayload(ctx, &event); err != nil {
-			return false, err
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(payload, &fields); err != nil {
+			payloadErr = err
+			continue
 		}
-		var turn struct {
-			Index *int32 `json:"turn_index"`
+		if _, ok := fields[runevents.PayloadRefMarker]; ok {
+			offloaded = append(offloaded, payload)
+			continue
 		}
-		if err := json.Unmarshal(event.Payload, &turn); err != nil {
-			return false, err
+		match, err := calibrationTurnMatches(payload, turnIndex)
+		if err != nil {
+			payloadErr = err
+			continue
 		}
-		if turn.Index != nil && *turn.Index == turnIndex {
+		if match {
 			return true, nil
 		}
 	}
-	return false, nil
+	for _, payload := range offloaded {
+		event := RunEvent{Payload: payload}
+		if err := r.hydrateRunEventPayload(ctx, &event); err != nil {
+			payloadErr = err
+			continue
+		}
+		match, err := calibrationTurnMatches(event.Payload, turnIndex)
+		if err != nil {
+			payloadErr = err
+			continue
+		}
+		if match {
+			return true, nil
+		}
+	}
+	return false, payloadErr
+}
+
+func calibrationTurnMatches(payload []byte, turnIndex int32) (bool, error) {
+	var turn struct {
+		Index *int32 `json:"turn_index"`
+	}
+	if err := json.Unmarshal(payload, &turn); err != nil {
+		return false, err
+	}
+	return turn.Index != nil && *turn.Index == turnIndex, nil
 }
 
 func (r *Repository) CreateCalibrationReview(ctx context.Context, params CreateCalibrationReviewParams) error {

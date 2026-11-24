@@ -54,33 +54,39 @@ func TestCalibrationReviewCreateWithoutDatabase(t *testing.T) {
 	workspaceID, foreignWorkspaceID := uuid.New(), uuid.New()
 	runID, foreignRunID := uuid.New(), uuid.New()
 	agentID, foreignAgentID := uuid.New(), uuid.New()
+	zeroTurnAgentID := uuid.New()
 	caller := callerWithWorkspaceRole(workspaceID, RoleWorkspaceMember)
 	const completedTurn = 2
 	const validScore = 4.5
 
-	request := func(t *testing.T, runAgentID uuid.UUID, turnIndex int64, score float64) (*httptest.ResponseRecorder, []repository.CreateCalibrationReviewParams) {
+	requestWithTurnField := func(t *testing.T, runAgentID uuid.UUID, turnField string, score float64) (*httptest.ResponseRecorder, []repository.CreateCalibrationReviewParams) {
 		t.Helper()
 		repo := &fakeCalibrationReviewRepository{
 			runAgents: map[uuid.UUID]domain.RunAgent{
-				agentID:        {RunID: runID},
-				foreignAgentID: {RunID: foreignRunID},
+				agentID:         {RunID: runID},
+				foreignAgentID:  {RunID: foreignRunID},
+				zeroTurnAgentID: {RunID: runID},
 			},
 			runs: map[uuid.UUID]domain.Run{
 				runID:        {WorkspaceID: workspaceID},
 				foreignRunID: {WorkspaceID: foreignWorkspaceID},
 			},
-			completedTurns: map[uuid.UUID]int32{agentID: completedTurn, foreignAgentID: completedTurn},
+			completedTurns: map[uuid.UUID]int32{agentID: completedTurn, foreignAgentID: completedTurn, zeroTurnAgentID: 0},
 		}
 		manager := NewMultiTurnManager(NewCallerWorkspaceAuthorizer(), repo, nil)
 		router := chi.NewRouter()
 		router.Post("/v1/workspaces/{workspaceID}/calibration-reviews", createCalibrationReviewHandler(slog.Default(), manager))
-		body := fmt.Sprintf(`{"run_agent_id":%q,"turn_index":%d,"score":%g,"rubric_key":"recovery","notes":"reviewed"}`, runAgentID, turnIndex, score)
+		body := fmt.Sprintf(`{"run_agent_id":%q,%s"score":%g,"rubric_key":"recovery","notes":"reviewed"}`, runAgentID, turnField, score)
 		ctx := context.WithValue(t.Context(), callerContextKey{}, caller)
 		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/calibration-reviews", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		rr := httptest.NewRecorder()
 		router.ServeHTTP(rr, req)
 		return rr, repo.inserts
+	}
+	request := func(t *testing.T, runAgentID uuid.UUID, turnIndex int64, score float64) (*httptest.ResponseRecorder, []repository.CreateCalibrationReviewParams) {
+		t.Helper()
+		return requestWithTurnField(t, runAgentID, fmt.Sprintf(`"turn_index":%d,`, turnIndex), score)
 	}
 
 	t.Run("success", func(t *testing.T) {
@@ -116,6 +122,29 @@ func TestCalibrationReviewCreateWithoutDatabase(t *testing.T) {
 		}
 		assertMultiTurnError(t, rr, status, code)
 	}
+
+	for _, tc := range []struct {
+		name      string
+		turnField string
+	}{
+		{"missing turn index", ""},
+		{"null turn index", `"turn_index":null,`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rr, inserts := requestWithTurnField(t, zeroTurnAgentID, tc.turnField, validScore)
+			assertRejected(t, rr, inserts, http.StatusBadRequest, "invalid_turn_index")
+		})
+	}
+
+	t.Run("explicit zero turn index", func(t *testing.T) {
+		rr, inserts := request(t, zeroTurnAgentID, 0, validScore)
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("status = %d body=%s, want %d", rr.Code, rr.Body, http.StatusCreated)
+		}
+		if len(inserts) != 1 || inserts[0].TurnIndex != 0 {
+			t.Fatalf("inserts = %+v, want one insert for turn 0", inserts)
+		}
+	})
 
 	tests := []struct {
 		name      string
