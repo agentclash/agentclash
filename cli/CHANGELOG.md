@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.12.0](https://github.com/agentclash/agentclash/compare/v2.11.0...v2.12.0) (2026-11-24)
+
+
+### Features
+
+* **cli:** add connector list, create, approve and revoke commands ([b4e6978](https://github.com/agentclash/agentclash/commit/b4e6978b1be7ec74e8a8950f5ca0daba973551cf)), closes [#1418](https://github.com/agentclash/agentclash/issues/1418)
+
 ## [2.11.0](https://github.com/agentclash/agentclash/compare/v2.10.0...v2.11.0) (2026-11-24)
 
 
