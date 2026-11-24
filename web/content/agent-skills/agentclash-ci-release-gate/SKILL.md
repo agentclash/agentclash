@@ -257,6 +257,7 @@ Exit codes are exact:
 - `20`: API/auth failure or report-writing failure after a successful gate.
 - `30`: candidate run timed out.
 - `31`: candidate run failed before gate evaluation.
+- `75`: the CLI could not read a response body. Check whether the first attempt created a run or changed server state before repeating the command.
 
 Successful terminal run statuses are `completed`, `succeeded`, and `success`. Failed terminal statuses include `failed`, `error`, `errored`, `canceled`, `cancelled`, `aborted`, `timed_out`, `timeout`, and `expired`.
 

@@ -1,26 +1,33 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
 func TestCIRunCreatesCandidateRunAndEvaluatesPassingGate(t *testing.T) {
+	isolateCLIEnv(t)
 	target := writeCIRunManifest(t)
 	captures := &ciRunRouteCaptures{}
 	srv := fakeAPI(t, ciRunRoutes(t, captures, nil))
 	defer srv.Close()
-	t.Setenv("AGENTCLASH_TOKEN", "test-token")
 
 	result, err, _ := runCIRunJSON(t, []string{"ci", "run", "--manifest", target, "-w", "ws-1", "--json", "--poll-interval", "1ms", "--timeout", "1s"}, srv.URL)
 	if err != nil {
 		t.Fatalf("ci run error: %v", err)
+	}
+	var stderr bytes.Buffer
+	if code, rendered := RenderError(err, &stderr); code != 0 || rendered {
+		t.Errorf("successful run returned exit %d and rendered=%t", code, rendered)
 	}
 
 	if result.ExitCode != 0 || result.GateVerdict != "pass" {
@@ -1084,6 +1091,44 @@ func TestCIRunTimeoutDoesNotEvaluateGate(t *testing.T) {
 	}
 	if captures.GateBody != nil {
 		t.Fatalf("gate body = %+v, want no gate evaluation after timeout", captures.GateBody)
+	}
+}
+
+func TestCIRunTruncatedCreateResponse(t *testing.T) {
+	isolateCLIEnv(t)
+	target := writeCIRunManifest(t)
+	var posts atomic.Int64
+	srv := fakeAPI(t, ciRunRoutes(t, &ciRunRouteCaptures{}, map[string]http.HandlerFunc{
+		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
+			posts.Add(1)
+			w.Header().Set("Content-Length", "10")
+			w.WriteHeader(http.StatusCreated)
+			if _, err := io.WriteString(w, "{"); err != nil {
+				t.Errorf("writing response: %v", err)
+			}
+		},
+	}))
+	t.Cleanup(srv.Close)
+
+	result, err, _ := runCIRunJSON(t, []string{"ci", "run", "--manifest", target, "-w", "ws-1", "--json"}, srv.URL)
+	if result.ExitCode != 75 {
+		t.Errorf("result.exit_code = %d, want 75", result.ExitCode)
+	}
+	if got := posts.Load(); got != 1 {
+		t.Errorf("POST /v1/runs requests = %d, want 1", got)
+	}
+
+	var stderr bytes.Buffer
+	code, rendered := RenderError(err, &stderr)
+	if code != 75 {
+		t.Errorf("exit code = %d, want 75 (err: %v)", code, err)
+	}
+	if !rendered {
+		t.Fatal("expected a JSON error envelope")
+	}
+	envelope := decodeStructuredError(t, stderr.String())
+	if !envelope.Error.Retryable || envelope.Error.Code != "request_failed" {
+		t.Errorf("error = %#v, want retryable request_failed", envelope.Error)
 	}
 }
 

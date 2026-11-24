@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,6 +73,36 @@ func TestRenderErrorTruncatedResponse(t *testing.T) {
 				t.Errorf("message = %q, want reading response: unexpected EOF", got)
 			}
 		})
+	}
+}
+
+func TestRenderErrorInvalidGzipResponse(t *testing.T) {
+	isolateCLIEnv(t)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-1": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Encoding", "gzip")
+			if _, err := io.WriteString(w, "invalidgzip"); err != nil {
+				t.Errorf("writing response: %v", err)
+			}
+		},
+	})
+	t.Cleanup(srv.Close)
+
+	err := executeCommand(t, []string{"run", "get", "run-1", "--json"}, srv.URL)
+	if !errors.Is(err, gzip.ErrHeader) {
+		t.Fatalf("command error = %v, want invalid gzip header", err)
+	}
+	var stderr bytes.Buffer
+	code, rendered := RenderError(err, &stderr)
+	if code != 75 {
+		t.Errorf("exit code = %d, want 75", code)
+	}
+	if !rendered {
+		t.Fatal("expected a JSON error envelope")
+	}
+	envelope := decodeStructuredError(t, stderr.String())
+	if !envelope.Error.Retryable || envelope.Error.Code != "request_failed" {
+		t.Errorf("error = %#v, want retryable request_failed", envelope.Error)
 	}
 }
 

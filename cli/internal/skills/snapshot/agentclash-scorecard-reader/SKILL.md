@@ -213,7 +213,7 @@ The share commands use these exit codes.
 | `1` | HTTP `409` with `agent_tryout_redaction_not_ready`. |
 | `75` | A network error or an HTTP `5xx` response. |
 
-If `share create` exits `75`, you can run the same command again. While the first link is active and not expired, the retry returns that link, so it does not make a second link. If the first link expired, the retry gives it a new URL and a new expiry. A retry with `--search-indexing` turns indexing on for the link.
+If `share create` exits `75`, check whether the first attempt created or changed a link before repeating the command. A repeat returns an active link, renews an expired link with a new URL and expiry, and turns indexing on if you pass `--search-indexing`.
 
 ## Scorecard JSON
 Use `agentclash run scorecard <RUN_AGENT_ID> --json` when you already know the agent ID. The top level mirrors `/v1/scorecards/{runAgentID}`:

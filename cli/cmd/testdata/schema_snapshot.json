@@ -5823,7 +5823,7 @@
     {
       "code": 75,
       "name": "retryable_failure",
-      "description": "Transient failure — rate limiting (429), server errors (5xx), or a network/transport error. Mirrors `error.retryable: true` in the JSON envelope; safe to retry, honoring details.retry_after_seconds when present (sysexits EX_TEMPFAIL)."
+      "description": "Transient failure — rate limiting (429), server errors (5xx), a network/transport error, or an incomplete response body. Mirrors `error.retryable: true` in the JSON envelope. Retry a read, honoring details.retry_after_seconds when present; before you repeat a write, check whether the first attempt changed server state (sysexits EX_TEMPFAIL)."
     },
     {
       "code": 77,
