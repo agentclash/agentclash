@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.13.1](https://github.com/agentclash/agentclash/compare/v2.13.0...v2.13.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **cli:** exit 75 in ci run for a cut-off response, and warn before repeating a write ([3d47b93](https://github.com/agentclash/agentclash/commit/3d47b936190bcd7854a0f157fa83dfa2b6846e6f))
+* **cli:** exit 75 when a response body stops early ([4ef8919](https://github.com/agentclash/agentclash/commit/4ef891979410496b5deb333183387831ae6b9110)), closes [#1432](https://github.com/agentclash/agentclash/issues/1432)
+
 ## [2.13.0](https://github.com/agentclash/agentclash/compare/v2.12.0...v2.13.0) (2026-11-24)
 
 
