@@ -15,6 +15,9 @@ var apiFeatureCommandPaths = []string{
 	"agentclash run insights",
 	"agentclash ci setup",
 	"agentclash workspace emergency-stop",
+	"agentclash evalset scan",
+	"agentclash evalset finding list",
+	"agentclash evalset finding update",
 }
 
 func TestAPIFeatureCommandsHaveShortAndExample(t *testing.T) {

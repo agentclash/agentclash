@@ -87,6 +87,16 @@ var flagAllowedValues = map[string]map[string][]string{
 	"agentclash evalset report": {
 		"format": {"table", "json", "csv"},
 	},
+	"agentclash evalset scan": {
+		"scanner": builtinScannerNameValues,
+	},
+	"agentclash evalset finding list": {
+		"severity": findingSeverityValues,
+		"status":   findingStatusValues,
+	},
+	"agentclash evalset finding update": {
+		"status": findingStatusValues,
+	},
 }
 
 // parseArgsFromUse extracts positional arguments from a cobra Use line.

@@ -2525,6 +2525,82 @@
           ]
         },
         {
+          "name": "finding",
+          "path": "agentclash evalset finding",
+          "short": "Triage the scanner findings of an eval set",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "list",
+              "path": "agentclash evalset finding list",
+              "short": "List the scanner findings of an eval set",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "eval-set-id",
+                  "required": true
+                }
+              ],
+              "example": "  # List the open findings of high severity\n  agentclash evalset finding list \u003ceval-set-id\u003e --severity high --status open\n\n  # Get the full findings, with the evidence, as JSON\n  agentclash evalset finding list \u003ceval-set-id\u003e --json",
+              "flags": [
+                {
+                  "name": "limit",
+                  "usage": "Maximum findings to return, newest first (1-500)",
+                  "type": "int",
+                  "default": "100"
+                },
+                {
+                  "name": "severity",
+                  "usage": "Show only the findings of this severity: low, medium, high or critical",
+                  "type": "string",
+                  "allowed_values": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                {
+                  "name": "status",
+                  "usage": "Show only the findings with this status: open, triaged or dismissed",
+                  "type": "string",
+                  "allowed_values": [
+                    "open",
+                    "triaged",
+                    "dismissed"
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "update",
+              "path": "agentclash evalset finding update",
+              "short": "Change the triage status of a scanner finding",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "finding-id",
+                  "required": true
+                }
+              ],
+              "example": "  # Mark a finding as triaged\n  agentclash evalset finding update \u003cfinding-id\u003e --status triaged\n\n  # Dismiss a false positive\n  agentclash evalset finding update \u003cfinding-id\u003e --status dismissed --json",
+              "flags": [
+                {
+                  "name": "status",
+                  "usage": "New status of the finding: open, triaged or dismissed",
+                  "type": "string",
+                  "required": true,
+                  "allowed_values": [
+                    "open",
+                    "triaged",
+                    "dismissed"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
           "name": "init",
           "path": "agentclash evalset init",
           "short": "Write a commented starter evalset/v1 manifest",
@@ -2599,6 +2675,33 @@
                 "table",
                 "json",
                 "csv"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "scan",
+          "path": "agentclash evalset scan",
+          "short": "Run the built-in transcript scanners on an eval set",
+          "runnable": true,
+          "args": [
+            {
+              "name": "eval-set-id",
+              "required": true
+            }
+          ],
+          "example": "  # Run the scanners of the eval set manifest\n  agentclash evalset scan \u003ceval-set-id\u003e\n\n  # Run two built-in scanners\n  agentclash evalset scan \u003ceval-set-id\u003e --scanner reward-hacking --scanner tool-misuse\n\n  # Look at the findings when the scan is complete\n  agentclash evalset finding list \u003ceval-set-id\u003e --severity high",
+          "flags": [
+            {
+              "name": "scanner",
+              "usage": "Built-in scanner to run; may be repeated (default: the scanners of the eval set manifest)",
+              "type": "stringArray",
+              "default": "[]",
+              "allowed_values": [
+                "instruction-injection-compliance",
+                "reward-hacking",
+                "sandbox-escape-attempt",
+                "tool-misuse"
               ]
             }
           ]

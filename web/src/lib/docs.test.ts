@@ -154,6 +154,18 @@ describe("agent skill docs", () => {
     expect(content).toContain(
       "`--yes` — Cancel the eval sets with no confirmation prompt; necessary in non-interactive mode",
     );
+
+    // evalset scan and finding (transcript scanners)
+    expect(content).toContain("Run the built-in transcript scanners on an eval set");
+    expect(content).toContain(
+      "`--scanner` — Built-in scanner to run; may be repeated (default: the scanners of the eval set manifest)",
+    );
+    expect(content).toContain("List the scanner findings of an eval set");
+    expect(content).toContain("`--limit` — Maximum findings to return, newest first (1-500)");
+    expect(content).toContain("Change the triage status of a scanner finding");
+    expect(content).toContain(
+      "`--status` (required) — New status of the finding: open, triaged or dismissed",
+    );
   });
 
   it("generates the security evaluation skill", () => {
@@ -234,6 +246,10 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash run ranking <RUN_ID> --json");
     expect(doc?.content).toContain("agentclash run insights <RUN_ID> --provider-account");
     expect(doc?.content).toContain("ranking_insights_rate_limited");
+    expect(doc?.content).toContain(
+      "agentclash evalset finding list <EVAL_SET_ID> --severity high --status open --json",
+    );
+    expect(doc?.content).toContain("scan_already_running");
     expect(doc?.content).toContain("agentclash run scorecard <RUN_AGENT_ID> --json");
     expect(doc?.content).toContain("agentclash replay get <RUN_AGENT_ID> --limit 50 --json");
     expect(doc?.content).toContain("artifact list` is workspace-wide");
