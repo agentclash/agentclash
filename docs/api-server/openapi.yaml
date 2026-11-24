@@ -4004,6 +4004,7 @@ paths:
       operationId: createCalibrationReview
       tags: [MultiTurn]
       summary: Record a human calibration score for a multi-turn turn
+      description: The run agent must belong to the workspace in the URL, and the turn must have completed.
       security:
         - bearerJWT: []
       parameters:
@@ -4027,10 +4028,13 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
     get:
       operationId: listCalibrationReviews
       tags: [MultiTurn]
       summary: List recent calibration reviews for a workspace
+      description: Returns reviews whose run agents belong to the workspace in the URL.
       security:
         - bearerJWT: []
       parameters:
@@ -4711,7 +4715,7 @@ paths:
               $ref: "#/components/schemas/StartDatasetEvalInput"
       responses:
         "201":
-          description: Dataset eval run queued
+          description: Dataset eval run queued. The nested run uses the same schema as the response from POST /v1/runs.
           content:
             application/json:
               schema:
@@ -6095,6 +6099,15 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+        "404":
+          description: >
+            The pack is missing or unavailable to this workspace
+            (`challenge_pack_not_found`), or the source version is missing or
+            unavailable (`challenge_pack_version_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
@@ -7035,7 +7048,9 @@ paths:
         Returns a cursor-paginated timeline of product-level events for a
         workspace-owned tryout. Workspace members receive the full (unredacted)
         event payloads. Poll with the returned `next_cursor` as `after` to
-        resume.
+        resume. For a Codex rerun with an explicit model, the
+        `codex.exec.started` sandbox command event includes the launched model
+        ID in `payload.provider_model_id` even when the command is hidden.
       tags: [AgentTryouts]
       security:
         - bearerJWT: []
@@ -7171,8 +7186,9 @@ paths:
         Creates a new tryout that reuses the source tryout's template and input
         but runs under a different model policy, linked to the source via
         `parent_tryout_id`. The source is never mutated. Anonymous/unclaimed
-        source tryouts return a sign-in-required error; an invalid model policy
-        or an unavailable provider/model returns a product error.
+        source tryouts return a sign-in-required error. The Codex workspace
+        harness accepts one explicit OpenAI model. Incompatible policies are
+        rejected before a rerun is created.
       tags: [AgentTryouts]
       security:
         - bearerJWT: []
@@ -7192,7 +7208,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/AgentTryoutResponse"
         "400":
-          $ref: "#/components/responses/ValidationError"
+          description: >-
+            Invalid request or model policy. Duplicate keys in a policy object
+            are matched case-insensitively and return `invalid_model_policy`.
+            A policy that selects multiple models or a known provider the
+            workspace harness cannot run returns `unsupported_workspace_model_policy`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "402":
@@ -7202,7 +7226,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          $ref: "#/components/responses/ForbiddenError"
+          description: Permission to create runs in the source workspace is required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           $ref: "#/components/responses/NotFoundError"
         "422":
@@ -11261,10 +11289,13 @@ components:
           type: string
           format: uuid
           description: >
-            Optional. If omitted and the challenge pack has exactly one input
-            set, it is auto-selected. If omitted and the pack has multiple
-            input sets, the request is rejected with code
-            missing_challenge_input_set_id.
+            Optional. When omitted, the server considers active input sets
+            for the selected pack version and excludes dataset-materialized
+            sets. If one remains, it is selected automatically. If none
+            remain, the run is created without an input set. If multiple
+            remain, the request is rejected with code
+            missing_challenge_input_set_id. An explicit ID can select any
+            active input set for the version, including a dataset input set.
         name:
           type: string
         agent_deployment_ids:
@@ -11341,10 +11372,13 @@ components:
           type: string
           format: uuid
           description: >
-            Optional. If omitted and the challenge pack has exactly one input
-            set, it is auto-selected. If omitted and the pack has multiple
-            input sets, the request is rejected with code
-            missing_challenge_input_set_id.
+            Optional. When omitted, the server considers active input sets
+            for the selected pack version and excludes dataset-materialized
+            sets. If one remains, it is selected automatically. If none
+            remain, the session's runs are created without an input set. If
+            multiple remain, the request is rejected with code
+            missing_challenge_input_set_id. An explicit ID can select any
+            active input set for the version, including a dataset input set.
         participants:
           type: array
           minItems: 1
@@ -13426,7 +13460,9 @@ components:
           format: uuid
         turn_index:
           type: integer
+          description: Zero-based index of a completed turn for the run agent.
           minimum: 0
+          maximum: 2147483647
         score:
           type: number
           minimum: 1
@@ -14819,7 +14855,10 @@ components:
         challenge_pack_id:
           type: string
           format: uuid
-          description: Optionally link the draft to an existing challenge pack.
+          description: >
+            Optionally link the draft to a pack in this workspace or a global
+            pack when public packs are enabled. When a source version is
+            provided, the draft links to that version's pack.
         composition:
           type: object
           additionalProperties: true
@@ -15800,9 +15839,10 @@ components:
           type: object
           additionalProperties: true
           description: >-
-            The model policy to rerun under. Must set a `mode` or at least one
-            explicit `models[]` entry; explicit models must name a known
-            provider.
+            The model policy to rerun under. Set `models` to one entry with
+            `provider: openai` and a model ID to override the Codex model.
+            `mode: explicit` requires a model. Use `mode: hosted_default`
+            without `models` to use the harness default.
         agent_design_provided:
           type: boolean
           description: >-

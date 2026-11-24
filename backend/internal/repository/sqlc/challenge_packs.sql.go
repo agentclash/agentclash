@@ -12,6 +12,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getChallengePackWorkspaceID = `-- name: GetChallengePackWorkspaceID :one
+SELECT workspace_id
+FROM challenge_packs
+WHERE id = $1
+  AND archived_at IS NULL
+`
+
+type GetChallengePackWorkspaceIDParams struct {
+	ID uuid.UUID
+}
+
+func (q *Queries) GetChallengePackWorkspaceID(ctx context.Context, arg GetChallengePackWorkspaceIDParams) (*uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getChallengePackWorkspaceID, arg.ID)
+	var workspace_id *uuid.UUID
+	err := row.Scan(&workspace_id)
+	return workspace_id, err
+}
+
 const getNextWorkspaceChallengePackVersionNumber = `-- name: GetNextWorkspaceChallengePackVersionNumber :one
 SELECT (COALESCE(MAX(v.version_number), 0) + 1)::integer AS next_version_number
 FROM challenge_packs p

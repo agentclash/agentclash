@@ -90,6 +90,7 @@ type Querier interface {
 	GetChallengeIdentityForDatasetEval(ctx context.Context, arg GetChallengeIdentityForDatasetEvalParams) (uuid.UUID, error)
 	GetChallengeInputSetByID(ctx context.Context, arg GetChallengeInputSetByIDParams) (ChallengeInputSet, error)
 	GetChallengePackDraftByID(ctx context.Context, arg GetChallengePackDraftByIDParams) (ChallengePackDraft, error)
+	GetChallengePackWorkspaceID(ctx context.Context, arg GetChallengePackWorkspaceIDParams) (*uuid.UUID, error)
 	GetChallengePieceByID(ctx context.Context, arg GetChallengePieceByIDParams) (ChallengePiece, error)
 	GetClaimedAgentTryoutRetry(ctx context.Context, arg GetClaimedAgentTryoutRetryParams) (AgentTryout, error)
 	GetDatasetBaselineByID(ctx context.Context, arg GetDatasetBaselineByIDParams) (DatasetBaseline, error)
@@ -144,6 +145,7 @@ type Querier interface {
 	// In one statement with the lock, MAX would use the snapshot from before the
 	// lock wait, and two appends would get the same index.
 	InsertAgentTryoutTurn(ctx context.Context, arg InsertAgentTryoutTurnParams) (AgentTryoutTurn, error)
+	InsertCalibrationReview(ctx context.Context, arg InsertCalibrationReviewParams) (int64, error)
 	InsertDatasetBaseline(ctx context.Context, arg InsertDatasetBaselineParams) (DatasetBaseline, error)
 	InsertDatasetExample(ctx context.Context, arg InsertDatasetExampleParams) (DatasetExample, error)
 	InsertDatasetExampleRevision(ctx context.Context, arg InsertDatasetExampleRevisionParams) (DatasetExampleRevision, error)
@@ -158,6 +160,8 @@ type Querier interface {
 	ListAgentBuildsByWorkspaceID(ctx context.Context, arg ListAgentBuildsByWorkspaceIDParams) ([]AgentBuild, error)
 	ListAgentTryoutEventsAfter(ctx context.Context, arg ListAgentTryoutEventsAfterParams) ([]AgentTryoutEvent, error)
 	ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAgentTryoutsByWorkspaceIDParams) ([]AgentTryout, error)
+	ListCalibrationReviews(ctx context.Context, arg ListCalibrationReviewsParams) ([]ListCalibrationReviewsRow, error)
+	ListCalibrationTurnPayloads(ctx context.Context, arg ListCalibrationTurnPayloadsParams) ([][]byte, error)
 	ListCaseResultsByEvalSetForCompare(ctx context.Context, arg ListCaseResultsByEvalSetForCompareParams) ([]ListCaseResultsByEvalSetForCompareRow, error)
 	ListCaseResultsByEvalSetID(ctx context.Context, arg ListCaseResultsByEvalSetIDParams) ([]CaseResult, error)
 	ListCaseResultsForExport(ctx context.Context, arg ListCaseResultsForExportParams) ([]CaseResult, error)
@@ -177,6 +181,7 @@ type Querier interface {
 	ListDatasetVersionExamples(ctx context.Context, arg ListDatasetVersionExamplesParams) ([]DatasetExample, error)
 	ListDatasetVersionsByDatasetID(ctx context.Context, arg ListDatasetVersionsByDatasetIDParams) ([]DatasetVersion, error)
 	ListDatasetsByWorkspaceID(ctx context.Context, arg ListDatasetsByWorkspaceIDParams) ([]ListDatasetsByWorkspaceIDRow, error)
+	ListDefaultChallengeInputSetIDsByVersionID(ctx context.Context, arg ListDefaultChallengeInputSetIDsByVersionIDParams) ([]uuid.UUID, error)
 	ListEvalSessions(ctx context.Context, arg ListEvalSessionsParams) ([]EvalSession, error)
 	ListEvalSessionsByEvalSetID(ctx context.Context, arg ListEvalSessionsByEvalSetIDParams) ([]ListEvalSessionsByEvalSetIDRow, error)
 	ListEvalSessionsByWorkspaceID(ctx context.Context, arg ListEvalSessionsByWorkspaceIDParams) ([]EvalSession, error)

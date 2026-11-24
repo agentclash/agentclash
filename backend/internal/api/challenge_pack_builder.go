@@ -35,6 +35,7 @@ type ChallengePackBuilderRepository interface {
 	PatchChallengePackDraft(ctx context.Context, params repository.PatchChallengePackDraftParams) (repository.ChallengePackDraft, error)
 	MarkChallengePackDraftPublished(ctx context.Context, params repository.MarkChallengePackDraftPublishedParams) (repository.ChallengePackDraft, error)
 	DeleteChallengePackDraft(ctx context.Context, id uuid.UUID) error
+	GetChallengePackWorkspaceID(ctx context.Context, id uuid.UUID) (*uuid.UUID, error)
 	// Used to hydrate a draft from an already-published pack (edit-in-builder).
 	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
 	WorkspacePublicPacksEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error)
@@ -275,6 +276,20 @@ func (m *ChallengePackBuilderManager) CreateDraft(ctx context.Context, caller Ca
 		return repository.ChallengePackDraft{}, builderValidationError("name", "is required")
 	}
 
+	if input.ChallengePackID != nil {
+		ownerID, err := m.repo.GetChallengePackWorkspaceID(ctx, *input.ChallengePackID)
+		if err != nil {
+			return repository.ChallengePackDraft{}, err
+		}
+		visible, err := m.challengePackVisible(ctx, input.WorkspaceID, ownerID)
+		if err != nil {
+			return repository.ChallengePackDraft{}, err
+		}
+		if !visible {
+			return repository.ChallengePackDraft{}, ErrChallengePackNotFound
+		}
+	}
+
 	return m.repo.CreateChallengePackDraft(ctx, repository.CreateChallengePackDraftParams{
 		WorkspaceID:     input.WorkspaceID,
 		Name:            name,
@@ -301,17 +316,12 @@ func (m *ChallengePackBuilderManager) hydrateDraftFromVersion(ctx context.Contex
 	if err != nil {
 		return hydratedDraft{}, err
 	}
-	if version.WorkspaceID != nil && *version.WorkspaceID != workspaceID {
-		return hydratedDraft{}, repository.ErrChallengePackVersionNotFound
+	visible, err := m.challengePackVisible(ctx, workspaceID, version.WorkspaceID)
+	if err != nil {
+		return hydratedDraft{}, err
 	}
-	if version.WorkspaceID == nil {
-		enabled, accessErr := m.repo.WorkspacePublicPacksEnabled(ctx, workspaceID)
-		if accessErr != nil {
-			return hydratedDraft{}, accessErr
-		}
-		if !enabled {
-			return hydratedDraft{}, repository.ErrChallengePackVersionNotFound
-		}
+	if !visible {
+		return hydratedDraft{}, repository.ErrChallengePackVersionNotFound
 	}
 
 	bundle, err := challengepack.ManifestToBundle(version.Manifest)
@@ -333,6 +343,13 @@ func (m *ChallengePackBuilderManager) hydrateDraftFromVersion(ctx context.Contex
 		executionMode:   bundle.Version.ExecutionMode,
 		challengePackID: version.ChallengePackID,
 	}, nil
+}
+
+func (m *ChallengePackBuilderManager) challengePackVisible(ctx context.Context, workspaceID uuid.UUID, ownerID *uuid.UUID) (bool, error) {
+	if ownerID != nil {
+		return *ownerID == workspaceID, nil
+	}
+	return m.repo.WorkspacePublicPacksEnabled(ctx, workspaceID)
 }
 
 func (m *ChallengePackBuilderManager) GetDraft(ctx context.Context, caller Caller, workspaceID, draftID uuid.UUID) (repository.ChallengePackDraft, error) {
@@ -956,6 +973,8 @@ func handleChallengePackBuilderError(w http.ResponseWriter, logger *slog.Logger,
 		writeError(w, http.StatusNotFound, "challenge_piece_not_found", "challenge piece not found")
 	case errors.Is(err, repository.ErrChallengePackDraftNotFound):
 		writeError(w, http.StatusNotFound, "challenge_pack_draft_not_found", "challenge pack draft not found")
+	case errors.Is(err, ErrChallengePackNotFound):
+		writeError(w, http.StatusNotFound, "challenge_pack_not_found", "challenge pack not found")
 	case errors.Is(err, repository.ErrChallengePackVersionNotFound):
 		writeError(w, http.StatusNotFound, "challenge_pack_version_not_found", "challenge pack version not found")
 	case errors.Is(err, repository.ErrChallengePieceSlugConflict):

@@ -241,7 +241,12 @@ type StartDatasetEvalInput struct {
 }
 
 type StartDatasetEvalResult struct {
-	Run                    domain.Run                        `json:"run"`
+	Run                    domain.Run
+	DatasetVersionInputSet repository.DatasetVersionInputSet
+}
+
+type startDatasetEvalResponse struct {
+	Run                    createRunResponse                 `json:"run"`
 	DatasetVersionInputSet repository.DatasetVersionInputSet `json:"dataset_version_input_set"`
 }
 
@@ -922,7 +927,10 @@ func startDatasetEvalHandler(logger *slog.Logger, service DatasetService) http.H
 			handleDatasetError(w, logger, err)
 			return
 		}
-		writeJSON(w, http.StatusCreated, result)
+		writeJSON(w, http.StatusCreated, startDatasetEvalResponse{
+			Run:                    buildCreateRunResponse(result.Run),
+			DatasetVersionInputSet: result.DatasetVersionInputSet,
+		})
 	}
 }
 

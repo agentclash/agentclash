@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -106,7 +110,7 @@ func TestAgentTryoutRerunClonesSnapshotsWithNewModelPolicy(t *testing.T) {
 	source := seedWorkspaceTryout(repo, orgID, workspaceID, "tiny-bugfix")
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
-	policy := json.RawMessage(`{"mode":"hosted_default","models":[{"provider":"anthropic","model":"claude-opus-4-8"}]}`)
+	policy := json.RawMessage(`{"mode":"explicit","models":[{"provider":"openai","model":"gpt-5"}]}`)
 	rerun, err := manager.RerunWorkspaceTryout(ctx, callerWithWorkspace(workspaceID), RerunAgentTryoutInput{
 		SourceTryoutID:      source.ID,
 		SelectedModelPolicy: policy,
@@ -134,6 +138,97 @@ func TestAgentTryoutRerunClonesSnapshotsWithNewModelPolicy(t *testing.T) {
 	}
 	if rerun.RedactionStatus != repository.AgentTryoutRedactionPending {
 		t.Fatalf("rerun redaction = %q, want pending", rerun.RedactionStatus)
+	}
+}
+
+func TestRerunAgentTryoutHandlerDispatchesOnlySupportedModelPolicies(t *testing.T) {
+	cases := []struct {
+		name       string
+		policy     string
+		role       string
+		wantStatus int
+		wantCode   string
+		wantModel  string
+	}{
+		{name: "member OpenAI override", policy: `{"mode":"explicit","max_models":1,"models":[{"provider":"openai","model":" gpt-5 "}]}`, role: RoleWorkspaceMember, wantModel: "gpt-5"},
+		{name: "harness default", policy: `{"mode":"hosted_default"}`},
+		{name: "incompatible provider", policy: `{"mode":"explicit","models":[{"provider":"anthropic","model":"claude-sonnet"}]}`, wantCode: "unsupported_workspace_model_policy"},
+		{name: "multiple models", policy: `{"mode":"explicit","models":[{"provider":"openai","model":"gpt-5"},{"provider":"openai","model":"gpt-5-mini"}]}`, wantCode: "unsupported_workspace_model_policy"},
+		{name: "missing explicit model", policy: `{"mode":"explicit"}`, wantCode: "invalid_model_policy"},
+		{name: "case-insensitive models keys", policy: `{"models":[{"provider":"anthropic","model":"claude-sonnet"}],"Models":[{"provider":"openai","model":"gpt-5"}]}`, wantCode: "invalid_model_policy"},
+		{name: "duplicate mode keys", policy: `{"mode":"explicit","mode":"hosted_default"}`, wantCode: "invalid_model_policy"},
+		{name: "case-insensitive nested provider keys", policy: `{"models":[{"provider":"anthropic","\u0050ROVIDER":"openai","model":"gpt-5"}]}`, wantCode: "invalid_model_policy"},
+		{name: "workspace viewer", policy: `{"models":[{"provider":"openai","model":"gpt-5"}]}`, role: RoleWorkspaceViewer, wantStatus: http.StatusForbidden, wantCode: "forbidden"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			orgID, workspaceID := uuid.New(), uuid.New()
+			repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+			source := seedWorkspaceTryout(repo, orgID, workspaceID, "tiny-bugfix")
+			starter := &fakeAgentHarnessWorkflowStarter{}
+			gate := &fakeRerunGate{}
+			manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).
+				WithRerunGate(gate).
+				WithExecution(starter, AgentTryoutExecutionConfig{})
+			router := chi.NewRouter()
+			router.Post("/v1/agent-tryouts/{tryoutID}/rerun", rerunAgentTryoutHandler(slog.Default(), manager))
+			req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts/"+source.ID.String()+"/rerun", strings.NewReader(`{"selected_model_policy":`+tc.policy+`}`))
+			role := tc.role
+			if role == "" {
+				role = RoleWorkspaceAdmin
+			}
+			req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, callerWithWorkspaceRole(workspaceID, role)))
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			if tc.wantCode != "" {
+				if len(repo.tryouts) != 1 || len(repo.createdExecutions) != 0 || starter.startedCount != 0 || gate.policy != nil {
+					t.Error("rejected rerun reached the gate, created a tryout or execution, or started a workflow")
+				}
+				wantStatus := tc.wantStatus
+				if wantStatus == 0 {
+					wantStatus = http.StatusBadRequest
+				}
+				if rr.Code != wantStatus {
+					t.Fatalf("status = %d, want %d: %s", rr.Code, wantStatus, rr.Body.String())
+				}
+				var body errorEnvelope
+				if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if body.Error.Code != tc.wantCode {
+					t.Fatalf("error = %+v, want code %q", body.Error, tc.wantCode)
+				}
+				return
+			}
+
+			if rr.Code != http.StatusCreated {
+				t.Fatalf("status = %d, want 201: %s", rr.Code, rr.Body.String())
+			}
+			if len(repo.createdExecutions) != 1 || starter.startedCount != 1 {
+				t.Fatalf("created executions/workflow starts = %d/%d, want 1/1", len(repo.createdExecutions), starter.startedCount)
+			}
+			if len(repo.tryouts) != 2 {
+				t.Fatalf("tryouts = %d, want 2", len(repo.tryouts))
+			}
+			for id, tryout := range repo.tryouts {
+				if id != source.ID && string(tryout.SelectedModelPolicy) != tc.policy {
+					t.Errorf("stored policy = %s, want %s", tryout.SelectedModelPolicy, tc.policy)
+				}
+			}
+			if string(gate.policy) != tc.policy {
+				t.Errorf("rerun gate policy = %s, want %s", gate.policy, tc.policy)
+			}
+			var snapshot struct {
+				Model string `json:"codex_model"`
+			}
+			if err := json.Unmarshal(repo.createdExecutions[0].HarnessSnapshot, &snapshot); err != nil {
+				t.Fatal(err)
+			}
+			if snapshot.Model != tc.wantModel {
+				t.Fatalf("snapshot model = %q, want %q", snapshot.Model, tc.wantModel)
+			}
+		})
 	}
 }
 
@@ -187,9 +282,13 @@ func TestAgentTryoutRerunValidatesModelPolicy(t *testing.T) {
 	}
 }
 
-type fakeRerunGate struct{ err error }
+type fakeRerunGate struct {
+	err    error
+	policy json.RawMessage
+}
 
-func (g fakeRerunGate) AuthorizeRerun(context.Context, Caller, uuid.UUID, json.RawMessage) error {
+func (g *fakeRerunGate) AuthorizeRerun(_ context.Context, _ Caller, _ uuid.UUID, policy json.RawMessage) error {
+	g.policy = policy
 	return g.err
 }
 
@@ -199,7 +298,7 @@ func TestAgentTryoutRerunGateDenial(t *testing.T) {
 	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
 	source := seedWorkspaceTryout(repo, orgID, workspaceID, "tiny-bugfix")
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).
-		WithRerunGate(fakeRerunGate{err: ErrAgentTryoutRerunInsufficientCredits})
+		WithRerunGate(&fakeRerunGate{err: ErrAgentTryoutRerunInsufficientCredits})
 
 	_, err := manager.RerunWorkspaceTryout(ctx, callerWithWorkspace(workspaceID), RerunAgentTryoutInput{
 		SourceTryoutID:      source.ID,

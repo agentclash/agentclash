@@ -206,14 +206,14 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 			}
 		}
 	} else {
-		inputSets, err := m.repo.ListChallengeInputSetsByVersionID(ctx, input.ChallengePackVersionID)
+		inputSetIDs, err := m.repo.ListDefaultChallengeInputSetIDsByVersionID(ctx, input.ChallengePackVersionID)
 		if err != nil {
-			return CreateEvalSessionResult{}, fmt.Errorf("list challenge input sets: %w", err)
+			return CreateEvalSessionResult{}, fmt.Errorf("list default challenge input sets: %w", err)
 		}
-		switch len(inputSets) {
+		switch len(inputSetIDs) {
 		case 0:
 		case 1:
-			input.ChallengeInputSetID = &inputSets[0].ID
+			input.ChallengeInputSetID = &inputSetIDs[0]
 		default:
 			return CreateEvalSessionResult{}, RunCreationValidationError{
 				Code:    "missing_challenge_input_set_id",
