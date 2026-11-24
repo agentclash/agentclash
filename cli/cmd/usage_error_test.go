@@ -46,13 +46,30 @@ func TestCobraUsageErrorOutputFlags(t *testing.T) {
 		{"long output", []string{"version", "--bogus", "--output", "json"}, true},
 		{"long output equals", []string{"version", "--bogus", "--output=json"}, true},
 		{"short output", []string{"version", "--bogus", "-o", "json"}, true},
-		{"short output cluster", []string{"version", "--bogus", "-qoyaml"}, true},
+		{"short output cluster", []string{"version", "--bogus", "-qojson"}, true},
+		{"yaml output cluster", []string{"version", "--bogus", "-qoyaml"}, false},
+		{"yaml output", []string{"version", "--bogus", "--output", "yaml"}, false},
 		{"json overrides table", []string{"version", "--bogus", "--json", "--output=table"}, true},
 		{"json as flag value", []string{"version", "--bogus", "--jq", "--json"}, false},
 		{"json after delimiter", []string{"version", "--bogus", "--", "--json"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			assertUsageError(t, tc.args, "unknown flag: --bogus", tc.json)
+		})
+	}
+}
+
+func TestCobraUsageErrorAfterUnknownShorthand(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"json flag", []string{"version", "-xw", "--json"}},
+		{"output flag", []string{"version", "-xw", "-o", "json"}},
+		{"known shorthand first", []string{"version", "-qxw", "--json"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assertUsageError(t, tc.args, "unknown shorthand flag: 'x'", true)
 		})
 	}
 }
@@ -66,36 +83,51 @@ func TestCobraUsageErrorInternalCompletion(t *testing.T) {
 }
 
 func TestCobraUsageErrorSavedOutput(t *testing.T) {
-	isolateCLIEnv(t)
-	if err := config.Save(config.UserConfig{Output: "json"}); err != nil {
-		t.Fatal(err)
-	}
 	for _, tc := range []struct {
-		name string
-		args []string
-		json bool
+		name        string
+		savedOutput string
+		args        []string
+		json        bool
 	}{
-		{"saved json", []string{"version", "--bogus"}, true},
-		{"explicit table", []string{"version", "--bogus", "--output=table"}, false},
+		{"saved json", "json", []string{"version", "--bogus"}, true},
+		{"explicit table", "json", []string{"version", "--bogus", "--output=table"}, false},
+		{"yaml overrides saved json", "json", []string{"version", "--bogus", "--output", "yaml"}, false},
+		{"saved yaml", "yaml", []string{"version", "--bogus"}, false},
+		{"explicit and saved yaml", "yaml", []string{"version", "--bogus", "--output", "yaml"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			isolateCLIEnv(t)
+			if err := config.Save(config.UserConfig{Output: tc.savedOutput}); err != nil {
+				t.Fatal(err)
+			}
 			checkUsageError(t, tc.args, "unknown flag: --bogus", tc.json)
 		})
 	}
 }
 
 func TestCobraHelpSkipsUsageValidation(t *testing.T) {
-	isolateCLIEnv(t)
-	srv, count := countingFakeAPI(t, nil)
-	stdout := captureStdout(t)
-	err := executeCommand(t, []string{"share", "create", "--help", "--json"}, srv.URL)
-	out := stdout.finish()
-	assertExitCode(t, err, 0)
-	if !strings.Contains(out, "Usage:") || !strings.Contains(out, "agentclash share create") {
-		t.Fatalf("expected share create help, got %q", out)
-	}
-	if count.Load() != 0 {
-		t.Fatalf("requests = %d, want 0", count.Load())
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		command string
+	}{
+		{"explicit help", []string{"share", "create", "--help", "--json"}, "agentclash share create"},
+		{"unknown group subcommand", []string{"share", "bogus", "--json"}, "agentclash share [command]"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			isolateCLIEnv(t)
+			srv, count := countingFakeAPI(t, nil)
+			stdout := captureStdout(t)
+			err := executeCommand(t, tc.args, srv.URL)
+			out := stdout.finish()
+			assertExitCode(t, err, 0)
+			if !strings.Contains(out, "Usage:") || !strings.Contains(out, tc.command) {
+				t.Fatalf("expected %s help, got %q", tc.command, out)
+			}
+			if count.Load() != 0 {
+				t.Fatalf("requests = %d, want 0", count.Load())
+			}
+		})
 	}
 }
 

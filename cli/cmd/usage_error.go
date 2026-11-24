@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"io"
-	"slices"
 	"strconv"
 	"sync"
 
@@ -77,7 +76,6 @@ func usageErrorJSONOutput(cmd *cobra.Command, args []string) bool {
 	flags := pflag.NewFlagSet("usage output", pflag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	flags.SetNormalizeFunc(cmd.GlobalNormalizationFunc())
-	flags.ParseErrorsAllowlist.UnknownFlagsHandling = pflag.PassUnknownFlagToArgs
 	cmd.InitDefaultHelpFlag()
 	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
 		copy := *flag
@@ -86,30 +84,28 @@ func usageErrorJSONOutput(cmd *cobra.Command, args []string) bool {
 
 	var jsonOutput bool
 	var format string
-	for {
-		err := flags.ParseAll(args, func(flag *pflag.Flag, value string) error {
-			switch flag.Name {
-			case "json":
-				if enabled, err := strconv.ParseBool(value); err == nil {
-					jsonOutput = enabled
-				}
-			case "output":
-				format = value
+	recordOutput := func(flag *pflag.Flag, value string) error {
+		switch flag.Name {
+		case "json":
+			if enabled, err := strconv.ParseBool(value); err == nil {
+				jsonOutput = enabled
 			}
-			return nil
-		})
-		var syntaxErr *pflag.InvalidSyntaxError
-		if !errors.As(err, &syntaxErr) {
-			break
+		case "output":
+			format = value
 		}
-		// Skip the malformed token and look for output flags after it.
-		index := slices.Index(args, syntaxErr.GetSpecifiedFlag())
-		if index < 0 {
-			break
-		}
-		args = args[index+1:]
+		return nil
 	}
-	if jsonOutput || format == "json" || format == "yaml" {
+	// Parse one token at a time so an unknown shorthand skips the rest of its group.
+	for len(args) > 0 && args[0] != "--" {
+		consumed := 1
+		var missingValue *pflag.ValueRequiredError
+		if err := flags.ParseAll(args[:1], recordOutput); errors.As(err, &missingValue) && len(args) > 1 {
+			consumed = 2
+			_ = flags.ParseAll(args[:consumed], recordOutput)
+		}
+		args = args[consumed:]
+	}
+	if jsonOutput || format == "json" {
 		return true
 	}
 	if format != "" {

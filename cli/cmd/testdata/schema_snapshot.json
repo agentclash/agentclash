@@ -5813,7 +5813,7 @@
     {
       "code": 64,
       "name": "validation_error",
-      "description": "Invalid command usage, including unknown commands, invalid arguments, missing required flags, or invalid flag values. Also used for input file or configuration validation errors (sysexits EX_USAGE)."
+      "description": "Invalid command usage, including unknown top-level commands, invalid arguments, missing required flags, or invalid flag values. Also used for input file or configuration validation errors (sysexits EX_USAGE). Command groups without a run handler print help and exit 0 for unknown subcommands."
     },
     {
       "code": 66,
