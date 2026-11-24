@@ -1,6 +1,8 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api/errors";
+import type { StartGitHubInstallationResponse } from "@/lib/api/types";
 import { CISetupClient } from "./ci-setup-client";
 
 const {
@@ -211,9 +213,71 @@ afterEach(() => {
   while (cleanups.length > 0) {
     cleanups.pop()?.();
   }
+  vi.unstubAllGlobals();
 });
 
 describe("CISetupClient", () => {
+  it("starts installation and redirects to GitHub when no repositories are installed", async () => {
+    mockListResponse.mockImplementation((path: string) =>
+      path.endsWith("/github/repositories") ? [] : listResponse(path),
+    );
+    const assign = mockLocationAssign();
+    let resolveStart!: (value: StartGitHubInstallationResponse) => void;
+    mockPost.mockReturnValueOnce(
+      new Promise<StartGitHubInstallationResponse>((resolve) => {
+        resolveStart = resolve;
+      }),
+    );
+
+    renderClient();
+    await flushEffects();
+
+    const button = findGitHubButton("Install GitHub App");
+    await act(async () => button.click());
+
+    expect(button.disabled).toBe(true);
+    expect(mockPost).toHaveBeenCalledWith(
+      "/v1/workspaces/ws-1/github/installations/start",
+      { return_path: "/workspaces/ws-1/ci-setup" },
+    );
+    expect(assign).not.toHaveBeenCalled();
+
+    const installUrl = "https://github.com/apps/agentclash/installations/new?state=signed";
+    await act(async () => {
+      resolveStart({
+        install_url: installUrl,
+        state: "signed",
+        expires_at: "2026-05-05T00:10:00Z",
+      });
+    });
+
+    expect(assign).toHaveBeenCalledExactlyOnceWith(installUrl);
+  });
+
+  it.each([
+    {
+      error: new ApiError(403, "forbidden", "Workspace admin access is required."),
+      message: "Workspace admin access is required.",
+    },
+    {
+      error: new ApiError(503, "github_app_not_configured", "github app slug is not configured"),
+      message: "This AgentClash server has no GitHub App.",
+    },
+  ])("shows $message and allows retry without redirecting", async ({ error, message }) => {
+    const assign = mockLocationAssign();
+    mockPost.mockRejectedValueOnce(error);
+
+    renderClient();
+    await flushEffects();
+
+    const button = findGitHubButton("Add repositories on GitHub");
+    await act(async () => button.click());
+
+    expect(document.body.textContent).toContain(message);
+    expect(assign).not.toHaveBeenCalled();
+    expect(button.disabled).toBe(false);
+  });
+
   it("renders generated manifest and workflow previews from workspace resources", async () => {
     renderClient();
     await flushEffects();
@@ -391,6 +455,22 @@ describe("CISetupClient", () => {
     expect(button).toHaveProperty("disabled", true);
   });
 });
+
+function mockLocationAssign() {
+  const assign = vi.fn();
+  const browser = Object.create(window);
+  Object.defineProperty(browser, "location", { value: { assign } });
+  vi.stubGlobal("window", browser);
+  return assign;
+}
+
+function findGitHubButton(label: string) {
+  const button = Array.from(document.querySelectorAll("button")).find(
+    (item) => item.textContent === label,
+  );
+  if (!button) throw new Error(`Button not found: ${label}`);
+  return button;
+}
 
 function renderClient() {
   const container = document.createElement("div");

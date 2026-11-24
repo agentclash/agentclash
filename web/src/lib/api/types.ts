@@ -365,6 +365,10 @@ export interface CreateAgentHarnessRequest {
   evaluation_config?: unknown;
 }
 
+export interface StartGitHubInstallationRequest {
+  return_path: string;
+}
+
 export interface StartGitHubInstallationResponse {
   install_url: string;
   state: string;
