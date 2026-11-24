@@ -1281,6 +1281,52 @@ paths:
         "409":
           $ref: "#/components/responses/ConflictError"
 
+  /v1/workspaces/{workspaceID}/github/installations/complete:
+    post:
+      operationId: completeGitHubInstallation
+      tags: [GitHubIntegrations]
+      summary: Complete a GitHub App installation link
+      description: Verifies the signed state and GitHub user access before linking the installation to the workspace.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteGitHubInstallationRequest"
+      responses:
+        "200":
+          description: Installation linked and repositories synchronized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompleteGitHubInstallationResponse"
+        "400":
+          description: Invalid request, including a missing or blank code (github_authorization_required) or a rejected code (invalid_github_authorization).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          description: Insufficient workspace permissions or the GitHub user cannot access the installation (github_installation_not_accessible).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          description: GitHub App configuration is missing (github_app_not_configured).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/workspaces/{workspaceID}/github/ci-setup-pull-request:
     post:
       operationId: createCISetupPullRequest
@@ -9132,6 +9178,56 @@ components:
     EmptyObject:
       type: object
       additionalProperties: false
+
+    CompleteGitHubInstallationRequest:
+      type: object
+      required: [installation_id, state, code]
+      properties:
+        installation_id: { type: integer, format: int64, minimum: 1 }
+        state: { type: string, minLength: 1, description: Signed state from the installation start request. }
+        code: { type: string, minLength: 1, writeOnly: true, description: One-time GitHub user authorization code from the callback. }
+
+    CompleteGitHubInstallationResponse:
+      type: object
+      required: [installation, repositories]
+      properties:
+        installation:
+          $ref: "#/components/schemas/GitHubInstallation"
+        repositories:
+          type: array
+          items:
+            $ref: "#/components/schemas/GitHubInstallationRepository"
+
+    GitHubInstallation:
+      type: object
+      required: [id, github_installation_id, github_account_id, github_account_login, github_account_type, repository_selection, status, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        github_installation_id: { type: integer, format: int64 }
+        github_account_id: { type: integer, format: int64 }
+        github_account_login: { type: string }
+        github_account_type: { type: string }
+        repository_selection: { type: string }
+        status: { type: string }
+        installed_by_user_id: { type: string, format: uuid }
+        updated_at: { type: string, format: date-time }
+
+    GitHubInstallationRepository:
+      type: object
+      required: [id, github_installation_id, github_repository_id, full_name, owner_login, name, private, default_branch, html_url, clone_url, permissions, last_synced_at]
+      properties:
+        id: { type: string, format: uuid }
+        github_installation_id: { type: integer, format: int64 }
+        github_repository_id: { type: integer, format: int64 }
+        full_name: { type: string }
+        owner_login: { type: string }
+        name: { type: string }
+        private: { type: boolean }
+        default_branch: { type: string }
+        html_url: { type: string }
+        clone_url: { type: string }
+        permissions: { type: [object, "null"], additionalProperties: true }
+        last_synced_at: { type: string, format: date-time }
 
     CIProfilesResponse:
       type: object

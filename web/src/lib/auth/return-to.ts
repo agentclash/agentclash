@@ -109,6 +109,10 @@ export function buildGitHubSetupReturnTo(searchParams: URLSearchParams): string 
   if (setupAction?.match(/^[A-Za-z0-9_-]{1,64}$/)) {
     params.set("setup_action", setupAction);
   }
+  const code = searchParams.get("code");
+  if (code?.match(/^[A-Za-z0-9_-]{1,256}$/)) {
+    params.set("code", code);
+  }
   return `${GITHUB_SETUP_PATH}?${params.toString()}`;
 }
 

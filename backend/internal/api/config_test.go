@@ -29,6 +29,25 @@ func TestLoadConfigFromEnv_DefaultAuthModeDev(t *testing.T) {
 	}
 }
 
+func TestLoadConfigFromEnv_GitHubAppOAuthCredentials(t *testing.T) {
+	t.Setenv("AUTH_MODE", "dev")
+	unsetEnv(t, "APP_ENV")
+	unsetEnv(t, "ARTIFACT_SIGNING_SECRET")
+	unsetEnv(t, "ARTIFACT_STORAGE_BACKEND")
+	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
+	unsetDodoPaymentsEnv(t)
+	t.Setenv("GITHUB_APP_CLIENT_ID", "test-client-id")
+	t.Setenv("GITHUB_APP_CLIENT_SECRET", "test-client-secret")
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv: %v", err)
+	}
+	if cfg.GitHubAppClientID != "test-client-id" || cfg.GitHubAppClientSecret != "test-client-secret" {
+		t.Fatal("GitHub App OAuth credentials were not loaded")
+	}
+}
+
 func TestLoadConfigFromEnv_WorkOSRequiresClientID(t *testing.T) {
 	t.Setenv("AUTH_MODE", "workos")
 	unsetEnv(t, "WORKOS_CLIENT_ID")

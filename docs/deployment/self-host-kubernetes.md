@@ -52,6 +52,16 @@ kubectl -n agentclash create secret generic agentclash-secrets \
 
 Full defaults live in [`deploy/helm/agentclash/values.yaml`](../../deploy/helm/agentclash/values.yaml).
 
+## GitHub App installation
+
+Add `GITHUB_APP_CLIENT_ID` and `GITHUB_APP_CLIENT_SECRET` to the Kubernetes
+Secret named by `secrets.existingSecret` (or to `secrets.data` for development).
+Use the client ID and client secret of the App configured by `GITHUB_APP_SLUG`,
+`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, and `GITHUB_APP_STATE_SECRET`.
+
+In the GitHub App settings, enable **Request user authorization (OAuth) during
+installation** and set the **Callback URL** to `<web origin>/github/setup`.
+
 ## Sizing guidance
 
 - **Execution workers × sandbox budget:** KEDA may scale execution replicas to N,

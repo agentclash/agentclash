@@ -1,13 +1,20 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -86,11 +93,8 @@ func TestGitHubIntegrationManagerCompleteInstallationVerifiesStateAndSyncsReposi
 	orgID := uuid.New()
 	caller := testAgentHarnessCaller(workspaceID)
 	repo := &fakeGitHubIntegrationRepo{organizationID: orgID}
-	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, GitHubIntegrationConfig{
-		AppSlug:     "agentclash-dev",
-		StateSecret: "state-secret",
-		StateTTL:    time.Minute,
-	})
+	github := newGitHubUserEndpoints(t, http.StatusOK, githubTestTokenResponse, http.StatusOK)
+	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, github.config)
 	manager.client = &fakeGitHubAppClient{
 		installation: githubAPIInstallation{
 			ID: 42,
@@ -123,6 +127,7 @@ func TestGitHubIntegrationManagerCompleteInstallationVerifiesStateAndSyncsReposi
 	result, err := manager.CompleteGitHubInstallation(context.Background(), caller, workspaceID, CompleteGitHubInstallationInput{
 		InstallationID: 42,
 		State:          started.State,
+		Code:           githubTestAuthorizationCode,
 	})
 	if err != nil {
 		t.Fatalf("CompleteGitHubInstallation error: %v", err)
@@ -139,6 +144,7 @@ func TestGitHubIntegrationManagerCompleteInstallationVerifiesStateAndSyncsReposi
 	if result.Installation.GitHubInstallationID != 42 {
 		t.Fatalf("result installation = %#v", result.Installation)
 	}
+	github.assertCalls(t, 1, 1)
 }
 
 func TestGitHubIntegrationManagerCompleteInstallationReportsCrossOrgConflict(t *testing.T) {
@@ -148,11 +154,8 @@ func TestGitHubIntegrationManagerCompleteInstallationReportsCrossOrgConflict(t *
 		organizationID: uuid.New(),
 		upsertErr:      repository.ErrGitHubInstallationOwnedByOtherOrg,
 	}
-	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, GitHubIntegrationConfig{
-		AppSlug:     "agentclash-dev",
-		StateSecret: "state-secret",
-		StateTTL:    time.Minute,
-	})
+	github := newGitHubUserEndpoints(t, http.StatusOK, githubTestTokenResponse, http.StatusOK)
+	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, github.config)
 	manager.client = &fakeGitHubAppClient{
 		installation: githubAPIInstallation{
 			ID:                  42,
@@ -168,6 +171,7 @@ func TestGitHubIntegrationManagerCompleteInstallationReportsCrossOrgConflict(t *
 	_, err = manager.CompleteGitHubInstallation(context.Background(), caller, workspaceID, CompleteGitHubInstallationInput{
 		InstallationID: 42,
 		State:          started.State,
+		Code:           githubTestAuthorizationCode,
 	})
 	var validationErr GitHubIntegrationValidationError
 	if !errors.As(err, &validationErr) {
@@ -175,6 +179,205 @@ func TestGitHubIntegrationManagerCompleteInstallationReportsCrossOrgConflict(t *
 	}
 	if validationErr.Code != "installation_owned_by_other_org" {
 		t.Fatalf("validation code = %q", validationErr.Code)
+	}
+	if repo.binding.GitHubInstallationID != 0 {
+		t.Fatal("installation with a cross-org conflict was bound")
+	}
+	github.assertCalls(t, 1, 1)
+}
+
+const (
+	githubTestAuthorizationCode = "oauth-code-test"
+	githubTestUserToken         = "user-token-test"
+	githubTestTokenResponse     = `{"access_token":"` + githubTestUserToken + `"}`
+)
+
+func TestCompleteGitHubInstallationHandlerAuthorizationFailures(t *testing.T) {
+	const invalidCodeResponse = `{"error":"bad_verification_code","error_description":"` + githubTestAuthorizationCode + `"}`
+	for _, tc := range []struct {
+		name       string
+		code       *string
+		configure  func(*GitHubIntegrationConfig)
+		oauthCode  int
+		oauthBody  string
+		accessCode int
+		wantStatus int
+		wantCode   string
+		wantOAuth  int32
+		wantAccess int32
+	}{
+		{name: "missing code", wantStatus: 400, wantCode: "github_authorization_required"},
+		{name: "blank code", code: new(" \t "), wantStatus: 400, wantCode: "github_authorization_required"},
+		{
+			name: "missing client ID", code: new(githubTestAuthorizationCode),
+			configure:  func(c *GitHubIntegrationConfig) { c.AppClientID = "" },
+			wantStatus: 503, wantCode: "github_app_not_configured",
+		},
+		{
+			name: "missing client secret", code: new(githubTestAuthorizationCode),
+			configure:  func(c *GitHubIntegrationConfig) { c.AppClientSecret = "" },
+			wantStatus: 503, wantCode: "github_app_not_configured",
+		},
+		{
+			name: "OAuth error", code: new(githubTestAuthorizationCode),
+			oauthCode: 200, oauthBody: invalidCodeResponse,
+			wantStatus: 400, wantCode: "invalid_github_authorization", wantOAuth: 1,
+		},
+		{
+			name: "OAuth error with non-200 status", code: new(githubTestAuthorizationCode),
+			oauthCode: 400, oauthBody: invalidCodeResponse,
+			wantStatus: 400, wantCode: "invalid_github_authorization", wantOAuth: 1,
+		},
+		{
+			name: "malformed OAuth response", code: new(githubTestAuthorizationCode),
+			oauthCode: 200, oauthBody: githubTestAuthorizationCode,
+			wantStatus: 500, wantCode: "internal_error", wantOAuth: 1,
+		},
+		{
+			name: "missing user token", code: new(githubTestAuthorizationCode),
+			oauthCode: 200, oauthBody: `{}`,
+			wantStatus: 500, wantCode: "internal_error", wantOAuth: 1,
+		},
+		{
+			name: "installation not found", code: new(githubTestAuthorizationCode),
+			oauthCode: 200, oauthBody: githubTestTokenResponse, accessCode: 404,
+			wantStatus: 403, wantCode: "github_installation_not_accessible", wantOAuth: 1, wantAccess: 1,
+		},
+		{
+			name: "installation forbidden", code: new(githubTestAuthorizationCode),
+			oauthCode: 200, oauthBody: githubTestTokenResponse, accessCode: 403,
+			wantStatus: 403, wantCode: "github_installation_not_accessible", wantOAuth: 1, wantAccess: 1,
+		},
+		{
+			name: "access check failed", code: new(githubTestAuthorizationCode),
+			oauthCode: 200, oauthBody: githubTestTokenResponse, accessCode: 500,
+			wantStatus: 500, wantCode: "internal_error", wantOAuth: 1, wantAccess: 1,
+		},
+		{
+			name: "access check redirected", code: new(githubTestAuthorizationCode),
+			oauthCode: 200, oauthBody: githubTestTokenResponse, accessCode: 307,
+			wantStatus: 500, wantCode: "internal_error", wantOAuth: 1, wantAccess: 1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			github := newGitHubUserEndpoints(t, tc.oauthCode, tc.oauthBody, tc.accessCode)
+			if tc.configure != nil {
+				tc.configure(&github.config)
+			}
+			workspaceID := uuid.New()
+			caller := testAgentHarnessCaller(workspaceID)
+			repo := &fakeGitHubIntegrationRepo{organizationID: uuid.New()}
+			manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, github.config)
+			manager.client = &fakeGitHubAppClient{installation: githubAPIInstallation{ID: 42}}
+			started, err := manager.StartGitHubInstallation(t.Context(), caller, workspaceID, StartGitHubInstallationInput{})
+			if err != nil {
+				t.Fatalf("StartGitHubInstallation: %v", err)
+			}
+			input := struct {
+				InstallationID int64   `json:"installation_id"`
+				State          string  `json:"state"`
+				Code           *string `json:"code,omitempty"`
+			}{42, started.State, tc.code}
+			body, err := json.Marshal(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/github/installations/complete", bytes.NewReader(body))
+			ctx := context.WithValue(req.Context(), callerContextKey{}, caller)
+			ctx = context.WithValue(ctx, workspaceIDContextKey{}, workspaceID)
+			w := httptest.NewRecorder()
+			var logs bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&logs, nil))
+			completeGitHubInstallationHandler(logger, manager).ServeHTTP(w, req.WithContext(ctx))
+
+			for _, secret := range []string{githubTestAuthorizationCode, githubTestUserToken, "test-client-secret"} {
+				if strings.Contains(w.Body.String(), secret) || strings.Contains(logs.String(), secret) {
+					t.Fatal("GitHub credential exposed in response or logs")
+				}
+			}
+			var response errorEnvelope
+			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+				t.Fatalf("decode error response: %v", err)
+			}
+			if w.Code != tc.wantStatus || response.Error.Code != tc.wantCode {
+				t.Errorf("status and code = %d %s, want %d %s", w.Code, response.Error.Code, tc.wantStatus, tc.wantCode)
+			}
+			if repo.upsertInstallation.GitHubInstallationID != 0 || repo.binding.GitHubInstallationID != 0 {
+				t.Error("installation was persisted without verified access")
+			}
+			github.assertCalls(t, tc.wantOAuth, tc.wantAccess)
+		})
+	}
+}
+
+type githubUserTestEndpoints struct {
+	config      GitHubIntegrationConfig
+	oauthCalls  atomic.Int32
+	accessCalls atomic.Int32
+}
+
+func newGitHubUserEndpoints(t *testing.T, oauthStatus int, oauthBody string, accessStatus int) *githubUserTestEndpoints {
+	t.Helper()
+	endpoints := &githubUserTestEndpoints{}
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		endpoints.oauthCalls.Add(1)
+		if oauthStatus == 0 {
+			t.Error("unexpected OAuth call")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/login/oauth/access_token" ||
+			r.URL.RawQuery != "" || r.Header.Get("Accept") != "application/json" {
+			t.Error("unexpected OAuth request method, URL, or accept header")
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Error("unable to parse OAuth form")
+		}
+		if r.PostForm.Get("client_id") != "test-client-id" || r.PostForm.Get("client_secret") != "test-client-secret" ||
+			r.PostForm.Get("code") != githubTestAuthorizationCode {
+			t.Error("unexpected OAuth form values")
+		}
+		w.WriteHeader(oauthStatus)
+		_, _ = io.WriteString(w, oauthBody)
+	}))
+	t.Cleanup(oauth.Close)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		endpoints.accessCalls.Add(1)
+		if accessStatus == 0 {
+			t.Error("unexpected installation access check")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if r.Method != http.MethodGet || r.URL.Path != "/user/installations/42/repositories" ||
+			r.URL.Query().Get("per_page") != "1" || r.Header.Get("Authorization") != "Bearer "+githubTestUserToken ||
+			r.Header.Get("Accept") != "application/vnd.github+json" || r.Header.Get("X-GitHub-Api-Version") != "2022-11-28" {
+			t.Error("unexpected installation access check request")
+		}
+		if accessStatus == http.StatusTemporaryRedirect {
+			w.Header().Set("Location", "/unexpected")
+		}
+		w.WriteHeader(accessStatus)
+		_, _ = fmt.Fprintf(w, `{"message":"%s %s"}`, githubTestUserToken, githubTestAuthorizationCode)
+	}))
+	t.Cleanup(api.Close)
+	endpoints.config = GitHubIntegrationConfig{
+		AppSlug:         "agentclash-dev",
+		StateSecret:     "state-secret",
+		AppClientID:     "test-client-id",
+		AppClientSecret: "test-client-secret",
+		OAuthBaseURL:    oauth.URL,
+		APIBaseURL:      api.URL,
+	}
+	return endpoints
+}
+
+func (g *githubUserTestEndpoints) assertCalls(t *testing.T, oauth, access int32) {
+	t.Helper()
+	if got := g.oauthCalls.Load(); got != oauth {
+		t.Errorf("OAuth calls = %d, want %d", got, oauth)
+	}
+	if got := g.accessCalls.Load(); got != access {
+		t.Errorf("installation access checks = %d, want %d", got, access)
 	}
 }
 
