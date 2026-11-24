@@ -205,6 +205,10 @@ describe("agent skill docs", () => {
     expect(content).toContain("Compile and validate a challenge pack draft");
     expect(content).toContain("Generate a challenge pack draft from a description");
     expect(content).toContain("`--provider-account` (required) — Provider account ID for the draft model");
+    expect(content).toContain("Create a workspace connector");
+    expect(content).toContain("Approve a workspace connector snapshot");
+    expect(content).toContain("Revoke approval for a workspace connector snapshot");
+    expect(content).toContain("`--config-file` (required) — Path to a JSON or YAML connector config file");
   });
 
   it("generates the security evaluation skill", () => {
@@ -229,6 +233,9 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash workspace emergency-stop -w <workspace-id> --json");
     expect(doc?.content).toContain("interactive_input_required");
     expect(doc?.content).toContain("Never add `--yes` on your own decision");
+    expect(doc?.content).toContain(
+      "After approval, connector requests send the workspace secret to the external origin.",
+    );
   });
 
   it("generates the quickstart skill with readiness checks", () => {

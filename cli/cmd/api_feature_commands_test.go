@@ -42,6 +42,10 @@ var apiFeatureCommandPaths = []string{
 	"agentclash challenge-pack draft compile",
 	"agentclash challenge-pack draft publish",
 	"agentclash challenge-pack draft generate",
+	"agentclash connector list",
+	"agentclash connector create",
+	"agentclash connector approve",
+	"agentclash connector revoke",
 }
 
 func TestAPIFeatureCommandsHaveShortAndExample(t *testing.T) {

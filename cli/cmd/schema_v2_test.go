@@ -3,9 +3,11 @@ package cmd
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
 	"reflect"
 	"testing"
 
+	"github.com/agentclash/agentclash/cli/internal/api"
 	"github.com/agentclash/agentclash/runtime/domain"
 )
 
@@ -86,7 +88,7 @@ func TestSchemaPublishesErrorAndStatusRegistries(t *testing.T) {
 	for _, ec := range doc.ErrorCodes {
 		codes[ec.Code] = true
 	}
-	for _, want := range []string{"invalid_argument", "request_failed", "follow_timeout", "stream_reconnect_exhausted", "missing_workspace", "interactive_input_required", "aborted"} {
+	for _, want := range []string{"invalid_argument", "request_failed", "follow_timeout", "stream_reconnect_exhausted", "missing_workspace", "interactive_input_required", "aborted", "connector_not_found"} {
 		if !codes[want] {
 			t.Errorf("error_codes missing %q", want)
 		}
@@ -229,6 +231,11 @@ func TestErrorCodeRegistryRetryableMatchesRuntime(t *testing.T) {
 		if (gotExit == exitRetryableFailure) != want {
 			t.Errorf("code %q: exit %d vs registry retryable=%v breaks the exit-75-iff-retryable invariant", code, gotExit, want)
 		}
+	}
+
+	missing := &api.APIError{StatusCode: http.StatusNotFound, Code: "connector_not_found"}
+	if want, documented := reg[missing.Code]; !documented || classifyStructuredError(missing).Retryable != want {
+		t.Errorf("%q must appear in the registry as non-retryable", missing.Code)
 	}
 
 	// Transport failures genuinely are retryable, and the registry must say so.
