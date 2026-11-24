@@ -45,8 +45,9 @@ they need: `run`, `challenge-pack`, `deployment`, `build`, `infra`, `artifact`,
 - Dataset gates: `dataset eval`, `dataset baseline create/list` (server-side
   dataset baselines), and `dataset test`.
 - Quota: `quota` shows workspace usage.
-- CI/CD: `ci init`, `ci validate`, `ci should-run`, `ci baseline`, `ci run`, and
-  the GitHub Action under `.github/actions/agentclash-ci`.
+- CI/CD: `ci init`, `ci validate`, `ci should-run`, `ci baseline`, `ci run`,
+  `ci setup` (opens the GitHub setup pull request), and the GitHub Action under
+  `.github/actions/agentclash-ci`.
 - Agent harnesses: `agent-harness` supports `codex_e2b` and `claude_e2b`
   payloads, including provider API-key secrets.
 - Runtime setup: `infra`, `build`, `deployment`, `secret`, and related agent
