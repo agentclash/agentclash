@@ -181,6 +181,7 @@ type Querier interface {
 	ListDatasetVersionExamples(ctx context.Context, arg ListDatasetVersionExamplesParams) ([]DatasetExample, error)
 	ListDatasetVersionsByDatasetID(ctx context.Context, arg ListDatasetVersionsByDatasetIDParams) ([]DatasetVersion, error)
 	ListDatasetsByWorkspaceID(ctx context.Context, arg ListDatasetsByWorkspaceIDParams) ([]ListDatasetsByWorkspaceIDRow, error)
+	ListDefaultChallengeInputSetIDsByVersionID(ctx context.Context, arg ListDefaultChallengeInputSetIDsByVersionIDParams) ([]uuid.UUID, error)
 	ListEvalSessions(ctx context.Context, arg ListEvalSessionsParams) ([]EvalSession, error)
 	ListEvalSessionsByEvalSetID(ctx context.Context, arg ListEvalSessionsByEvalSetIDParams) ([]ListEvalSessionsByEvalSetIDRow, error)
 	ListEvalSessionsByWorkspaceID(ctx context.Context, arg ListEvalSessionsByWorkspaceIDParams) ([]EvalSession, error)

@@ -19,7 +19,7 @@ type RunCreationRepository interface {
 	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
 	WorkspacePublicPacksEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error)
 	GetChallengeInputSetByID(ctx context.Context, id uuid.UUID) (repository.ChallengeInputSet, error)
-	ListChallengeInputSetsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]repository.ChallengeInputSetSummary, error)
+	ListDefaultChallengeInputSetIDsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error)
 	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error)
 	ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context, workspaceID uuid.UUID, deploymentIDs []uuid.UUID) ([]repository.RunnableDeployment, error)
 	ListRunnableDeploymentsByBuildVersionID(ctx context.Context, workspaceID uuid.UUID, buildVersionIDs []uuid.UUID) ([]repository.BuildVersionRunnableDeployment, error)
@@ -198,15 +198,15 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 			}
 		}
 	} else {
-		inputSets, err := m.repo.ListChallengeInputSetsByVersionID(ctx, input.ChallengePackVersionID)
+		inputSetIDs, err := m.repo.ListDefaultChallengeInputSetIDsByVersionID(ctx, input.ChallengePackVersionID)
 		if err != nil {
-			return CreateRunResult{}, fmt.Errorf("list challenge input sets: %w", err)
+			return CreateRunResult{}, fmt.Errorf("list default challenge input sets: %w", err)
 		}
-		switch len(inputSets) {
+		switch len(inputSetIDs) {
 		case 0:
-			// Pack has no input sets — proceed without one.
+			// Proceed without an input set.
 		case 1:
-			input.ChallengeInputSetID = &inputSets[0].ID
+			input.ChallengeInputSetID = &inputSetIDs[0]
 		default:
 			return CreateRunResult{}, RunCreationValidationError{
 				Code:    "missing_challenge_input_set_id",

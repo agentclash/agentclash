@@ -463,6 +463,12 @@ func (r *Repository) ListChallengeInputSetsByVersionID(ctx context.Context, chal
 	return results, nil
 }
 
+func (r *Repository) ListDefaultChallengeInputSetIDsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error) {
+	return r.queries.ListDefaultChallengeInputSetIDsByVersionID(ctx, repositorysqlc.ListDefaultChallengeInputSetIDsByVersionIDParams{
+		ChallengePackVersionID: challengePackVersionID,
+	})
+}
+
 func (r *Repository) ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := r.queries.ListChallengeIdentityIDsByPackVersionID(ctx, repositorysqlc.ListChallengeIdentityIDsByPackVersionIDParams{
 		ChallengePackVersionID: challengePackVersionID,
