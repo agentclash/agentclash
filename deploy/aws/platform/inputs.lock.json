@@ -9,15 +9,15 @@
   "packages": {
     "v3.22/libcrypto3": {
       "name": "libcrypto3",
-      "version": "3.5.9-r0",
-      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/libcrypto3-3.5.9-r0.apk",
-      "sha256": "3f5825ced5fde1c66a5376a3f6076b3c08538ad52d9ef23f069857e212d9175a"
+      "version": "3.5.9-r1",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/libcrypto3-3.5.9-r1.apk",
+      "sha256": "a71631c50c4df10c00d6f6c7ead0066e33ac1a90afb65dc4c9de794a0de8ad79"
     },
     "v3.22/libssl3": {
       "name": "libssl3",
-      "version": "3.5.9-r0",
-      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/libssl3-3.5.9-r0.apk",
-      "sha256": "6801c740b9760b5b08da8db6367ebc18b2cc4dbaf371f7148429538b8bb04e23"
+      "version": "3.5.9-r1",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/libssl3-3.5.9-r1.apk",
+      "sha256": "a458e169610c9c1bb15d53b10e6c229a8e5ea16447f80cbcf20ea6ce7e97399f"
     },
     "v3.23/libcrypto3": {
       "name": "libcrypto3",

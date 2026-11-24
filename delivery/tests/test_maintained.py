@@ -88,7 +88,7 @@ class MaintainedBuildTests(unittest.TestCase):
 
         return stages, gates, output
 
-    def test_temporal_patches_zlib_in_runtime_stages_before_the_final_gate(self):
+    def test_locked_security_packages_reach_image_stages_before_the_final_gate(self):
         public = json.loads((ROOT / "deploy/aws/images.lock.json").read_text())["images"]
         stages, gates, output = self.build_stages()
 
@@ -126,13 +126,25 @@ class MaintainedBuildTests(unittest.TestCase):
                     + branch
                     + "/main/x86_64/zlib-1.4-r0.apk",
                 )
+                for package in ("libcrypto3", "libssl3"):
+                    apk = package + "-3.5.9-r1.apk"
+                    self.assertEqual(
+                        stage["packages"].get(apk),
+                        f"https://dl-cdn.alpinelinux.org/alpine/{branch}/main/x86_64/{apk}",
+                    )
         for name, target in (("temporal", "server"), ("temporal-admin", "admin")):
             self.assertEqual(
                 stages[name]["arguments"]["UPSTREAM"], public[name]["image"]
             )
             self.assertEqual(stages[name]["dockerfile"], "Dockerfile.temporal")
             self.assertEqual(stages[name]["target"], target)
-            apks = ("zlib-1.4-r0.apk", "musl-1.2.6-r3.apk", "musl-utils-1.2.6-r3.apk")
+            apks = (
+                "libcrypto3-3.5.9-r1.apk",
+                "libssl3-3.5.9-r1.apk",
+                "zlib-1.4-r0.apk",
+                "musl-1.2.6-r3.apk",
+                "musl-utils-1.2.6-r3.apk",
+            )
             self.assertEqual(
                 stages[name]["packages"],
                 {
@@ -204,8 +216,8 @@ class MaintainedBuildTests(unittest.TestCase):
             ("bun-packages", "v3.22", "libcrypto3 libssl3 zlib musl musl-utils"),
             ("caddy-packages", "v3.23", "libcrypto3 libssl3 curl libcurl c-ares brotli-libs zlib musl musl-utils"),
             ("caddy", "v3.23", "libcrypto3 libssl3 curl libcurl c-ares brotli-libs zlib musl musl-utils"),
-            ("temporal", "v3.24", "zlib musl musl-utils"),
-            ("temporal-admin", "v3.24", "zlib musl musl-utils"),
+            ("temporal", "v3.24", "libcrypto3 libssl3 zlib musl musl-utils"),
+            ("temporal-admin", "v3.24", "libcrypto3 libssl3 zlib musl musl-utils"),
         )
         for stage_name, branch, names in unchanged:
             with self.subTest(stage=stage_name):
