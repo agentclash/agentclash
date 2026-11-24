@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -62,6 +64,10 @@ func validateTryoutModelPolicy(raw json.RawMessage) error {
 	if err != nil {
 		return err
 	}
+	return policy.validate()
+}
+
+func (policy tryoutModelPolicy) validate() error {
 	mode := strings.TrimSpace(policy.Mode)
 	if mode == "" && len(policy.Models) == 0 {
 		return fmt.Errorf("%w: model policy must set a mode or at least one model", ErrAgentTryoutModelPolicyInvalid)
@@ -99,6 +105,59 @@ func parseTryoutModelPolicy(raw json.RawMessage) (tryoutModelPolicy, error) {
 	return policy, nil
 }
 
+func checkTryoutPolicyKeys(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if token != json.Delim('{') && token != json.Delim('[') {
+		return nil
+	}
+	var keys []string
+	for decoder.More() {
+		if token == json.Delim('{') {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			key := keyToken.(string)
+			for _, previous := range keys {
+				if strings.EqualFold(key, previous) {
+					return fmt.Errorf("duplicate model policy key %q", key)
+				}
+			}
+			keys = append(keys, key)
+		}
+		if err := checkTryoutPolicyKeys(decoder); err != nil {
+			return err
+		}
+	}
+	_, err = decoder.Token()
+	return err
+}
+
+func workspaceTryoutModel(raw json.RawMessage, harnessKind string) (string, error) {
+	policy, err := parseTryoutModelPolicy(raw)
+	if err != nil {
+		return "", err
+	}
+	switch len(policy.Models) {
+	case 0:
+		if strings.TrimSpace(policy.Mode) == "explicit" {
+			return "", fmt.Errorf("%w: explicit mode requires a model", ErrAgentTryoutModelPolicyInvalid)
+		}
+		return "", nil
+	case 1:
+		provider := strings.TrimSpace(policy.Models[0].Provider)
+		if domain.NormalizeAgentHarnessKind(harnessKind) != domain.AgentHarnessKindCodexE2B || provider != "openai" {
+			return "", fmt.Errorf("%w: explicit workspace rerun models require the Codex harness and provider openai (got harness %q and provider %q)", errUnsupportedWorkspaceTryoutModelPolicy, harnessKind, provider)
+		}
+		return strings.TrimSpace(policy.Models[0].Model), nil
+	default:
+		return "", fmt.Errorf("%w: workspace reruns support one model per tryout", errUnsupportedWorkspaceTryoutModelPolicy)
+	}
+}
+
 // RerunAgentTryoutInput requests a rerun of an existing workspace tryout with a
 // different model policy and, optionally, a different agent design.
 type RerunAgentTryoutInput struct {
@@ -128,7 +187,7 @@ func (m *AgentTryoutManager) RerunWorkspaceTryout(ctx context.Context, caller Ca
 	if source.WorkspaceID == nil || source.OrganizationID == nil {
 		return repository.AgentTryout{}, ErrAgentTryoutSignInRequired
 	}
-	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, *source.WorkspaceID); err != nil {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, *source.WorkspaceID, ActionCreateRun); err != nil {
 		return repository.AgentTryout{}, err
 	}
 	template, err := m.lookupTemplate(source.TemplateSlug)
@@ -138,7 +197,22 @@ func (m *AgentTryoutManager) RerunWorkspaceTryout(ctx context.Context, caller Ca
 	if err := ensureAgentTryoutTemplateAvailable(template); err != nil {
 		return repository.AgentTryout{}, err
 	}
-	if err := validateTryoutModelPolicy(input.SelectedModelPolicy); err != nil {
+	policy, err := parseTryoutModelPolicy(input.SelectedModelPolicy)
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
+	// JSONB can reorder keys that Go treats as the same field.
+	if err := checkTryoutPolicyKeys(json.NewDecoder(bytes.NewReader(input.SelectedModelPolicy))); err != nil {
+		return repository.AgentTryout{}, fmt.Errorf("%w: %v", ErrAgentTryoutModelPolicyInvalid, err)
+	}
+	if err := policy.validate(); err != nil {
+		return repository.AgentTryout{}, err
+	}
+	harnessKind := domain.AgentHarnessKindCodexE2B
+	if m.execution != nil {
+		harnessKind = m.execution.config.HarnessKind
+	}
+	if _, err := workspaceTryoutModel(input.SelectedModelPolicy, harnessKind); err != nil {
 		return repository.AgentTryout{}, err
 	}
 	if m.rerunGate != nil {

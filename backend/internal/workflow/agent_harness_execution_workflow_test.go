@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -767,6 +768,55 @@ func TestExecuteAgentHarnessExecutionWithoutRepositorySkipsGitArtifactCapture(t 
 			t.Fatalf("no-repo harness should not run git artifact commands, saw %#v", call.Command)
 		}
 	}
+}
+
+func TestExecuteAgentHarnessExecutionUsesSnapshotModelForCodex(t *testing.T) {
+	workspaceID, executionID, harnessID := uuid.New(), uuid.New(), uuid.New()
+	runID, runAgentID := uuid.New(), uuid.New()
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusQueued), fixtureRunAgent(runID, runAgentID, 0))
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:             executionID,
+		WorkspaceID:    workspaceID,
+		AgentHarnessID: harnessID,
+		RunID:          &runID,
+		RunAgentID:     &runAgentID,
+		Status:         string(repository.AgentHarnessExecutionStatusRunning),
+		HarnessSnapshot: json.RawMessage(`{
+			"harness_kind":"codex_e2b", "task_prompt":"Summarize the meeting", "codex_template":"codex",
+			"codex_model":"gpt-5", "auth_mode":"api_key_secret", "openai_api_key_secret_name":"OPENAI_API_KEY",
+			"evaluation_config":{"privacy":{"redact_replay":true}}
+		}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{"OPENAI_API_KEY": "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(&sandbox.FakeProvider{NextSession: session})
+	if err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID}); err != nil {
+		t.Fatal(err)
+	}
+	calls := session.ExecCalls()
+	codexIndex := commandIndex(calls, "codex", "exec")
+	if codexIndex < 0 {
+		t.Fatal("Codex did not run")
+	}
+	command := calls[codexIndex].Command
+	modelIndex := slices.Index(command, "--model")
+	if modelIndex < 0 || modelIndex+1 >= len(command) || command[modelIndex+1] != "gpt-5" {
+		t.Errorf("Codex command = %q, want --model gpt-5", command)
+	}
+	for _, event := range repo.runEvents[runAgentID] {
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["agent_harness_event_type"] == "codex.exec.started" {
+			if payload["provider_model_id"] != "gpt-5" || payload["command_hidden"] != true || payload["command"] != nil {
+				t.Errorf("Codex start event = %v, want model gpt-5 and a hidden command", payload)
+			}
+			return
+		}
+	}
+	t.Fatal("Codex start event missing from run events")
 }
 
 func TestExecuteAgentHarnessExecutionRunsClaudeAndRecordsTrace(t *testing.T) {

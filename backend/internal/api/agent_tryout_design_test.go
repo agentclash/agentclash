@@ -304,7 +304,7 @@ func TestRerunWorkspaceTryoutOverridesAgentDesign(t *testing.T) {
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 	rerun, err := manager.RerunWorkspaceTryout(ctx, callerWithWorkspace(workspaceID), RerunAgentTryoutInput{
 		SourceTryoutID:      source.ID,
-		SelectedModelPolicy: json.RawMessage(`{"mode":"hosted_default","models":[{"provider":"anthropic","model":"claude-opus-4-8"}]}`),
+		SelectedModelPolicy: json.RawMessage(`{"mode":"hosted_default"}`),
 		AgentDesignProvided: true,
 		AgentInstructions:   "new directive",
 		AgentToolSlugs:      []string{"web-search"},
@@ -332,7 +332,7 @@ func TestRerunWorkspaceTryoutInheritsAgentDesignWhenNotProvided(t *testing.T) {
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 	rerun, err := manager.RerunWorkspaceTryout(ctx, callerWithWorkspace(workspaceID), RerunAgentTryoutInput{
 		SourceTryoutID:      source.ID,
-		SelectedModelPolicy: json.RawMessage(`{"mode":"hosted_default","models":[{"provider":"anthropic","model":"claude-opus-4-8"}]}`),
+		SelectedModelPolicy: json.RawMessage(`{"mode":"hosted_default"}`),
 	})
 	if err != nil {
 		t.Fatalf("RerunWorkspaceTryout returned error: %v", err)
