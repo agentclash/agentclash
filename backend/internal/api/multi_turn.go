@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -18,6 +18,11 @@ const timeRFC3339Nano = "2006-01-02T15:04:05.999999999Z07:00"
 // ErrRunAgentNotExecuting is returned when a human turn is submitted for a
 // run agent that is not in the executing state.
 var ErrRunAgentNotExecuting = errors.New("run agent is not executing")
+
+var (
+	errInvalidCalibrationScore = errors.New("calibration score must be finite and between 1 and 5")
+	errInvalidTurnIndex        = errors.New("turn_index must identify a completed turn for the run agent")
+)
 
 type MultiTurnService interface {
 	SubmitHumanTurn(ctx context.Context, caller Caller, workspaceID, runID, runAgentID uuid.UUID, message string) error
@@ -144,13 +149,23 @@ func getMultiTurnHumanTurnStatusHandler(logger *slog.Logger, service MultiTurnSe
 	}
 }
 
+type multiTurnRepository interface {
+	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
+	GetRunAgentByID(ctx context.Context, id uuid.UUID) (domain.RunAgent, error)
+	HasCompletedCalibrationTurn(ctx context.Context, runAgentID uuid.UUID, turnIndex int32) (bool, error)
+	CreateCalibrationReview(ctx context.Context, params repository.CreateCalibrationReviewParams) error
+	ListCalibrationReviews(ctx context.Context, workspaceID uuid.UUID) ([]repository.CalibrationReviewRow, error)
+	ListPendingArenaTasks(ctx context.Context, workspaceID uuid.UUID) ([]repository.ArenaTaskRow, error)
+	SubmitArenaVote(ctx context.Context, params repository.SubmitArenaVoteParams) error
+}
+
 type MultiTurnManager struct {
 	authorizer WorkspaceAuthorizer
-	repo       *repository.Repository
+	repo       multiTurnRepository
 	humanTurns *repository.MultiTurnHumanTurnStore
 }
 
-func NewMultiTurnManager(authorizer WorkspaceAuthorizer, repo *repository.Repository, humanTurns *repository.MultiTurnHumanTurnStore) *MultiTurnManager {
+func NewMultiTurnManager(authorizer WorkspaceAuthorizer, repo multiTurnRepository, humanTurns *repository.MultiTurnHumanTurnStore) *MultiTurnManager {
 	return &MultiTurnManager{authorizer: authorizer, repo: repo, humanTurns: humanTurns}
 }
 
@@ -216,13 +231,38 @@ func (m *MultiTurnManager) CreateCalibrationReview(ctx context.Context, caller C
 	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
 		return err
 	}
-	if req.Score < 1 || req.Score > 5 {
-		return fmt.Errorf("calibration score must be between 1 and 5")
+	if math.IsNaN(req.Score) || req.Score < 1 || req.Score > 5 {
+		return errInvalidCalibrationScore
+	}
+	if req.TurnIndex < 0 || req.TurnIndex > math.MaxInt32 {
+		return errInvalidTurnIndex
+	}
+	runAgent, err := m.repo.GetRunAgentByID(ctx, req.RunAgentID)
+	if err != nil {
+		return err
+	}
+	run, err := m.repo.GetRunByID(ctx, runAgent.RunID)
+	if errors.Is(err, repository.ErrRunNotFound) {
+		return repository.ErrRunAgentNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if run.WorkspaceID != workspaceID {
+		return repository.ErrRunAgentNotFound
+	}
+	turnIndex := int32(req.TurnIndex)
+	completed, err := m.repo.HasCompletedCalibrationTurn(ctx, req.RunAgentID, turnIndex)
+	if err != nil {
+		return err
+	}
+	if !completed {
+		return errInvalidTurnIndex
 	}
 	return m.repo.CreateCalibrationReview(ctx, repository.CreateCalibrationReviewParams{
 		WorkspaceID:    workspaceID,
 		RunAgentID:     req.RunAgentID,
-		TurnIndex:      req.TurnIndex,
+		TurnIndex:      turnIndex,
 		ReviewerUserID: caller.UserID,
 		Score:          req.Score,
 		RubricKey:      req.RubricKey,
@@ -311,6 +351,14 @@ func writeMultiTurnError(w http.ResponseWriter, logger *slog.Logger, r *http.Req
 	}
 	if errors.Is(err, repository.ErrInvalidArenaVoteWinner) {
 		writeError(w, http.StatusBadRequest, "invalid_arena_vote", err.Error())
+		return
+	}
+	if errors.Is(err, errInvalidCalibrationScore) {
+		writeError(w, http.StatusBadRequest, "invalid_calibration_score", err.Error())
+		return
+	}
+	if errors.Is(err, errInvalidTurnIndex) {
+		writeError(w, http.StatusBadRequest, "invalid_turn_index", err.Error())
 		return
 	}
 	logger.Error("multi_turn request failed",

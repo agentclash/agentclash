@@ -144,6 +144,7 @@ type Querier interface {
 	// In one statement with the lock, MAX would use the snapshot from before the
 	// lock wait, and two appends would get the same index.
 	InsertAgentTryoutTurn(ctx context.Context, arg InsertAgentTryoutTurnParams) (AgentTryoutTurn, error)
+	InsertCalibrationReview(ctx context.Context, arg InsertCalibrationReviewParams) (int64, error)
 	InsertDatasetBaseline(ctx context.Context, arg InsertDatasetBaselineParams) (DatasetBaseline, error)
 	InsertDatasetExample(ctx context.Context, arg InsertDatasetExampleParams) (DatasetExample, error)
 	InsertDatasetExampleRevision(ctx context.Context, arg InsertDatasetExampleRevisionParams) (DatasetExampleRevision, error)
@@ -158,6 +159,8 @@ type Querier interface {
 	ListAgentBuildsByWorkspaceID(ctx context.Context, arg ListAgentBuildsByWorkspaceIDParams) ([]AgentBuild, error)
 	ListAgentTryoutEventsAfter(ctx context.Context, arg ListAgentTryoutEventsAfterParams) ([]AgentTryoutEvent, error)
 	ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAgentTryoutsByWorkspaceIDParams) ([]AgentTryout, error)
+	ListCalibrationReviews(ctx context.Context, arg ListCalibrationReviewsParams) ([]ListCalibrationReviewsRow, error)
+	ListCalibrationTurnPayloads(ctx context.Context, arg ListCalibrationTurnPayloadsParams) ([][]byte, error)
 	ListCaseResultsByEvalSetForCompare(ctx context.Context, arg ListCaseResultsByEvalSetForCompareParams) ([]ListCaseResultsByEvalSetForCompareRow, error)
 	ListCaseResultsByEvalSetID(ctx context.Context, arg ListCaseResultsByEvalSetIDParams) ([]CaseResult, error)
 	ListCaseResultsForExport(ctx context.Context, arg ListCaseResultsForExportParams) ([]CaseResult, error)

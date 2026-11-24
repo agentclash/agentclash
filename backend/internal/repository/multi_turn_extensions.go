@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,7 +16,7 @@ import (
 type CreateCalibrationReviewParams struct {
 	WorkspaceID    uuid.UUID
 	RunAgentID     uuid.UUID
-	TurnIndex      int
+	TurnIndex      int32
 	ReviewerUserID uuid.UUID
 	Score          float64
 	RubricKey      string
@@ -49,41 +50,76 @@ type SubmitArenaVoteParams struct {
 	RubricScores     map[string]float64
 }
 
+func (r *Repository) HasCompletedCalibrationTurn(ctx context.Context, runAgentID uuid.UUID, turnIndex int32) (bool, error) {
+	payloads, err := r.queries.ListCalibrationTurnPayloads(ctx, repositorysqlc.ListCalibrationTurnPayloadsParams{
+		RunAgentID: runAgentID,
+		TurnIndex:  turnIndex,
+	})
+	if err != nil {
+		return false, err
+	}
+	for _, payload := range payloads {
+		event := RunEvent{Payload: payload}
+		if err := r.hydrateRunEventPayload(ctx, &event); err != nil {
+			return false, err
+		}
+		var turn struct {
+			Index *int32 `json:"turn_index"`
+		}
+		if err := json.Unmarshal(event.Payload, &turn); err != nil {
+			return false, err
+		}
+		if turn.Index != nil && *turn.Index == turnIndex {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (r *Repository) CreateCalibrationReview(ctx context.Context, params CreateCalibrationReviewParams) error {
 	if r.db == nil {
 		return fmt.Errorf("database is not configured")
 	}
-	_, err := r.db.Exec(ctx, `
-INSERT INTO calibration_reviews (workspace_id, run_agent_id, turn_index, reviewer_user_id, score, rubric_key, notes)
-VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), NULLIF($7, ''))
-`, params.WorkspaceID, params.RunAgentID, params.TurnIndex, params.ReviewerUserID, params.Score, params.RubricKey, params.Notes)
-	return err
+	count, err := r.queries.InsertCalibrationReview(ctx, repositorysqlc.InsertCalibrationReviewParams{
+		WorkspaceID:    params.WorkspaceID,
+		RunAgentID:     params.RunAgentID,
+		TurnIndex:      params.TurnIndex,
+		ReviewerUserID: params.ReviewerUserID,
+		Score:          params.Score,
+		RubricKey:      params.RubricKey,
+		Notes:          params.Notes,
+	})
+	if err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrRunAgentNotFound
+	}
+	return nil
 }
 
 func (r *Repository) ListCalibrationReviews(ctx context.Context, workspaceID uuid.UUID) ([]CalibrationReviewRow, error) {
 	if r.db == nil {
 		return nil, fmt.Errorf("database is not configured")
 	}
-	rows, err := r.db.Query(ctx, `
-SELECT id, run_agent_id, turn_index, reviewer_user_id, score::float8, COALESCE(rubric_key, ''), COALESCE(notes, ''), created_at
-FROM calibration_reviews
-WHERE workspace_id = $1
-ORDER BY created_at DESC
-LIMIT 100
-`, workspaceID)
+	rows, err := r.queries.ListCalibrationReviews(ctx, repositorysqlc.ListCalibrationReviewsParams{WorkspaceID: workspaceID})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []CalibrationReviewRow{}
-	for rows.Next() {
-		var row CalibrationReviewRow
-		if err := rows.Scan(&row.ID, &row.RunAgentID, &row.TurnIndex, &row.ReviewerUserID, &row.Score, &row.RubricKey, &row.Notes, &row.CreatedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, row)
+	out := make([]CalibrationReviewRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, CalibrationReviewRow{
+			ID:             row.ID,
+			RunAgentID:     row.RunAgentID,
+			TurnIndex:      int(row.TurnIndex),
+			ReviewerUserID: row.ReviewerUserID,
+			Score:          row.Score,
+			RubricKey:      row.RubricKey,
+			Notes:          row.Notes,
+			CreatedAt:      row.CreatedAt.Time,
+		})
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func (r *Repository) ListPendingArenaTasks(ctx context.Context, workspaceID uuid.UUID) ([]ArenaTaskRow, error) {
