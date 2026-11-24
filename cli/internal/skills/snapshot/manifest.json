@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "d5f4f2ea8ca8",
+  "snapshot_version": "fb9be9886494",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -59,7 +59,7 @@
       "name": "agentclash-challenge-pack-validation-publish",
       "role": "challenge-pack-publication",
       "requires_cli": true,
-      "sha256": "69e7f311566b535678635619a0d1e030f25a967eea64015adda931a40edf2be3"
+      "sha256": "0cad070260689eb00527437b1c172274e3a961ef44bbd7b3e4a7427537a86539"
     },
     {
       "name": "agentclash-challenge-pack-yaml-author",

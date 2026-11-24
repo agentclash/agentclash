@@ -201,6 +201,10 @@ describe("agent skill docs", () => {
     expect(content).toContain("Rerun an agent tryout with a model policy");
     expect(content).toContain("Compare two to four agent tryouts");
     expect(content).toContain("`--template` (required) — Template slug");
+    expect(content).toContain("Create a challenge pack draft");
+    expect(content).toContain("Compile and validate a challenge pack draft");
+    expect(content).toContain("Generate a challenge pack draft from a description");
+    expect(content).toContain("`--provider-account` (required) — Provider account ID for the draft model");
   });
 
   it("generates the security evaluation skill", () => {
@@ -623,6 +627,7 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("bundle_artifact_id");
     expect(doc?.content).toContain("challenge_pack_version_exists");
     expect(doc?.content).toContain("challenge_pack_metadata_conflict");
+    expect(doc?.content).toContain("After exit 75, run `agentclash challenge-pack draft list` before a retry.");
     expect(doc?.content).toContain("The API request body is capped at 1 MiB");
     expect(doc?.content).toContain("`publish` does not upload local files referenced by `path`");
     expect(doc?.content).toContain("agentclash eval start");

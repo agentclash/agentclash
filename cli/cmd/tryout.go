@@ -177,17 +177,17 @@ func workspaceTryoutPath(workspaceID string) string {
 	return "/v1/workspaces/" + workspaceID + "/agent-tryouts"
 }
 
-type tryoutResponse map[string]any
+type jsonObjectResponse map[string]any
 
 // MarshalYAML writes the response in block style. JSON numbers stay numbers,
 // and each string stays the same.
-func (body tryoutResponse) MarshalYAML() (any, error) {
-	return tryoutYAMLNode(map[string]any(body))
+func (body jsonObjectResponse) MarshalYAML() (any, error) {
+	return jsonValueYAMLNode(map[string]any(body))
 }
 
-// tryoutYAMLNode makes the YAML node of a decoded JSON value. Do not parse the
-// JSON text as YAML: YAML reads U+0085 as a line break and changes the string.
-func tryoutYAMLNode(value any) (*yaml.Node, error) {
+// jsonValueYAMLNode converts a decoded JSON value to a YAML node.
+// YAML parsers can change U+0085 to a line break if they parse the JSON text.
+func jsonValueYAMLNode(value any) (*yaml.Node, error) {
 	switch v := value.(type) {
 	case json.Number:
 		tag := "!!int"
@@ -203,7 +203,7 @@ func tryoutYAMLNode(value any) (*yaml.Node, error) {
 		sort.Strings(keys)
 		node := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 		for _, key := range keys {
-			child, err := tryoutYAMLNode(v[key])
+			child, err := jsonValueYAMLNode(v[key])
 			if err != nil {
 				return nil, err
 			}
@@ -213,7 +213,7 @@ func tryoutYAMLNode(value any) (*yaml.Node, error) {
 	case []any:
 		node := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
 		for _, item := range v {
-			child, err := tryoutYAMLNode(item)
+			child, err := jsonValueYAMLNode(item)
 			if err != nil {
 				return nil, err
 			}
@@ -229,27 +229,33 @@ func tryoutYAMLNode(value any) (*yaml.Node, error) {
 	}
 }
 
-func decodeTryoutResponse(resp *api.Response, err error) (tryoutResponse, error) {
+func decodeTryoutResponse(resp *api.Response, err error) (jsonObjectResponse, error) {
 	if err != nil {
 		return nil, err
 	}
 	if apiErr := resp.ParseError(); apiErr != nil {
 		return nil, apiErr
 	}
-	var body tryoutResponse
-	decoder := json.NewDecoder(bytes.NewReader(resp.Body))
-	decoder.UseNumber()
-	if err := decoder.Decode(&body); err != nil {
+	body, err := decodeJSONResponseObject(resp.Body)
+	if err != nil {
 		return nil, fmt.Errorf("cannot decode tryout response: %w", err)
 	}
 	return body, nil
+}
+
+func decodeJSONResponseObject(raw []byte) (jsonObjectResponse, error) {
+	var body jsonObjectResponse
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	err := decoder.Decode(&body)
+	return body, err
 }
 
 func tryoutCell(body map[string]any, key string) string {
 	return output.SanitizeLine(mapString(body, key))
 }
 
-func printTryoutRows(rc *RunContext, body tryoutResponse, array string, columns []output.Column, keys ...string) error {
+func printTryoutRows(rc *RunContext, body jsonObjectResponse, array string, columns []output.Column, keys ...string) error {
 	if rc.Output.IsStructured() {
 		return rc.Output.PrintRaw(body)
 	}
@@ -270,7 +276,7 @@ func printTryoutRows(rc *RunContext, body tryoutResponse, array string, columns 
 	return nil
 }
 
-func printTryout(rc *RunContext, body tryoutResponse) error {
+func printTryout(rc *RunContext, body jsonObjectResponse) error {
 	if rc.Output.IsStructured() {
 		return rc.Output.PrintRaw(body)
 	}
@@ -601,10 +607,34 @@ func runTryoutPromote(cmd *cobra.Command, args []string) error {
 	if rc.Output.IsStructured() {
 		return rc.Output.PrintRaw(body)
 	}
-	rc.Output.PrintDetail("Draft ID", tryoutCell(body, "draft_id"))
-	rc.Output.PrintDetail("Workspace", tryoutCell(body, "workspace_id"))
+	draftID := tryoutCell(body, "draft_id")
+	workspaceID := tryoutCell(body, "workspace_id")
+	rc.Output.PrintDetail("Draft ID", draftID)
+	rc.Output.PrintDetail("Workspace", workspaceID)
 	rc.Output.PrintDetail("Target", tryoutCell(body, "target"))
+	if next := tryoutDraftCompileHint(body, rc.Workspace); next != "" {
+		rc.Output.PrintDetail("Next", next)
+	}
 	return nil
+}
+
+// tryoutDraftCompileHint gives the next command after a promote. The hint
+// uses only IDs that are UUIDs, so server text cannot change the command.
+func tryoutDraftCompileHint(body map[string]any, selectedWorkspace string) string {
+	draftID, err := uuid.Parse(mapString(body, "draft_id"))
+	if err != nil {
+		return ""
+	}
+	next := "agentclash challenge-pack draft compile " + draftID.String()
+	workspaceID, err := uuid.Parse(mapString(body, "workspace_id"))
+	if err != nil {
+		return next
+	}
+	selected, selectedErr := uuid.Parse(selectedWorkspace)
+	if selectedErr != nil || selected != workspaceID || flagWorkspace != "" {
+		next += " --workspace " + workspaceID.String()
+	}
+	return next
 }
 
 type tryoutFollowOptions struct {
@@ -626,7 +656,7 @@ func readTryoutFollowOptions(cmd *cobra.Command) (tryoutFollowOptions, error) {
 	return tryoutFollowOptions{enabled: enabled, interval: interval, timeout: timeout}, nil
 }
 
-func printStartedTryout(cmd *cobra.Command, body tryoutResponse, workspaceID string, follow tryoutFollowOptions) error {
+func printStartedTryout(cmd *cobra.Command, body jsonObjectResponse, workspaceID string, follow tryoutFollowOptions) error {
 	rc := GetRunContext(cmd)
 	if !follow.enabled {
 		return printTryout(rc, body)
@@ -663,7 +693,7 @@ func isTerminalTryoutStatus(status string) bool {
 	}
 }
 
-func followTryout(cmd *cobra.Command, workspaceID, id string, options tryoutFollowOptions, initial tryoutResponse) error {
+func followTryout(cmd *cobra.Command, workspaceID, id string, options tryoutFollowOptions, initial jsonObjectResponse) error {
 	rc := GetRunContext(cmd)
 	ctx := cmd.Context()
 	var deadline time.Time
@@ -682,14 +712,14 @@ func followTryout(cmd *cobra.Command, workspaceID, id string, options tryoutFoll
 		}
 	}
 	lastStatus := ""
-	showStatus := func(body tryoutResponse) {
+	showStatus := func(body jsonObjectResponse) {
 		status, _ := body["status"].(string)
 		if !rc.Output.IsStructured() && !flagQuiet && status != "" && status != lastStatus {
 			fmt.Fprintf(rc.Output.ErrWriter(), "Status: %s\n", output.StatusColor(output.SanitizeLine(status)))
 		}
 		lastStatus = status
 	}
-	finish := func(body tryoutResponse) error {
+	finish := func(body jsonObjectResponse) error {
 		if initial != nil && rc.Output.IsYAML() && flagQuery == "" {
 			if _, err := fmt.Fprintln(rc.Output.Writer(), "---"); err != nil {
 				return err

@@ -103,6 +103,12 @@ var flagAllowedValues = map[string]map[string][]string{
 	"agentclash arena vote": {
 		"winner": arenaWinnerValues,
 	},
+	"agentclash challenge-pack draft create": {
+		"execution-mode": draftExecutionModeValues,
+	},
+	"agentclash challenge-pack draft update": {
+		"execution-mode": draftExecutionModeValues,
+	},
 }
 
 // parseArgsFromUse extracts positional arguments from a cobra Use line.
