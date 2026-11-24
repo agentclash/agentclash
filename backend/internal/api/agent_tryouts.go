@@ -48,6 +48,7 @@ var (
 	ErrAgentTryoutSignInRequired             = errors.New("agent tryout sign-in required")
 	ErrAgentTryoutModelPolicyInvalid         = errors.New("agent tryout model policy invalid")
 	ErrAgentTryoutModelUnavailable           = errors.New("agent tryout model unavailable")
+	errUnsupportedWorkspaceTryoutModelPolicy = errors.New("workspace tryout model policy unsupported")
 	ErrAgentTryoutRerunProviderKeyRequired   = errors.New("agent tryout rerun provider key required")
 	ErrAgentTryoutRerunInsufficientCredits   = errors.New("agent tryout rerun insufficient credits")
 	ErrAgentTryoutCompareCardinality         = errors.New("agent tryout compare requires 2-4 tryouts")
@@ -888,6 +889,15 @@ func (d *agentTryoutExecutionDispatcher) harnessSnapshot(harness repository.Agen
 		"execution_config":           json.RawMessage(executionConfig),
 		"evaluation_config":          json.RawMessage(evaluationConfig),
 	}
+	if tryout.ParentTryoutID != nil {
+		model, err := workspaceTryoutModel(tryout.SelectedModelPolicy, d.config.HarnessKind)
+		if err != nil {
+			return nil, err
+		}
+		if model != "" {
+			payload["codex_model"] = model
+		}
+	}
 	return json.Marshal(payload)
 }
 
@@ -1721,6 +1731,8 @@ func writeAgentTryoutError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusUnauthorized, "sign_in_required", "Sign in to rerun, compare, or promote tryouts.")
 	case errors.Is(err, ErrAgentTryoutModelPolicyInvalid):
 		writeError(w, http.StatusBadRequest, "invalid_model_policy", err.Error())
+	case errors.Is(err, errUnsupportedWorkspaceTryoutModelPolicy):
+		writeError(w, http.StatusBadRequest, "unsupported_workspace_model_policy", err.Error())
 	case errors.Is(err, ErrAgentTryoutModelUnavailable):
 		writeError(w, http.StatusUnprocessableEntity, "model_unavailable", err.Error())
 	case errors.Is(err, ErrAgentTryoutRerunProviderKeyRequired):
