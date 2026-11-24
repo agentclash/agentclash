@@ -3035,6 +3035,17 @@ func isAgentDeploymentSlugConflict(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "agent_deployments_workspace_id_slug_key"
 }
 
+func (r *Repository) AgentDeploymentIsConnector(ctx context.Context, workspaceID, deploymentID uuid.UUID) (bool, error) {
+	isConnector, err := r.queries.AgentDeploymentIsConnector(ctx, repositorysqlc.AgentDeploymentIsConnectorParams{
+		ID:          deploymentID,
+		WorkspaceID: workspaceID,
+	})
+	if err != nil {
+		return false, fmt.Errorf("check whether agent deployment is a connector: %w", err)
+	}
+	return isConnector, nil
+}
+
 func (r *Repository) ArchiveAgentDeployment(ctx context.Context, workspaceID, deploymentID uuid.UUID) error {
 	updated, err := r.queries.ArchiveAgentDeployment(ctx, repositorysqlc.ArchiveAgentDeploymentParams{
 		WorkspaceID: workspaceID,

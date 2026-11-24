@@ -35,6 +35,15 @@ SELECT EXISTS (
       AND slug = @slug
 );
 
+-- name: AgentDeploymentIsConnector :one
+SELECT EXISTS (
+    SELECT 1
+    FROM agent_deployment_snapshots s
+    JOIN connector_snapshots c ON c.snapshot_id = s.id
+    WHERE s.agent_deployment_id = @id
+      AND s.workspace_id = @workspace_id
+);
+
 -- name: ArchiveAgentDeployment :execrows
 UPDATE agent_deployments
 SET status = 'archived',

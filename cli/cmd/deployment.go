@@ -141,7 +141,7 @@ var deploymentCreateCmd = &cobra.Command{
 var deploymentDeleteCmd = &cobra.Command{
 	Use:   "delete <deploymentId>",
 	Short: "Archive a deployment",
-	Long:  "Archive a deployment. It disappears from deployment list and cannot be used in new runs. Old runs keep their results.",
+	Long:  "Archive a deployment. It disappears from deployment list and cannot be used in new runs. Old runs keep their results. Archiving a connector deployment requires the workspace admin role.",
 	Example: `  # Archive a deployment after a confirmation prompt
   agentclash deployment delete <deploymentId>
 

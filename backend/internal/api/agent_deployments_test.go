@@ -17,7 +17,12 @@ import (
 
 type deploymentArchiveTestRepo struct {
 	AgentDeploymentRepository
-	archive func(context.Context, uuid.UUID, uuid.UUID) error
+	isConnector func(context.Context, uuid.UUID, uuid.UUID) (bool, error)
+	archive     func(context.Context, uuid.UUID, uuid.UUID) error
+}
+
+func (r deploymentArchiveTestRepo) AgentDeploymentIsConnector(ctx context.Context, workspaceID, deploymentID uuid.UUID) (bool, error) {
+	return r.isConnector(ctx, workspaceID, deploymentID)
 }
 
 func (r deploymentArchiveTestRepo) ArchiveAgentDeployment(ctx context.Context, workspaceID, deploymentID uuid.UUID) error {
@@ -27,34 +32,49 @@ func (r deploymentArchiveTestRepo) ArchiveAgentDeployment(ctx context.Context, w
 func TestArchiveAgentDeploymentRoute(t *testing.T) {
 	workspaceID, deploymentID := uuid.New(), uuid.New()
 	for _, tc := range []struct {
-		name       string
-		role       string
-		id         string
-		repoErr    error
-		wantStatus int
-		wantCode   string
-		wantCall   bool
+		name             string
+		role             string
+		id               string
+		isConnector      bool
+		lookupErr        error
+		archiveErr       error
+		wantStatus       int
+		wantCode         string
+		wantLookups      int
+		wantArchiveCalls int
 	}{
-		{"success", RoleWorkspaceMember, deploymentID.String(), nil, 204, "", true},
-		{"not found", RoleWorkspaceMember, deploymentID.String(), repository.ErrAgentDeploymentNotFound, 404, "not_found", true},
-		{"viewer forbidden", RoleWorkspaceViewer, deploymentID.String(), nil, 403, "forbidden", false},
-		{"nonmember forbidden before ID validation", "", "invalid", nil, 403, "forbidden", false},
-		{"malformed ID", RoleWorkspaceMember, "invalid", nil, 400, "invalid_deployment_id", false},
-		{"repository error", RoleWorkspaceMember, deploymentID.String(), errors.New("database unavailable"), 500, "internal_error", true},
+		{name: "member archives native deployment", role: RoleWorkspaceMember, id: deploymentID.String(), wantStatus: 204, wantLookups: 1, wantArchiveCalls: 1},
+		{name: "member cannot archive connector deployment", role: RoleWorkspaceMember, id: deploymentID.String(), isConnector: true, wantStatus: 403, wantCode: "forbidden", wantLookups: 1},
+		{name: "admin archives connector deployment", role: RoleWorkspaceAdmin, id: deploymentID.String(), isConnector: true, wantStatus: 204, wantLookups: 1, wantArchiveCalls: 1},
+		{name: "connector lookup error", role: RoleWorkspaceMember, id: deploymentID.String(), lookupErr: errors.New("database unavailable"), wantStatus: 500, wantCode: "internal_error", wantLookups: 1},
+		{name: "not found", role: RoleWorkspaceMember, id: deploymentID.String(), archiveErr: repository.ErrAgentDeploymentNotFound, wantStatus: 404, wantCode: "not_found", wantLookups: 1, wantArchiveCalls: 1},
+		{name: "viewer forbidden", role: RoleWorkspaceViewer, id: deploymentID.String(), wantStatus: 403, wantCode: "forbidden"},
+		{name: "nonmember forbidden before ID validation", id: "invalid", wantStatus: 403, wantCode: "forbidden"},
+		{name: "malformed ID", role: RoleWorkspaceMember, id: "invalid", wantStatus: 400, wantCode: "invalid_deployment_id"},
+		{name: "archive error", role: RoleWorkspaceMember, id: deploymentID.String(), archiveErr: errors.New("database unavailable"), wantStatus: 500, wantCode: "internal_error", wantLookups: 1, wantArchiveCalls: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			authorizer := NewCallerWorkspaceAuthorizer()
-			called := false
-			repo := deploymentArchiveTestRepo{archive: func(ctx context.Context, wsID, depID uuid.UUID) error {
-				called = true
-				if contextID, err := WorkspaceIDFromContext(ctx); err != nil || contextID != workspaceID {
-					t.Fatalf("workspace in context = %s, err = %v, want %s", contextID, err, workspaceID)
-				}
-				if wsID != workspaceID || depID != deploymentID {
-					t.Fatalf("archive IDs = %s/%s, want %s/%s", wsID, depID, workspaceID, deploymentID)
-				}
-				return tc.repoErr
-			}}
+			var lookups, archiveCalls int
+			repo := deploymentArchiveTestRepo{
+				isConnector: func(_ context.Context, wsID, depID uuid.UUID) (bool, error) {
+					lookups++
+					if wsID != workspaceID || depID != deploymentID {
+						t.Fatalf("connector lookup IDs = %s/%s, want %s/%s", wsID, depID, workspaceID, deploymentID)
+					}
+					return tc.isConnector, tc.lookupErr
+				},
+				archive: func(ctx context.Context, wsID, depID uuid.UUID) error {
+					archiveCalls++
+					if contextID, err := WorkspaceIDFromContext(ctx); err != nil || contextID != workspaceID {
+						t.Fatalf("workspace in context = %s, err = %v, want %s", contextID, err, workspaceID)
+					}
+					if wsID != workspaceID || depID != deploymentID {
+						t.Fatalf("archive IDs = %s/%s, want %s/%s", wsID, depID, workspaceID, deploymentID)
+					}
+					return tc.archiveErr
+				},
+			}
 			router := buildRouter(routerOptions{
 				authMode:               "dev",
 				logger:                 testLogger(t),
@@ -69,8 +89,9 @@ func TestArchiveAgentDeploymentRoute(t *testing.T) {
 			}
 			res := httptest.NewRecorder()
 			router.ServeHTTP(res, req)
-			if res.Code != tc.wantStatus || called != tc.wantCall {
-				t.Fatalf("status = %d, archive called = %v. Body: %s", res.Code, called, res.Body)
+			if res.Code != tc.wantStatus || lookups != tc.wantLookups || archiveCalls != tc.wantArchiveCalls {
+				t.Fatalf("status = %d, connector lookups = %d, archive calls = %d, want %d/%d/%d. Body: %s",
+					res.Code, lookups, archiveCalls, tc.wantStatus, tc.wantLookups, tc.wantArchiveCalls, res.Body)
 			}
 			if tc.wantCode == "" {
 				if res.Body.Len() != 0 {

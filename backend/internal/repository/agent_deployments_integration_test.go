@@ -8,8 +8,60 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/api"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/connectors"
 	"github.com/google/uuid"
 )
+
+func TestAgentDeploymentIsConnector(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := newSecretsRepo(t, db)
+	if err := repo.UpsertWorkspaceSecret(ctx, repository.UpsertWorkspaceSecretParams{
+		WorkspaceID: fixture.workspaceID,
+		Key:         "APP_TOKEN",
+		Value:       "local-fixture-token",
+		ActorUserID: &fixture.userID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	binding, err := repo.CreateConnector(ctx, repository.CreateConnectorParams{
+		WorkspaceID: fixture.workspaceID,
+		ActorUserID: fixture.userID,
+		Name:        "Application",
+		Config: connectors.Config{
+			Adapter:         connectors.HTTPJSON,
+			EndpointURL:     "https://example.com/invoke",
+			SecretKey:       "APP_TOKEN",
+			Auth:            "bearer",
+			InputFields:     map[string]string{"question": "/prompt"},
+			ResponsePointer: "/answer",
+			TimeoutSeconds:  30,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name         string
+		workspaceID  uuid.UUID
+		deploymentID uuid.UUID
+		want         bool
+	}{
+		{"connector in its workspace", fixture.workspaceID, binding.DeploymentID, true},
+		{"native deployment", fixture.workspaceID, fixture.agentDeploymentID, false},
+		{"connector in another workspace", uuid.New(), binding.DeploymentID, false},
+		{"unknown deployment", fixture.workspaceID, uuid.New(), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := repo.AgentDeploymentIsConnector(ctx, tc.workspaceID, tc.deploymentID)
+			if err != nil || got != tc.want {
+				t.Fatalf("AgentDeploymentIsConnector = %t, %v, want %t, nil", got, err, tc.want)
+			}
+		})
+	}
+}
 
 func TestArchiveAgentDeployment(t *testing.T) {
 	ctx := context.Background()

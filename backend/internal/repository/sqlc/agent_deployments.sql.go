@@ -12,6 +12,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const agentDeploymentIsConnector = `-- name: AgentDeploymentIsConnector :one
+SELECT EXISTS (
+    SELECT 1
+    FROM agent_deployment_snapshots s
+    JOIN connector_snapshots c ON c.snapshot_id = s.id
+    WHERE s.agent_deployment_id = $1
+      AND s.workspace_id = $2
+)
+`
+
+type AgentDeploymentIsConnectorParams struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+}
+
+func (q *Queries) AgentDeploymentIsConnector(ctx context.Context, arg AgentDeploymentIsConnectorParams) (bool, error) {
+	row := q.db.QueryRow(ctx, agentDeploymentIsConnector, arg.ID, arg.WorkspaceID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const agentDeploymentSlugExists = `-- name: AgentDeploymentSlugExists :one
 SELECT EXISTS (
     SELECT 1

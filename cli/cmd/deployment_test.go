@@ -3,6 +3,7 @@ package cmd
 import (
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -26,8 +27,10 @@ func TestDeploymentDeleteWithYes(t *testing.T) {
 	for _, format := range []string{"table", "json", "yaml"} {
 		t.Run(format, func(t *testing.T) {
 			isolateCLIEnv(t)
+			var deleteCalls atomic.Int64
 			srv, count := countingFakeAPI(t, map[string]http.HandlerFunc{
 				"DELETE " + deploymentDeleteTestPath: func(w http.ResponseWriter, _ *http.Request) {
+					deleteCalls.Add(1)
 					w.WriteHeader(http.StatusNoContent)
 				},
 			})
@@ -35,8 +38,11 @@ func TestDeploymentDeleteWithYes(t *testing.T) {
 			err := executeCommandWithQuiet(t, []string{"deployment", "delete", deploymentDeleteTestID, "--workspace", "ws-123", "--yes", "--non-interactive", "--output", format}, srv.URL, false)
 			out, errOut := stdout.finish(), stderr.finish()
 			assertExitCode(t, err, 0)
-			if count.Load() != 1 || out != "" || !strings.Contains(errOut, "archived") || strings.Contains(errOut, "[y/N]") {
-				t.Fatalf("requests = %d, stdout = %q, stderr = %q", count.Load(), out, errOut)
+			if total, deletes := count.Load(), deleteCalls.Load(); total != 1 || deletes != 1 {
+				t.Fatalf("total requests = %d, DELETE handler calls = %d, want 1 each", total, deletes)
+			}
+			if out != "" || !strings.Contains(errOut, "archived") || strings.Contains(errOut, "[y/N]") {
+				t.Fatalf("stdout = %q, stderr = %q", out, errOut)
 			}
 		})
 	}
@@ -54,15 +60,20 @@ func TestDeploymentDeleteAPIErrors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			isolateCLIEnv(t)
+			var deleteCalls atomic.Int64
+			respond := jsonHandler(tc.status, map[string]any{
+				"error": map[string]string{"code": tc.code, "message": tc.name},
+			})
 			srv, count := countingFakeAPI(t, map[string]http.HandlerFunc{
-				"DELETE " + deploymentDeleteTestPath: jsonHandler(tc.status, map[string]any{
-					"error": map[string]string{"code": tc.code, "message": tc.name},
-				}),
+				"DELETE " + deploymentDeleteTestPath: func(w http.ResponseWriter, r *http.Request) {
+					deleteCalls.Add(1)
+					respond(w, r)
+				},
 			})
 			err := executeCommand(t, []string{"deployment", "delete", deploymentDeleteTestID, "--workspace", "ws-123", "--yes"}, srv.URL)
 			assertExitCode(t, err, tc.exit)
-			if count.Load() != 1 {
-				t.Fatalf("requests = %d, want 1", count.Load())
+			if total, deletes := count.Load(), deleteCalls.Load(); total != 1 || deletes != 1 {
+				t.Fatalf("total requests = %d, DELETE handler calls = %d, want 1 each", total, deletes)
 			}
 		})
 	}

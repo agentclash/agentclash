@@ -15,6 +15,7 @@ import (
 type AgentDeploymentRepository interface {
 	ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentDeploymentSummary, error)
 	CountActiveAgentDeploymentsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
+	AgentDeploymentIsConnector(ctx context.Context, workspaceID, deploymentID uuid.UUID) (bool, error)
 	ArchiveAgentDeployment(ctx context.Context, workspaceID, deploymentID uuid.UUID) error
 }
 
@@ -45,6 +46,16 @@ func NewAgentDeploymentManager(authorizer WorkspaceAuthorizer, repo AgentDeploym
 func (m *AgentDeploymentManager) ArchiveAgentDeployment(ctx context.Context, caller Caller, workspaceID, deploymentID uuid.UUID) error {
 	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionCreateAgentDeployment); err != nil {
 		return err
+	}
+	// A deployment's connector type is fixed at creation, so checking before the update is enough.
+	isConnector, err := m.repo.AgentDeploymentIsConnector(ctx, workspaceID, deploymentID)
+	if err != nil {
+		return err
+	}
+	if isConnector {
+		if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionManageInfrastructure); err != nil {
+			return err
+		}
 	}
 	return m.repo.ArchiveAgentDeployment(ctx, workspaceID, deploymentID)
 }

@@ -11,6 +11,7 @@ import (
 )
 
 type Querier interface {
+	AgentDeploymentIsConnector(ctx context.Context, arg AgentDeploymentIsConnectorParams) (bool, error)
 	AgentDeploymentSlugExists(ctx context.Context, arg AgentDeploymentSlugExistsParams) (bool, error)
 	AggregateCaseResultsByEvalSet(ctx context.Context, arg AggregateCaseResultsByEvalSetParams) ([]AggregateCaseResultsByEvalSetRow, error)
 	ArchiveAgentDeployment(ctx context.Context, arg ArchiveAgentDeploymentParams) (int64, error)
