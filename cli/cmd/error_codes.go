@@ -20,6 +20,8 @@ var documentedErrorCodes = []ErrorCode{
 	{Code: "api_error", Description: "The server returned an error envelope without a code."},
 	{Code: "command_failed", Description: "A command finished with a command-specific non-zero exit (see exit_codes)."},
 	{Code: "missing_workspace", Description: "No workspace resolved; pass --workspace, set AGENTCLASH_WORKSPACE, or run 'agentclash link'."},
+	{Code: "interactive_input_required", Description: "The command needs a person at a terminal (a confirmation or a browser login), but it runs in non-interactive mode. For a confirmation, check the effect of the command, then pass --yes. The command did not start its action."},
+	{Code: "aborted", Description: "The person at the terminal did not confirm the command. The command did not start its action."},
 	// follow_timeout / stream_reconnect_exhausted are NOT marked retryable: the
 	// CLI emits them with retryable:false and exit 64 (they are local deadline /
 	// reconnect-budget conditions, not transient transport failures), and the

@@ -148,6 +148,12 @@ describe("agent skill docs", () => {
       "`--repo` (required) — GitHub repository as owner/name, or its numeric GitHub repository ID",
     );
     expect(content).toContain("`--check-only`");
+
+    // workspace emergency-stop (cancel every active eval set)
+    expect(content).toContain("Cancel every active eval set in the workspace");
+    expect(content).toContain(
+      "`--yes` — Cancel the eval sets with no confirmation prompt; necessary in non-interactive mode",
+    );
   });
 
   it("generates the security evaluation skill", () => {
@@ -169,6 +175,9 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash workspace create");
     expect(doc?.content).toContain("agentclash workspace members invite");
     expect(doc?.content).toContain("agentclash link");
+    expect(doc?.content).toContain("agentclash workspace emergency-stop -w <workspace-id> --json");
+    expect(doc?.content).toContain("interactive_input_required");
+    expect(doc?.content).toContain("Never add `--yes` on your own decision");
   });
 
   it("generates the quickstart skill with readiness checks", () => {
