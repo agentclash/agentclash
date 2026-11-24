@@ -1,6 +1,6 @@
 ---
 name: agentclash-multi-turn-operator
-description: Use when a multi_turn challenge pack run agent is awaiting human input and you need to check turn status or submit an operator message with agentclash run turn.
+description: Use when a multi_turn challenge pack run agent is awaiting human input and you need to check turn status or submit an operator message with agentclash run turn. Also use it to record calibration reviews of turns and votes for arena tasks.
 metadata:
   agentclash.role: multi-turn
   agentclash.version: "1"
@@ -11,14 +11,16 @@ metadata:
 
 ## Purpose
 Operate human takeover phases in multi-turn challenge packs: detect when a run agent awaits operator input and submit the next user message so the eval can continue.
+Also record human scores for run agent turns (calibration reviews) and votes for arena tasks.
 
 ## Use When
 - A multi_turn pack includes a `human` phase in its user simulator manifest.
 - CLI or UI shows a run agent waiting for human input mid-run.
 - An operator must reply as the end user during live eval observation.
+- An operator must score a turn or select the winner of an arena task.
 
 ## Do Not Use When
-- The pack is single-turn or fully scripted/LLM-simulated — no human turns exist.
+- The pack is single-turn or fully scripted/LLM-simulated, and the task is a human turn — no human turns exist.
 - The run has not started — use `agentclash-eval-runner` first.
 - The task is authoring multi-turn pack YAML — see `/docs-md/challenge-packs/multi-turn` and challenge-pack skills.
 
@@ -72,6 +74,37 @@ Structured status fields:
 - Missing `--message` on submit → required non-empty string.
 - Agent not awaiting human → API may reject submit; check status first.
 - Wrong run agent ID → list agents on the run before submitting.
+
+## Calibration Reviews and Arena Votes
+
+Use the workspace of the run agent or arena task. Use a turn index of 0 or more and a score from 1 to 5. The server keeps two decimal places of the score.
+
+```bash
+agentclash calibration create --run-agent <RUN_AGENT_ID> --turn 0 --score 4.5
+agentclash calibration list
+agentclash calibration list --json --query '.items[] | select(.run_agent_id == "<RUN_AGENT_ID>")'
+```
+
+The server returns the 100 most recent reviews at most. The query selects reviews from those results.
+
+List the pending tasks and use one of the two winner flags. You can give one `--rubric-score key=value` flag for each rubric key.
+
+```bash
+agentclash arena tasks
+agentclash arena vote <TASK_ID> --winner left --rubric-score recovery=4.5
+```
+
+The server returns up to 20 tasks. If the task is not in the list, give the run agent UUID of the winner with `--winner-run-agent`.
+
+```bash
+agentclash arena vote <TASK_ID> --winner-run-agent <RUN_AGENT_ID>
+```
+
+If the API returns `arena_task_not_pending`, the CLI exits with code 1. Use `agentclash arena tasks` to see the current list.
+
+- No CLI command deletes a calibration review or an arena vote. Record one only when the operator gives the score or the winner.
+- If `calibration create` exits `75`, run `agentclash calibration list` before a retry. The first request can have recorded the review, and a retry records a second review.
+- One vote completes an arena task. If `arena vote` exits `75`, the server can have recorded the first vote. Then the task is not in the pending list. A retry with `--winner` exits `64`, and a retry with `--winner-run-agent` exits `1` with `arena_task_not_pending`.
 
 ## Safety Notes
 - Operator messages become part of the eval transcript — avoid real customer PII.

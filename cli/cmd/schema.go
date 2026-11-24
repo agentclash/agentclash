@@ -100,6 +100,9 @@ var flagAllowedValues = map[string]map[string][]string{
 	"agentclash share create": {
 		"resource-type": shareResourceTypeValues,
 	},
+	"agentclash arena vote": {
+		"winner": arenaWinnerValues,
+	},
 }
 
 // parseArgsFromUse extracts positional arguments from a cobra Use line.
