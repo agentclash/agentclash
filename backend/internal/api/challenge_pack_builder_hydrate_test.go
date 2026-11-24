@@ -5,12 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -133,28 +131,40 @@ func adminCaller(workspaceID uuid.UUID) Caller {
 func TestCreateChallengePackDraftEndpointPackLink(t *testing.T) {
 	workspaceID, foreignWorkspaceID := uuid.New(), uuid.New()
 	ownID, foreignID, globalID, unknownID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	sourcePackID, sourceVersionID := uuid.New(), uuid.New()
+	sourceVersion := repository.RunnableChallengePackVersion{
+		ID:              sourceVersionID,
+		ChallengePackID: sourcePackID,
+		WorkspaceID:     &workspaceID,
+		Manifest:        catalogManifest(t, "json-output-conformance"),
+	}
 	caller := adminCaller(workspaceID)
 	path := "/v1/workspaces/" + workspaceID.String() + "/challenge-pack-drafts"
 	for _, tc := range []struct {
 		name        string
 		packID      *uuid.UUID
+		fromVersion bool
 		publicPacks bool
 		createErr   error
 		wantStatus  int
 		wantCalls   int
+		wantPackID  *uuid.UUID
 	}{
-		{name: "own pack", packID: &ownID, wantStatus: http.StatusCreated, wantCalls: 1},
-		{name: "enabled global pack", packID: &globalID, publicPacks: true, wantStatus: http.StatusCreated, wantCalls: 1},
+		{name: "own pack", packID: &ownID, wantStatus: http.StatusCreated, wantCalls: 1, wantPackID: &ownID},
+		{name: "enabled global pack", packID: &globalID, publicPacks: true, wantStatus: http.StatusCreated, wantCalls: 1, wantPackID: &globalID},
 		{name: "no link", wantStatus: http.StatusCreated, wantCalls: 1},
 		{name: "unknown pack", packID: &unknownID, wantStatus: http.StatusNotFound},
 		{name: "foreign pack", packID: &foreignID, publicPacks: true, wantStatus: http.StatusNotFound},
 		{name: "disabled global pack", packID: &globalID, wantStatus: http.StatusNotFound},
 		{name: "pack deleted before insert", packID: &ownID, createErr: ErrChallengePackNotFound, wantStatus: http.StatusNotFound, wantCalls: 1},
+		{name: "source version with unknown pack", packID: &unknownID, fromVersion: true, wantStatus: http.StatusNotFound},
+		{name: "source version with foreign pack", packID: &foreignID, fromVersion: true, wantStatus: http.StatusNotFound},
+		{name: "source version with own pack", packID: &ownID, fromVersion: true, wantStatus: http.StatusCreated, wantCalls: 1, wantPackID: &sourcePackID},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &fakeBuilderHydrateRepository{
 				packOwners: map[uuid.UUID]*uuid.UUID{
-					ownID: &workspaceID, foreignID: &foreignWorkspaceID, globalID: nil,
+					ownID: &workspaceID, foreignID: &foreignWorkspaceID, globalID: nil, sourcePackID: &workspaceID,
 				},
 				publicPacks: tc.publicPacks,
 				createErr:   tc.createErr,
@@ -163,11 +173,19 @@ func TestCreateChallengePackDraftEndpointPackLink(t *testing.T) {
 			router := chi.NewRouter()
 			router.Post("/v1/workspaces/{workspaceID}/challenge-pack-drafts", createChallengePackDraftHandler(slog.Default(), manager))
 
-			body := `{"name":"Test draft"}`
+			payload := map[string]string{"name": "Test draft"}
 			if tc.packID != nil {
-				body = fmt.Sprintf(`{"name":"Test draft","challenge_pack_id":%q}`, tc.packID.String())
+				payload["challenge_pack_id"] = tc.packID.String()
 			}
-			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+			if tc.fromVersion {
+				repo.version = sourceVersion
+				payload["from_challenge_pack_version_id"] = sourceVersionID.String()
+			}
+			body, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 			req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, caller))
 			rec := httptest.NewRecorder()
@@ -193,7 +211,10 @@ func TestCreateChallengePackDraftEndpointPackLink(t *testing.T) {
 			if err := json.Unmarshal(rec.Body.Bytes(), &draft); err != nil {
 				t.Fatal(err)
 			}
-			if draft.ID == uuid.Nil || !reflect.DeepEqual(draft.ChallengePackID, tc.packID) {
+			if !reflect.DeepEqual(repo.lastCreate.ChallengePackID, tc.wantPackID) {
+				t.Fatalf("draft insert pack ID = %v, want %v", repo.lastCreate.ChallengePackID, tc.wantPackID)
+			}
+			if draft.ID == uuid.Nil || !reflect.DeepEqual(draft.ChallengePackID, tc.wantPackID) {
 				t.Fatalf("unexpected draft response: %s", rec.Body)
 			}
 		})
