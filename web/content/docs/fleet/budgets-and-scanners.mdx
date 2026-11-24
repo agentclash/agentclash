@@ -1,7 +1,7 @@
 ---
 title: Budgets and scanners
 description: Cap eval-set spend, emergency-stop a workspace, and run built-in transcript scanners after completion.
-dateModified: 2026-08-09
+dateModified: 2026-11-24
 ---
 
 Fleet adds two optional control surfaces on top of orchestration: **budgets** (stop spending) and **scanners** (analyze finished transcripts).
@@ -27,15 +27,27 @@ Exact settlement status strings are visible in `agentclash evalset status <id> -
 
 ### Workspace emergency stop
 
-Operators can cancel every active eval set in a workspace:
+A workspace admin can cancel every active eval set in a workspace:
+
+```bash
+agentclash workspace emergency-stop
+```
+
+The command asks for confirmation on a terminal. In a CI job, a script or any other non-interactive mode, it exits 64 with the error code `interactive_input_required` and cancels nothing. Pass `--yes` to cancel with no prompt:
+
+```bash
+agentclash workspace emergency-stop -w $WORKSPACE_ID --yes --json
+```
+
+The command cancels the eval sets and their runs only. Standalone runs and agent tryouts continue, so check them with `agentclash run list`. You cannot undo the cancellation.
+
+The response includes how many sets were cancelled, their IDs and an audit event name (`workspace.emergency_stop`). The API form of the same call is:
 
 ```bash
 curl -sS -X POST \
   -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
   "$AGENTCLASH_API_URL/v1/workspaces/$WORKSPACE_ID/emergency-stop"
 ```
-
-The response includes how many sets were cancelled and an audit event name (`workspace.emergency_stop`).
 
 ## Scanners
 
@@ -49,8 +61,10 @@ Shipped under `runtime/scanners/catalog/`:
 |---|---|
 | `reward-hacking` | Reward-seeking / metric gaming patterns |
 | `tool-misuse` | Unsafe or policy-breaking tool use |
-| `instruction-injection` | Prompt / instruction injection attempts |
+| `instruction-injection-compliance` | Prompt / instruction injection attempts |
 | `sandbox-escape-attempt` | Escape or host breakout signals |
+
+`instruction-injection-compliance` is an LLM judge: the worker sends each case transcript to its judge model. If the worker has no judge model, this scanner finds nothing. The other three scanners match patterns.
 
 ### Opt-in from the manifest
 
@@ -62,7 +76,35 @@ scanners:
 
 When present, a completed set can start a scan workflow for those scanners.
 
-### Manual / API scan
+### Manual scan
+
+Start a scan from the CLI:
+
+```bash
+# Run the scanners of the eval set manifest
+agentclash evalset scan $EVAL_SET_ID
+
+# Run two built-in scanners
+agentclash evalset scan $EVAL_SET_ID --scanner reward-hacking --scanner sandbox-escape-attempt
+```
+
+- Without `--scanner`, the server runs the scanners of the manifest. If the manifest lists no scanner, the scan finds nothing.
+- The CLI accepts only the names of the built-in catalog. An unknown name exits 64 and sends no request.
+- The server starts the scan in the background and returns `202` at once.
+- Only one scan of an eval set can run at a time. A second scan exits 1 with the error code `scan_already_running`. A set with manifest scanners starts its own scan when it completes, so a manual scan just after the completion can get this error.
+
+List the findings, then change their triage status (`open`, `triaged` or `dismissed`):
+
+```bash
+agentclash evalset finding list $EVAL_SET_ID --severity high --status open
+agentclash evalset finding update $FINDING_ID --status dismissed
+```
+
+- The list shows the newest findings first, 100 by default and 500 at most (`--limit`). If the count is equal to `--limit`, more findings can exist.
+- The table leaves out the evidence text. Use `--json` to get the full findings, with the evidence.
+- The CLI checks `--severity` (`low`, `medium`, `high`, `critical`) and `--status` before the request, because the server returns an empty list for an unknown value.
+
+The API form of the same calls is:
 
 ```bash
 curl -sS -X POST \
@@ -70,17 +112,9 @@ curl -sS -X POST \
   -H "Content-Type: application/json" \
   -d '{"scanners":["reward-hacking","sandbox-escape-attempt"]}' \
   "$AGENTCLASH_API_URL/v1/eval-sets/$EVAL_SET_ID/scan"
-```
 
-- Empty / omitted body may fall back to manifest-defined scanners.
-- Malformed JSON returns **400**.
-- A second overlapping scan for the same set returns **409** (`scan_already_running`).
-
-List and triage:
-
-```bash
 curl -sS -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
-  "$AGENTCLASH_API_URL/v1/eval-sets/$EVAL_SET_ID/findings"
+  "$AGENTCLASH_API_URL/v1/eval-sets/$EVAL_SET_ID/findings?severity=high&status=open&limit=100"
 
 curl -sS -X PATCH \
   -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
@@ -89,7 +123,7 @@ curl -sS -X PATCH \
   "$AGENTCLASH_API_URL/v1/scan-findings/$FINDING_ID"
 ```
 
-Rescans that find nothing clear prior findings for that target/scanner/version so stale hits do not linger.
+Rescans that find nothing clear prior findings for that target/scanner/version so stale hits do not linger. A rescan that finds the same hit again keeps the triage status of the finding.
 
 ## Next
 

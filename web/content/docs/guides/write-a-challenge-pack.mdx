@@ -217,6 +217,34 @@ These commands wrap raw run creation so you can iterate by name instead of pasti
    agentclash eval scorecard
    ```
 
+## Use a workspace draft
+
+Create a draft from a builder composition in JSON or YAML.
+
+```bash
+agentclash challenge-pack draft create --name "Support eval" --composition-file composition.yaml
+```
+
+You can also start from a published version with `draft create --from-version <version-id>`.
+To start from an app description, use `draft generate` with your provider account and model.
+
+```bash
+agentclash challenge-pack draft generate --description "Test a support agent" --provider-account <account-id> --model <model>
+```
+
+Draft generation starts a paid model call.
+After exit 75, run `agentclash challenge-pack draft list` before a retry.
+The server can create a draft even if the CLI gives exit 75.
+
+Compile the draft with its ID. Use `--yaml-out` to save the compiled YAML when the draft passes validation.
+If compile reports an error, fix the draft and run compile again.
+Publish the valid draft to get a runnable version ID.
+
+```bash
+agentclash challenge-pack draft compile <draft-id> --yaml-out support-eval.yaml
+agentclash challenge-pack draft publish <draft-id>
+```
+
 ## Verification
 
 You should now have:

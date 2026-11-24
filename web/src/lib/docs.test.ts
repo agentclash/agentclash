@@ -88,6 +88,9 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash-compare-and-triage");
     expect(doc?.content).toContain("agentclash-dataset-workflows");
     expect(doc?.content).toContain("https://www.agentclash.dev/docs/agent-skills");
+    expect(doc?.content).toContain(
+      "Use `agentclash tryout` to start, inspect, and compare workspace tryouts.",
+    );
   });
 
   it("generates the agent harness setup skill", () => {
@@ -106,6 +109,13 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash run turn status");
     expect(doc?.content).toContain("agentclash run turn submit");
     expect(doc?.content).toContain("awaiting_human");
+    expect(doc?.content).toContain(
+      "agentclash calibration create --run-agent <RUN_AGENT_ID> --turn 0 --score 4.5",
+    );
+    expect(doc?.content).toContain("agentclash arena vote <TASK_ID> --winner left");
+    expect(doc?.content).toContain(
+      "If `calibration create` exits `75`, run `agentclash calibration list` before a retry.",
+    );
   });
 
   it("generates the dataset workflows skill", () => {
@@ -148,6 +158,57 @@ describe("agent skill docs", () => {
       "`--repo` (required) — GitHub repository as owner/name, or its numeric GitHub repository ID",
     );
     expect(content).toContain("`--check-only`");
+
+    // workspace emergency-stop (cancel every active eval set)
+    expect(content).toContain("Cancel every active eval set in the workspace");
+    expect(content).toContain(
+      "`--yes` — Cancel the eval sets with no confirmation prompt; necessary in non-interactive mode",
+    );
+
+    // evalset scan and finding (transcript scanners)
+    expect(content).toContain("Run the built-in transcript scanners on an eval set");
+    expect(content).toContain(
+      "`--scanner` — Built-in scanner to run; may be repeated (default: the scanners of the eval set manifest)",
+    );
+    expect(content).toContain("List the scanner findings of an eval set");
+    expect(content).toContain("`--limit` — Maximum findings to return, newest first (1-500)");
+    expect(content).toContain("Change the triage status of a scanner finding");
+    expect(content).toContain(
+      "`--status` (required) — New status of the finding: open, triaged or dismissed",
+    );
+
+    // share links
+    expect(content).toContain(
+      "Make a public share link for a scorecard, replay, pack version, tryout or report",
+    );
+    expect(content).toContain(
+      "`--resource-type` (required) — Type of the resource to share: run_scorecard, run_agent_scorecard, run_agent_replay, challenge_pack_version, agent_tryout or report_snapshot",
+    );
+    expect(content).toContain("Turn search indexing of a share link on or off");
+    expect(content).toContain("Revoke a public share link");
+    expect(content).toContain(
+      "`--yes` — Revoke the link with no confirmation prompt; necessary in non-interactive mode",
+    );
+
+    expect(content).toContain("Record a calibration review for a run agent turn");
+    expect(content).toContain("`--run-agent` (required) — Run agent UUID for the review");
+    expect(content).toContain("`--turn` (required) — Turn index (0 or more)");
+    expect(content).toContain("`--score` (required) — Calibration score from 1 to 5");
+    expect(content).toContain("List recent calibration reviews");
+    expect(content).toContain("List pending arena tasks");
+    expect(content).toContain("Submit a vote for an arena task");
+    expect(content).toContain("Create an agent tryout from a template");
+    expect(content).toContain("Rerun an agent tryout with a model policy");
+    expect(content).toContain("Compare two to four agent tryouts");
+    expect(content).toContain("`--template` (required) — Template slug");
+    expect(content).toContain("Create a challenge pack draft");
+    expect(content).toContain("Compile and validate a challenge pack draft");
+    expect(content).toContain("Generate a challenge pack draft from a description");
+    expect(content).toContain("`--provider-account` (required) — Provider account ID for the draft model");
+    expect(content).toContain("Create a workspace connector");
+    expect(content).toContain("Approve a workspace connector snapshot");
+    expect(content).toContain("Revoke approval for a workspace connector snapshot");
+    expect(content).toContain("`--config-file` (required) — Path to a JSON or YAML connector config file");
   });
 
   it("generates the security evaluation skill", () => {
@@ -169,6 +230,12 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash workspace create");
     expect(doc?.content).toContain("agentclash workspace members invite");
     expect(doc?.content).toContain("agentclash link");
+    expect(doc?.content).toContain("agentclash workspace emergency-stop -w <workspace-id> --json");
+    expect(doc?.content).toContain("interactive_input_required");
+    expect(doc?.content).toContain("Never add `--yes` on your own decision");
+    expect(doc?.content).toContain(
+      "After approval, connector requests send the workspace secret to the external origin.",
+    );
   });
 
   it("generates the quickstart skill with readiness checks", () => {
@@ -225,6 +292,12 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash run ranking <RUN_ID> --json");
     expect(doc?.content).toContain("agentclash run insights <RUN_ID> --provider-account");
     expect(doc?.content).toContain("ranking_insights_rate_limited");
+    expect(doc?.content).toContain(
+      "agentclash evalset finding list <EVAL_SET_ID> --severity high --status open --json",
+    );
+    expect(doc?.content).toContain("scan_already_running");
+    expect(doc?.content).toContain("agentclash share update <SHARE_ID> --search-indexing=false");
+    expect(doc?.content).toContain("Turn on `--search-indexing` only when the user asks.");
     expect(doc?.content).toContain("agentclash run scorecard <RUN_AGENT_ID> --json");
     expect(doc?.content).toContain("agentclash replay get <RUN_AGENT_ID> --limit 50 --json");
     expect(doc?.content).toContain("artifact list` is workspace-wide");
@@ -561,6 +634,7 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("bundle_artifact_id");
     expect(doc?.content).toContain("challenge_pack_version_exists");
     expect(doc?.content).toContain("challenge_pack_metadata_conflict");
+    expect(doc?.content).toContain("After exit 75, run `agentclash challenge-pack draft list` before a retry.");
     expect(doc?.content).toContain("The API request body is capped at 1 MiB");
     expect(doc?.content).toContain("`publish` does not upload local files referenced by `path`");
     expect(doc?.content).toContain("agentclash eval start");

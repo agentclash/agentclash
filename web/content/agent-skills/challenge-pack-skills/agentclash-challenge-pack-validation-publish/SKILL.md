@@ -68,6 +68,29 @@ Exact command notes from the CLI:
 - `list --json` returns visible packs for the current workspace, with each pack's runnable `versions`.
 - The API request body is capped at 1 MiB.
 
+## Work with drafts
+
+Create a draft from a composition file, or generate one from an app description.
+
+```bash
+agentclash challenge-pack draft create --name "Support eval" --composition-file composition.yaml --json
+agentclash challenge-pack draft generate --description "Test a support agent" --provider-account <ACCOUNT_ID> --model <MODEL> --json
+```
+
+Draft generation starts a paid model call.
+After exit 75, run `agentclash challenge-pack draft list` before a retry.
+The server can create a draft even if the CLI gives exit 75.
+
+Compile the draft with its returned `id`. Fix any errors before you publish.
+Get user approval before you publish.
+
+```bash
+agentclash challenge-pack draft compile <DRAFT_ID> --yaml-out pack.yaml
+agentclash challenge-pack draft publish <DRAFT_ID> --json
+```
+
+Get user approval before you use `agentclash challenge-pack draft delete <DRAFT_ID> --yes`.
+
 ## Validation Procedure
 1. Set hosted API URL unless the workflow is explicitly local or self-hosted.
 2. Verify the workspace context before making workspace-backed calls.

@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "3747bd05b12f",
+  "snapshot_version": "b6bf3e6177d8",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -59,7 +59,7 @@
       "name": "agentclash-challenge-pack-validation-publish",
       "role": "challenge-pack-publication",
       "requires_cli": true,
-      "sha256": "69e7f311566b535678635619a0d1e030f25a967eea64015adda931a40edf2be3"
+      "sha256": "0cad070260689eb00527437b1c172274e3a961ef44bbd7b3e4a7427537a86539"
     },
     {
       "name": "agentclash-challenge-pack-yaml-author",
@@ -101,13 +101,13 @@
       "name": "agentclash-hub",
       "role": "hub",
       "requires_cli": false,
-      "sha256": "f4defd0888c4e0e9a6ebccdbc4e53216c0009e5fd2df03726bb1a91ec853605e"
+      "sha256": "93ff0ac52ed3172176121c3dee598862a20c9dff6134571f45fff7f1418f9cac"
     },
     {
       "name": "agentclash-multi-turn-operator",
       "role": "multi-turn",
       "requires_cli": true,
-      "sha256": "f693d8bc81940b23b0ed2a730fa6ef2d20675cf7150501260ffb602c117f7e5c"
+      "sha256": "832d72a038542be33637a2c093b3a78f973d08b055c300decc22b7712786f9e6"
     },
     {
       "name": "agentclash-quickstart",
@@ -131,7 +131,7 @@
       "name": "agentclash-scorecard-reader",
       "role": "reviewing",
       "requires_cli": true,
-      "sha256": "d91bc46d37cd241c1dc5a9f3e44b0d3772f87e4548cb7a67c62a9d8101d3de35"
+      "sha256": "be1d6a19c314943e87685bf98f8e3b14194f5f50850456b3d64df05cf64c2101"
     },
     {
       "name": "agentclash-security-evaluation",
@@ -143,7 +143,7 @@
       "name": "agentclash-workspace-admin",
       "role": "admin",
       "requires_cli": true,
-      "sha256": "b04757ba43f0938a9948121a7082e1d80c62bb5c5959ec7669659ff03c6325d0"
+      "sha256": "f0b2488d801ff8ba0408173b9ba122af7e578709c3377d297e5745beb386e463"
     }
   ]
 }

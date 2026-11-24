@@ -56,6 +56,17 @@ When you (a coding agent) drive AgentClash non-interactively, lean on the machin
   as the hard gate in CI/agent flows.
 - **Stay headless.** Set `AGENTCLASH_TOKEN`, `AGENTCLASH_WORKSPACE`, and `AGENTCLASH_API_URL` in the
   environment so no command needs an interactive prompt.
+- **Get approval for a large effect.** A command with a large effect (for example
+  `agentclash workspace emergency-stop`) asks for confirmation. In non-interactive mode it exits 64
+  with `error.code` `interactive_input_required` and does nothing. Add `--yes` only after the user
+  approves the effect.
+
+## Agent tryouts
+
+Use `agentclash tryout` to start, inspect, and compare workspace tryouts.
+The `create` and `rerun` commands start paid model calls.
+If either command exits `75`, run `agentclash tryout list` in its workspace before a retry.
+A retry can start a second tryout.
 
 ## End-To-End Eval Workflow (CLI)
 

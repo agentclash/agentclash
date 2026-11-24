@@ -14,9 +14,42 @@ var apiFeatureCommandPaths = []string{
 	"agentclash dataset baseline list",
 	"agentclash run insights",
 	"agentclash ci setup",
+	"agentclash workspace emergency-stop",
+	"agentclash evalset scan",
+	"agentclash evalset finding list",
+	"agentclash evalset finding update",
+	"agentclash share create",
+	"agentclash share update",
+	"agentclash share revoke",
+	"agentclash calibration create",
+	"agentclash calibration list",
+	"agentclash arena tasks",
+	"agentclash arena vote",
+	"agentclash tryout templates",
+	"agentclash tryout create",
+	"agentclash tryout list",
+	"agentclash tryout get",
+	"agentclash tryout events",
+	"agentclash tryout artifacts",
+	"agentclash tryout rerun",
+	"agentclash tryout compare",
+	"agentclash tryout promote",
+	"agentclash challenge-pack draft list",
+	"agentclash challenge-pack draft get",
+	"agentclash challenge-pack draft create",
+	"agentclash challenge-pack draft update",
+	"agentclash challenge-pack draft delete",
+	"agentclash challenge-pack draft compile",
+	"agentclash challenge-pack draft publish",
+	"agentclash challenge-pack draft generate",
+	"agentclash connector list",
+	"agentclash connector create",
+	"agentclash connector approve",
+	"agentclash connector revoke",
 }
 
 func TestAPIFeatureCommandsHaveShortAndExample(t *testing.T) {
+	isolateCLIEnv(t)
 	for _, path := range apiFeatureCommandPaths {
 		t.Run(path, func(t *testing.T) {
 			args := strings.Fields(strings.TrimPrefix(path, "agentclash "))

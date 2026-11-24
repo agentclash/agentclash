@@ -1,7 +1,7 @@
 ---
 title: CLI evalset workflow
 description: Submit, follow, log, report, and cancel Fleet eval sets with agentclash evalset.
-dateModified: 2026-08-09
+dateModified: 2026-11-24
 ---
 
 The `agentclash evalset` command group is the primary operator surface for Fleet.
@@ -25,6 +25,9 @@ agentclash workspace use <workspace-id>
 | `evalset logs <id>` | Multiplexed run-event streams (`-f` to follow) |
 | `evalset report <id>` | Scorecard table / json / csv |
 | `evalset cancel <id>` | Request cancellation |
+| `evalset scan <id>` | Run the built-in transcript scanners (`--scanner` to choose) |
+| `evalset finding list <id>` | Scanner findings, newest first (`--severity`, `--status`, `--limit`) |
+| `evalset finding update <finding-id>` | Set the triage status: `open`, `triaged` or `dismissed` |
 
 Global flags that matter: `--json`, `--workspace`, `--api-url`, `--non-interactive`.
 
@@ -79,6 +82,16 @@ agentclash evalset cancel <eval-set-id>
 ```
 
 Cancellation asks Temporal to stop the parent workflow, then transitions the set when delivery succeeds (or the workflow is already gone). Transient Temporal errors do not mark the set cancelled while work may still be running.
+
+## Scan and findings
+
+```bash
+agentclash evalset scan <eval-set-id> --scanner reward-hacking --scanner tool-misuse
+agentclash evalset finding list <eval-set-id> --severity high --status open
+agentclash evalset finding update <finding-id> --status triaged
+```
+
+The scanners read the finished transcripts and write findings. They do not change the scores. Without `--scanner`, the server runs the scanners of the manifest. The scan runs in the background, so run `finding list` again later. See [Budgets and scanners](/docs/fleet/budgets-and-scanners#scanners) for the catalog and the exit codes.
 
 ## Machine-readable automation
 

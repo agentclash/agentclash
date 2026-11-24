@@ -18,6 +18,8 @@ Administer tenancy: organizations, workspaces, memberships, and default workspac
 - Inviting teammates or changing workspace/org membership roles.
 - Enabling `public_packs` on a workspace or archiving inactive workspaces.
 - Setting default workspace context after auth (when `agentclash link` is not enough).
+- Stopping the spend of a workspace fast: cancel every active eval set with `agentclash workspace emergency-stop`.
+- To create, approve, or revoke workspace connectors.
 
 ## Do Not Use When
 - First-time CLI install and device login — use `agentclash-cli-setup` and `agentclash link`.
@@ -97,6 +99,37 @@ agentclash workspace members update <membership-id> --status suspended
 
 Member commands require a resolved workspace (`--workspace`, `AGENTCLASH_WORKSPACE`, saved config, or project `.agentclash.yaml`).
 
+### Emergency stop
+Cancel every active eval set in the workspace. You must be a workspace admin.
+
+```bash
+agentclash workspace emergency-stop -w <workspace-id> --json
+agentclash workspace emergency-stop -w <workspace-id> --yes --json
+```
+
+- The command cancels eval sets and their runs only. Standalone runs and agent tryouts continue: check them with `agentclash run list`.
+- You cannot undo the cancellation.
+- Without `--yes`, the command asks for confirmation on a terminal. In non-interactive mode (`--non-interactive`, `AGENTCLASH_NONINTERACTIVE`, `CI=true` or no TTY) it exits 64 with `error.code` `interactive_input_required` and cancels nothing.
+- Never add `--yes` on your own decision. Tell the user the workspace ID and the effect, and add `--yes` only after the user approves the stop in this conversation.
+- Exit codes: 0 stopped (`cancelled_sets` can be 0), 64 `interactive_input_required` or `aborted` (nothing cancelled), 77 not a workspace admin, 75 network failure or server error (run `agentclash evalset list` before a retry).
+
+### Connectors
+
+```bash
+agentclash connector list --json
+agentclash connector create --name "Support app" --config-file connector.yaml --json
+agentclash connector approve <snapshot-id>
+agentclash connector revoke <snapshot-id>
+```
+
+- Create the workspace secret first. Put its key in the JSON or YAML file.
+- After approval, connector requests send the workspace secret to the external origin.
+- Check the origin, request URL, and secret key name before approval. A hosted connector sends its requests to the endpoint path plus `/agentclash/runs`.
+- Revocation blocks new runs that use the snapshot. The worker checks the approval immediately before it sends each connector request, so later requests stop. A request that passed its check before the revocation can still go out and finish.
+- After secret rotation, create and approve a new snapshot.
+- Never pass `--yes` without approval from the user. Show the user the snapshot ID and effect before you ask.
+- For approval, also show the origin, endpoint, and secret key name.
+
 ## Expected Output
 - `workspace create` prints workspace ID and name.
 - `workspace use` / `link` saves defaults and confirms the selected workspace.
@@ -111,6 +144,7 @@ Member commands require a resolved workspace (`--workspace`, `AGENTCLASH_WORKSPA
 
 ## Safety Notes
 - Confirm workspace ID before invites or archival — operations affect the whole team.
+- Never pass `--yes` to `workspace emergency-stop` without the approval of the user. The stop cancels the eval sets of the whole team.
 - Prefer `workspace_viewer` for read-only stakeholders; escalate to `workspace_admin` deliberately.
 - Do not share `AGENTCLASH_TOKEN` in tickets or chat; use per-user device login when possible.
 

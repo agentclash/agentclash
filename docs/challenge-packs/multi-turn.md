@@ -30,6 +30,33 @@ agentclash run turn status <runAgentId> --run <runId>
 agentclash run turn submit <runAgentId> --run <runId> --message "Fine, email me when it posts."
 ```
 
+### Calibration reviews and arena votes
+
+Record a human score for a run agent turn. Use a turn index of 0 or more and a score from 1 to 5. The server keeps two decimal places of the score.
+
+```bash
+agentclash calibration create --run-agent <run-agent-id> --turn 0 --score 4.5 --rubric-key recovery --notes "The agent resumed the task."
+agentclash calibration list
+agentclash calibration list --json --query '.items[] | select(.run_agent_id == "<run-agent-id>")'
+```
+
+The server returns up to 100 reviews, newest first. The query selects reviews from those results. If `calibration create` exits 75, run `agentclash calibration list` before a retry, because a retry can record a second review.
+
+List the pending arena tasks and select the left or right run agent. You can give one `--rubric-score key=value` flag for each rubric key.
+
+```bash
+agentclash arena tasks
+agentclash arena vote <task-id> --winner left --rubric-score recovery=4.5
+```
+
+The server returns up to 20 pending tasks, oldest first. If the task is not in the list, give the run agent UUID of the winner with `--winner-run-agent`.
+
+```bash
+agentclash arena vote <task-id> --winner-run-agent <run-agent-id>
+```
+
+Use `--json` or `--output yaml` to read the server response. The table shows a warning if the list reaches the server limit.
+
 ## Web UI
 
 The run-agent replay page groups steps by `turn_index`, shows mismatch badges, and surfaces an awaiting-human banner with a submit form while the agent is executing.
