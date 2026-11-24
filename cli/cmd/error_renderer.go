@@ -49,8 +49,8 @@ type structuredError struct {
 	NextStep string         `json:"next_step,omitempty"`
 	// Retryable is always emitted (never omitted) so agents can branch on it
 	// without an existence check: true for rate limiting (429), server-side
-	// failures (5xx), and transport errors; false for everything else. The
-	// process exit code mirrors it — retryable failures exit exitRetryable.
+	// failures (5xx), and transport errors, including incomplete responses.
+	// The process exit code mirrors it.
 	Retryable bool `json:"retryable"`
 }
 
@@ -124,6 +124,11 @@ func exitCodeForError(err error) int {
 			return 2
 		}
 		return exitValidationError
+	}
+
+	var readErr *cliapi.ResponseBodyReadError
+	if errors.As(err, &readErr) {
+		return exitRetryableFailure
 	}
 
 	if errors.Is(err, fs.ErrNotExist) {
@@ -204,6 +209,11 @@ func classifyStructuredError(err error) structuredError {
 	var exitErr *ExitCodeError
 	if errors.As(err, &exitErr) {
 		return structuredError{Code: "command_failed", Message: exitErr.Error(), Details: details}
+	}
+
+	var readErr *cliapi.ResponseBodyReadError
+	if errors.As(err, &readErr) {
+		return structuredError{Code: "request_failed", Message: err.Error(), Details: details, Retryable: true}
 	}
 
 	if errors.Is(err, fs.ErrNotExist) {

@@ -1,8 +1,11 @@
 package api
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,6 +14,56 @@ import (
 	"testing"
 	"time"
 )
+
+func TestClientResponseBodyRead(t *testing.T) {
+	tests := []struct {
+		name     string
+		length   string
+		encoding string
+		body     string
+		wantErr  error
+	}{
+		{name: "complete", length: "2", body: "{}"},
+		{name: "truncated", length: "10", body: "{}", wantErr: io.ErrUnexpectedEOF},
+		{name: "invalid gzip", encoding: "gzip", body: "invalidgzip", wantErr: gzip.ErrHeader},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tc.length != "" {
+					w.Header().Set("Content-Length", tc.length)
+				}
+				if tc.encoding != "" {
+					w.Header().Set("Content-Encoding", tc.encoding)
+				}
+				if _, err := io.WriteString(w, tc.body); err != nil {
+					t.Errorf("writing response: %v", err)
+				}
+			}))
+			defer srv.Close()
+
+			cl := NewClient(srv.URL, "tok")
+			resp, err := cl.Get(context.Background(), "/test", nil)
+			if tc.wantErr == nil {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if got := string(resp.Body); got != tc.body {
+					t.Errorf("body = %q, want %q", got, tc.body)
+				}
+				return
+			}
+
+			var readErr *ResponseBodyReadError
+			if !errors.As(err, &readErr) || !errors.Is(err, tc.wantErr) {
+				t.Errorf("error = %v (%T), want *ResponseBodyReadError wrapping %v", err, err, tc.wantErr)
+			}
+			if resp != nil {
+				t.Errorf("response = %#v, want nil", resp)
+			}
+		})
+	}
+}
 
 func TestClientGetSendsAuthHeader(t *testing.T) {
 	var gotHeader string
