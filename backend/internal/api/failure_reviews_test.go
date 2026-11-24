@@ -447,20 +447,20 @@ func TestPromoteFailureEndpointReturnsCreatedAndIdempotentOK(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			service := makeService(tc.created)
 			router := buildRouter(routerOptions{
-				authMode:                   "dev",
-				logger:                     testLogger(t),
-				authenticator:              NewDevelopmentAuthenticator(),
-				authorizer:                 NewCallerWorkspaceAuthorizer(),
-				runCreationService:         stubRunCreationService{},
-				runReadService:             stubRunReadService{},
-				replayReadService:          stubReplayReadService{},
-				hostedRunIngestionService:  stubHostedRunIngestionService{},
-				compareReadService:         stubCompareReadService{},
-				agentDeploymentReadService: stubAgentDeploymentReadService{},
-				challengePackReadService:   stubChallengePackReadService{},
-				agentBuildService:          stubAgentBuildService{},
-				releaseGateService:         noopReleaseGateService{},
-				regressionService:          service,
+				authMode:                  "dev",
+				logger:                    testLogger(t),
+				authenticator:             NewDevelopmentAuthenticator(),
+				authorizer:                NewCallerWorkspaceAuthorizer(),
+				runCreationService:        stubRunCreationService{},
+				runReadService:            stubRunReadService{},
+				replayReadService:         stubReplayReadService{},
+				hostedRunIngestionService: stubHostedRunIngestionService{},
+				compareReadService:        stubCompareReadService{},
+				agentDeploymentService:    stubAgentDeploymentReadService{},
+				challengePackReadService:  stubChallengePackReadService{},
+				agentBuildService:         stubAgentBuildService{},
+				releaseGateService:        noopReleaseGateService{},
+				regressionService:         service,
 			})
 
 			req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/runs/"+runID.String()+"/failures/"+challengeIdentityID.String()+"/promote", bytes.NewBufferString(`{
@@ -498,20 +498,20 @@ func TestPromoteFailureEndpointRejectsUnknownOverrideKeys(t *testing.T) {
 	challengeIdentityID := uuid.New()
 
 	router := buildRouter(routerOptions{
-		authMode:                   "dev",
-		logger:                     testLogger(t),
-		authenticator:              NewDevelopmentAuthenticator(),
-		authorizer:                 NewCallerWorkspaceAuthorizer(),
-		runCreationService:         stubRunCreationService{},
-		runReadService:             stubRunReadService{},
-		replayReadService:          stubReplayReadService{},
-		hostedRunIngestionService:  stubHostedRunIngestionService{},
-		compareReadService:         stubCompareReadService{},
-		agentDeploymentReadService: stubAgentDeploymentReadService{},
-		challengePackReadService:   stubChallengePackReadService{},
-		agentBuildService:          stubAgentBuildService{},
-		releaseGateService:         noopReleaseGateService{},
-		regressionService:          &fakeRegressionService{},
+		authMode:                  "dev",
+		logger:                    testLogger(t),
+		authenticator:             NewDevelopmentAuthenticator(),
+		authorizer:                NewCallerWorkspaceAuthorizer(),
+		runCreationService:        stubRunCreationService{},
+		runReadService:            stubRunReadService{},
+		replayReadService:         stubReplayReadService{},
+		hostedRunIngestionService: stubHostedRunIngestionService{},
+		compareReadService:        stubCompareReadService{},
+		agentDeploymentService:    stubAgentDeploymentReadService{},
+		challengePackReadService:  stubChallengePackReadService{},
+		agentBuildService:         stubAgentBuildService{},
+		releaseGateService:        noopReleaseGateService{},
+		regressionService:         &fakeRegressionService{},
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/runs/"+runID.String()+"/failures/"+challengeIdentityID.String()+"/promote", bytes.NewBufferString(`{

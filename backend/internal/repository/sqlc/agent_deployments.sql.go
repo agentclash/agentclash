@@ -12,6 +12,51 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const agentDeploymentSlugExists = `-- name: AgentDeploymentSlugExists :one
+SELECT EXISTS (
+    SELECT 1
+    FROM agent_deployments
+    WHERE workspace_id = $1
+      AND slug = $2
+)
+`
+
+type AgentDeploymentSlugExistsParams struct {
+	WorkspaceID uuid.UUID
+	Slug        string
+}
+
+func (q *Queries) AgentDeploymentSlugExists(ctx context.Context, arg AgentDeploymentSlugExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, agentDeploymentSlugExists, arg.WorkspaceID, arg.Slug)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const archiveAgentDeployment = `-- name: ArchiveAgentDeployment :execrows
+UPDATE agent_deployments
+SET status = 'archived',
+    archived_at = now(),
+    updated_at = now()
+WHERE workspace_id = $1
+  AND id = $2
+  AND status IN ('active', 'paused')
+  AND archived_at IS NULL
+`
+
+type ArchiveAgentDeploymentParams struct {
+	WorkspaceID uuid.UUID
+	ID          uuid.UUID
+}
+
+func (q *Queries) ArchiveAgentDeployment(ctx context.Context, arg ArchiveAgentDeploymentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, archiveAgentDeployment, arg.WorkspaceID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countActiveAgentDeploymentsByWorkspaceID = `-- name: CountActiveAgentDeploymentsByWorkspaceID :one
 SELECT COUNT(*)
 FROM agent_deployments

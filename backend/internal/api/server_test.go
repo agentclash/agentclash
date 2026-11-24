@@ -68,6 +68,10 @@ func (stubAgentDeploymentReadService) ListAgentDeployments(_ context.Context, _ 
 	return ListAgentDeploymentsResult{}, errors.New("not implemented")
 }
 
+func (stubAgentDeploymentReadService) ArchiveAgentDeployment(context.Context, Caller, uuid.UUID, uuid.UUID) error {
+	return errors.New("not implemented")
+}
+
 type stubChallengePackReadService struct{}
 
 func (stubChallengePackReadService) ListChallengePacks(_ context.Context) (ListChallengePacksResult, error) {

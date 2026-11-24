@@ -33,6 +33,7 @@ type AgentBuildRepository interface {
 	ListAgentBuildVersionsByBuildID(ctx context.Context, agentBuildID uuid.UUID) ([]repository.AgentBuildVersion, error)
 	UpdateAgentBuildVersionDraft(ctx context.Context, params repository.UpdateAgentBuildVersionDraftParams) error
 	MarkAgentBuildVersionReady(ctx context.Context, id uuid.UUID) error
+	AgentDeploymentSlugExists(ctx context.Context, workspaceID uuid.UUID, slug string) (bool, error)
 	CreateAgentDeployment(ctx context.Context, params repository.CreateAgentDeploymentParams) (repository.AgentDeploymentRow, error)
 	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
 }
@@ -379,6 +380,15 @@ func (m *AgentBuildManager) QuickCreate(ctx context.Context, caller Caller, work
 	}
 	if strings.TrimSpace(input.Model) == "" {
 		return QuickCreateAgentResult{}, AgentBuildValidationError{Code: "missing_model", Message: "model (e.g. \"gpt-4.1\") is required"}
+	}
+
+	// Check the deployment slug before creating a build with the same slug.
+	slugExists, err := m.repo.AgentDeploymentSlugExists(ctx, workspaceID, generateSlug(name))
+	if err != nil {
+		return QuickCreateAgentResult{}, err
+	}
+	if slugExists {
+		return QuickCreateAgentResult{}, repository.ErrAgentDeploymentSlugTaken
 	}
 
 	build, err := m.CreateBuild(ctx, caller, workspaceID, CreateAgentBuildInput{
@@ -1428,6 +1438,10 @@ func handleServiceError(w http.ResponseWriter, logger *slog.Logger, r *http.Requ
 	}
 	if errors.Is(err, ErrForbidden) {
 		writeAuthzError(w, err)
+		return
+	}
+	if errors.Is(err, repository.ErrAgentDeploymentSlugTaken) {
+		writeAgentDeploymentSlugConflict(w)
 		return
 	}
 	logger.Error("request failed",

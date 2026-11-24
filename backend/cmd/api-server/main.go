@@ -169,7 +169,7 @@ func run() int {
 	deliveryContext, stopDelivery := context.WithCancel(context.Background())
 	defer stopDelivery()
 	go hostedRunIngestionManager.RunDelivery(deliveryContext)
-	agentDeploymentReadManager := api.NewAgentDeploymentReadManager(repo)
+	agentDeploymentManager := api.NewAgentDeploymentManager(authorizer, repo)
 	agentHarnessManager := api.NewAgentHarnessManager(authorizer, repo, api.NewTemporalAgentHarnessExecutionWorkflowStarter(temporalClient))
 	githubIntegrationManager := api.NewGitHubIntegrationManager(authorizer, repo, api.GitHubIntegrationConfig{
 		AppSlug:       cfg.GitHubAppSlug,
@@ -327,7 +327,7 @@ func run() int {
 		regressionManager,
 		datasetManager,
 		hostedRunIngestionManager,
-		agentDeploymentReadManager,
+		agentDeploymentManager,
 		agentHarnessManager,
 		githubIntegrationManager,
 		challengePackReadManager,

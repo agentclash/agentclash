@@ -75,6 +75,10 @@ func MountConnectorRoutes(router chi.Router, repo ConnectorRepository, authorize
 		body.Config.EndpointURL = normalized
 		binding, err := repo.CreateConnector(ctx, repository.CreateConnectorParams{WorkspaceID: ws, ActorUserID: caller.UserID, Name: body.Name, Config: body.Config})
 		if err != nil {
+			if errors.Is(err, repository.ErrAgentDeploymentSlugTaken) {
+				writeAgentDeploymentSlugConflict(w)
+				return
+			}
 			writeError(w, 409, "connector_unavailable", "connector could not be saved; check the workspace secret and configuration")
 			return
 		}

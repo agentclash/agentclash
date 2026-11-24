@@ -2673,6 +2673,27 @@
           ]
         },
         {
+          "name": "delete",
+          "path": "agentclash deployment delete",
+          "short": "Archive a deployment",
+          "runnable": true,
+          "args": [
+            {
+              "name": "deploymentId",
+              "required": true
+            }
+          ],
+          "example": "  # Archive a deployment after a confirmation prompt\n  agentclash deployment delete \u003cdeploymentId\u003e\n\n  # Archive a deployment in a script\n  agentclash deployment delete \u003cdeploymentId\u003e --yes",
+          "flags": [
+            {
+              "name": "yes",
+              "usage": "Skip confirmation",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        },
+        {
           "name": "list",
           "path": "agentclash deployment list",
           "short": "List agent deployments",

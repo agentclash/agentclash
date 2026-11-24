@@ -27,6 +27,10 @@ func (r *templateAgentBuildRepository) CreateAgentBuild(context.Context, reposit
 	return repository.AgentBuild{}, nil
 }
 
+func (r *templateAgentBuildRepository) AgentDeploymentSlugExists(context.Context, uuid.UUID, string) (bool, error) {
+	return false, nil
+}
+
 func (r *templateAgentBuildRepository) GetAgentBuildByID(_ context.Context, id uuid.UUID) (repository.AgentBuild, error) {
 	if id != r.build.ID {
 		return repository.AgentBuild{}, repository.ErrAgentBuildNotFound

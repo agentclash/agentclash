@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,10 +83,13 @@ func (s testAgentBuildService) QuickCreate(_ context.Context, _ Caller, _ uuid.U
 // quickCreateFakeRepo is a minimal in-memory AgentBuildRepository used to drive
 // the real AgentBuildManager through the quick-create orchestration.
 type quickCreateFakeRepo struct {
-	orgID       uuid.UUID
-	builds      map[uuid.UUID]repository.AgentBuild
-	versions    map[uuid.UUID]repository.AgentBuildVersion
-	deployments []repository.CreateAgentDeploymentParams
+	orgID         uuid.UUID
+	builds        map[uuid.UUID]repository.AgentBuild
+	versions      map[uuid.UUID]repository.AgentBuildVersion
+	deployments   []repository.CreateAgentDeploymentParams
+	reservedSlug  string
+	slugLookupErr error
+	deploymentErr error
 }
 
 func newQuickCreateFakeRepo() *quickCreateFakeRepo {
@@ -191,6 +196,9 @@ func (r *quickCreateFakeRepo) MarkAgentBuildVersionReady(_ context.Context, id u
 }
 
 func (r *quickCreateFakeRepo) CreateAgentDeployment(_ context.Context, params repository.CreateAgentDeploymentParams) (repository.AgentDeploymentRow, error) {
+	if r.deploymentErr != nil {
+		return repository.AgentDeploymentRow{}, r.deploymentErr
+	}
 	r.deployments = append(r.deployments, params)
 	return repository.AgentDeploymentRow{
 		ID:                    uuid.New(),
@@ -207,8 +215,90 @@ func (r *quickCreateFakeRepo) CreateAgentDeployment(_ context.Context, params re
 	}, nil
 }
 
+func (r *quickCreateFakeRepo) AgentDeploymentSlugExists(_ context.Context, _ uuid.UUID, slug string) (bool, error) {
+	return slug == r.reservedSlug, r.slugLookupErr
+}
+
 func (r *quickCreateFakeRepo) GetProviderAccountByID(_ context.Context, _ uuid.UUID) (repository.ProviderAccountRow, error) {
 	return repository.ProviderAccountRow{}, nil
+}
+
+func TestAgentDeploymentCreateRoutes(t *testing.T) {
+	const conflictCode = "agent_deployment_slug_taken"
+	conflict := fmt.Errorf("create deployment: %w", repository.ErrAgentDeploymentSlugTaken)
+	for _, tc := range []struct {
+		name          string
+		quick         bool
+		deploymentErr error
+		reservedSlug  string
+		slugLookupErr error
+		wantStatus    int
+		wantCode      string
+	}{
+		{name: "native success", wantStatus: http.StatusCreated},
+		{name: "native insert conflict", deploymentErr: conflict, wantStatus: http.StatusConflict, wantCode: conflictCode},
+		{name: "quick-create success", quick: true, wantStatus: http.StatusCreated},
+		{name: "quick-create insert conflict", quick: true, deploymentErr: conflict, wantStatus: http.StatusConflict, wantCode: conflictCode},
+		{name: "quick-create reserved slug", quick: true, reservedSlug: "support-agent", wantStatus: http.StatusConflict, wantCode: conflictCode},
+		{name: "quick-create lookup error", quick: true, slugLookupErr: errors.New("database unavailable"), wantStatus: http.StatusInternalServerError, wantCode: "internal_error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workspaceID, buildID, versionID := uuid.New(), uuid.New(), uuid.New()
+			repo := newQuickCreateFakeRepo()
+			repo.deploymentErr, repo.reservedSlug, repo.slugLookupErr = tc.deploymentErr, tc.reservedSlug, tc.slugLookupErr
+			path := "/agent-builds/quick-create"
+			body := map[string]string{
+				"name":                "Support Agent",
+				"runtime_profile_id":  uuid.NewString(),
+				"provider_account_id": uuid.NewString(),
+				"model":               "gpt-4.1",
+			}
+			if tc.quick {
+				body["instructions"] = "Help users."
+			} else {
+				path = "/agent-deployments"
+				body["agent_build_id"], body["build_version_id"] = buildID.String(), versionID.String()
+				repo.builds[buildID] = repository.AgentBuild{ID: buildID, OrganizationID: repo.orgID}
+				repo.versions[versionID] = repository.AgentBuildVersion{ID: versionID, VersionStatus: "ready"}
+			}
+			router := buildRouter(routerOptions{
+				authMode:          "dev",
+				logger:            testLogger(t),
+				authenticator:     NewDevelopmentAuthenticator(),
+				authorizer:        NewCallerWorkspaceAuthorizer(),
+				agentBuildService: NewAgentBuildManager(repo),
+			})
+			raw, err := json.Marshal(body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+path, strings.NewReader(string(raw)))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set(headerUserID, uuid.NewString())
+			req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":"+RoleWorkspaceMember)
+			res := httptest.NewRecorder()
+			router.ServeHTTP(res, req)
+			if res.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d. Body: %s", res.Code, tc.wantStatus, res.Body)
+			}
+			if tc.wantCode == "" {
+				if len(repo.deployments) != 1 || repo.deployments[0].Slug != "support-agent" {
+					t.Fatalf("expected one deployment with slug support-agent, got %+v", repo.deployments)
+				}
+				return
+			}
+			var envelope errorEnvelope
+			if err := json.Unmarshal(res.Body.Bytes(), &envelope); err != nil || envelope.Error.Code != tc.wantCode {
+				t.Fatalf("error envelope = %s, want %q (decode error: %v)", res.Body, tc.wantCode, err)
+			}
+			if tc.wantCode == conflictCode && envelope.Error.Message != "A deployment with this slug already exists in the workspace. It may be archived." {
+				t.Fatalf("unexpected conflict message: %q", envelope.Error.Message)
+			}
+			if tc.quick && (tc.reservedSlug != "" || tc.slugLookupErr != nil) && len(repo.builds) != 0 {
+				t.Fatalf("quick-create wrote %d build(s) before checking the slug", len(repo.builds))
+			}
+		})
+	}
 }
 
 func TestQuickCreateAgentOrchestratesChain(t *testing.T) {

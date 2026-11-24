@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "b6bf3e6177d8",
+  "snapshot_version": "812a6ba57058",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -11,7 +11,7 @@
       "name": "agentclash-agent-deployment-setup",
       "role": "agent-deployments",
       "requires_cli": true,
-      "sha256": "76bc7df69767c2a176c5e31f0e1d01532c0b8aa565b55473e50a7960a3e59ff9"
+      "sha256": "0178d494ba238c98b8dadf4516adbbc041aef077a7040d1b1663b74935b3d897"
     },
     {
       "name": "agentclash-agent-harness-setup",
