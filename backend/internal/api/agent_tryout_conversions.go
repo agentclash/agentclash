@@ -11,6 +11,7 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -99,6 +100,28 @@ func parseTryoutModelPolicy(raw json.RawMessage) (tryoutModelPolicy, error) {
 	return policy, nil
 }
 
+func workspaceTryoutModel(raw json.RawMessage, harnessKind string) (string, error) {
+	policy, err := parseTryoutModelPolicy(raw)
+	if err != nil {
+		return "", err
+	}
+	switch len(policy.Models) {
+	case 0:
+		if strings.TrimSpace(policy.Mode) == "explicit" {
+			return "", fmt.Errorf("%w: explicit mode requires a model", ErrAgentTryoutModelPolicyInvalid)
+		}
+		return "", nil
+	case 1:
+		provider := strings.TrimSpace(policy.Models[0].Provider)
+		if domain.NormalizeAgentHarnessKind(harnessKind) != domain.AgentHarnessKindCodexE2B || provider != "openai" {
+			return "", fmt.Errorf("%w: explicit workspace rerun models require the Codex harness and provider openai (got harness %q and provider %q)", errUnsupportedWorkspaceTryoutModelPolicy, harnessKind, provider)
+		}
+		return strings.TrimSpace(policy.Models[0].Model), nil
+	default:
+		return "", fmt.Errorf("%w: workspace reruns support one model per tryout", errUnsupportedWorkspaceTryoutModelPolicy)
+	}
+}
+
 // RerunAgentTryoutInput requests a rerun of an existing workspace tryout with a
 // different model policy and, optionally, a different agent design.
 type RerunAgentTryoutInput struct {
@@ -139,6 +162,13 @@ func (m *AgentTryoutManager) RerunWorkspaceTryout(ctx context.Context, caller Ca
 		return repository.AgentTryout{}, err
 	}
 	if err := validateTryoutModelPolicy(input.SelectedModelPolicy); err != nil {
+		return repository.AgentTryout{}, err
+	}
+	harnessKind := domain.AgentHarnessKindCodexE2B
+	if m.execution != nil {
+		harnessKind = m.execution.config.HarnessKind
+	}
+	if _, err := workspaceTryoutModel(input.SelectedModelPolicy, harnessKind); err != nil {
 		return repository.AgentTryout{}, err
 	}
 	if m.rerunGate != nil {

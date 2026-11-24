@@ -7035,7 +7035,9 @@ paths:
         Returns a cursor-paginated timeline of product-level events for a
         workspace-owned tryout. Workspace members receive the full (unredacted)
         event payloads. Poll with the returned `next_cursor` as `after` to
-        resume.
+        resume. For a Codex rerun with an explicit model, the
+        `codex.exec.started` sandbox command event includes the launched model
+        ID in `payload.provider_model_id` even when the command is hidden.
       tags: [AgentTryouts]
       security:
         - bearerJWT: []
@@ -7171,8 +7173,9 @@ paths:
         Creates a new tryout that reuses the source tryout's template and input
         but runs under a different model policy, linked to the source via
         `parent_tryout_id`. The source is never mutated. Anonymous/unclaimed
-        source tryouts return a sign-in-required error; an invalid model policy
-        or an unavailable provider/model returns a product error.
+        source tryouts return a sign-in-required error. The Codex workspace
+        harness accepts one explicit OpenAI model. Incompatible policies are
+        rejected before a rerun is created.
       tags: [AgentTryouts]
       security:
         - bearerJWT: []
@@ -7192,7 +7195,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/AgentTryoutResponse"
         "400":
-          $ref: "#/components/responses/ValidationError"
+          description: >-
+            Invalid request or model policy. A policy that selects multiple
+            models or a known provider the workspace harness cannot run returns
+            `unsupported_workspace_model_policy`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "402":
@@ -15800,9 +15810,10 @@ components:
           type: object
           additionalProperties: true
           description: >-
-            The model policy to rerun under. Must set a `mode` or at least one
-            explicit `models[]` entry; explicit models must name a known
-            provider.
+            The model policy to rerun under. Set `models` to one entry with
+            `provider: openai` and a model ID to override the Codex model.
+            `mode: explicit` requires a model. Use `mode: hosted_default`
+            without `models` to use the harness default.
         agent_design_provided:
           type: boolean
           description: >-

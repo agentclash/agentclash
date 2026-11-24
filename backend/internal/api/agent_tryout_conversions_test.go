@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -106,7 +110,7 @@ func TestAgentTryoutRerunClonesSnapshotsWithNewModelPolicy(t *testing.T) {
 	source := seedWorkspaceTryout(repo, orgID, workspaceID, "tiny-bugfix")
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
-	policy := json.RawMessage(`{"mode":"hosted_default","models":[{"provider":"anthropic","model":"claude-opus-4-8"}]}`)
+	policy := json.RawMessage(`{"mode":"explicit","models":[{"provider":"openai","model":"gpt-5"}]}`)
 	rerun, err := manager.RerunWorkspaceTryout(ctx, callerWithWorkspace(workspaceID), RerunAgentTryoutInput{
 		SourceTryoutID:      source.ID,
 		SelectedModelPolicy: policy,
@@ -134,6 +138,69 @@ func TestAgentTryoutRerunClonesSnapshotsWithNewModelPolicy(t *testing.T) {
 	}
 	if rerun.RedactionStatus != repository.AgentTryoutRedactionPending {
 		t.Fatalf("rerun redaction = %q, want pending", rerun.RedactionStatus)
+	}
+}
+
+func TestRerunAgentTryoutHandlerDispatchesOnlySupportedModelPolicies(t *testing.T) {
+	cases := []struct {
+		name      string
+		policy    string
+		wantCode  string
+		wantModel string
+	}{
+		{name: "OpenAI override", policy: `{"mode":"explicit","models":[{"provider":"openai","model":" gpt-5 "}]}`, wantModel: "gpt-5"},
+		{name: "harness default", policy: `{"mode":"hosted_default"}`},
+		{name: "incompatible provider", policy: `{"mode":"explicit","models":[{"provider":"anthropic","model":"claude-sonnet"}]}`, wantCode: "unsupported_workspace_model_policy"},
+		{name: "multiple models", policy: `{"mode":"explicit","models":[{"provider":"openai","model":"gpt-5"},{"provider":"openai","model":"gpt-5-mini"}]}`, wantCode: "unsupported_workspace_model_policy"},
+		{name: "missing explicit model", policy: `{"mode":"explicit"}`, wantCode: "invalid_model_policy"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			orgID, workspaceID := uuid.New(), uuid.New()
+			repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+			source := seedWorkspaceTryout(repo, orgID, workspaceID, "tiny-bugfix")
+			starter := &fakeAgentHarnessWorkflowStarter{}
+			manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithExecution(starter, AgentTryoutExecutionConfig{})
+			router := chi.NewRouter()
+			router.Post("/v1/agent-tryouts/{tryoutID}/rerun", rerunAgentTryoutHandler(slog.Default(), manager))
+			req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts/"+source.ID.String()+"/rerun", strings.NewReader(`{"selected_model_policy":`+tc.policy+`}`))
+			req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, callerWithWorkspace(workspaceID)))
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+
+			if tc.wantCode != "" {
+				if rr.Code != http.StatusBadRequest {
+					t.Fatalf("status = %d, want 400: %s", rr.Code, rr.Body.String())
+				}
+				var body errorEnvelope
+				if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+					t.Fatal(err)
+				}
+				if body.Error.Code != tc.wantCode {
+					t.Fatalf("error = %+v, want code %q", body.Error, tc.wantCode)
+				}
+				if len(repo.tryouts) != 1 || len(repo.createdExecutions) != 0 || starter.startedCount != 0 {
+					t.Fatal("rejected rerun created a tryout or execution")
+				}
+				return
+			}
+
+			if rr.Code != http.StatusCreated {
+				t.Fatalf("status = %d, want 201: %s", rr.Code, rr.Body.String())
+			}
+			if len(repo.createdExecutions) != 1 || starter.startedCount != 1 {
+				t.Fatalf("created executions/workflow starts = %d/%d, want 1/1", len(repo.createdExecutions), starter.startedCount)
+			}
+			var snapshot struct {
+				Model string `json:"codex_model"`
+			}
+			if err := json.Unmarshal(repo.createdExecutions[0].HarnessSnapshot, &snapshot); err != nil {
+				t.Fatal(err)
+			}
+			if snapshot.Model != tc.wantModel {
+				t.Fatalf("snapshot model = %q, want %q", snapshot.Model, tc.wantModel)
+			}
+		})
 	}
 }
 
