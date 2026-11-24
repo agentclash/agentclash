@@ -61,6 +61,13 @@ When you (a coding agent) drive AgentClash non-interactively, lean on the machin
   with `error.code` `interactive_input_required` and does nothing. Add `--yes` only after the user
   approves the effect.
 
+## Agent tryouts
+
+Use `agentclash tryout` to start, inspect, and compare workspace tryouts.
+The `create` and `rerun` commands start paid model calls.
+If either command exits `75`, run `agentclash tryout list` in its workspace before a retry.
+A retry can start a second tryout.
+
 ## End-To-End Eval Workflow (CLI)
 
 ```text
