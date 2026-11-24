@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.11.0](https://github.com/agentclash/agentclash/compare/v2.10.0...v2.11.0) (2026-11-24)
+
+
+### Features
+
+* **cli:** add agent tryout commands ([1fda971](https://github.com/agentclash/agentclash/commit/1fda9719a853f472058b15ce08e31598939f7f5b)), closes [#1418](https://github.com/agentclash/agentclash/issues/1418)
+* **cli:** add challenge-pack draft commands ([8d9cdbf](https://github.com/agentclash/agentclash/commit/8d9cdbfc9708ab553027d2303553ad8abd9da5a0)), closes [#1418](https://github.com/agentclash/agentclash/issues/1418)
+
 ## [2.10.0](https://github.com/agentclash/agentclash/compare/v2.9.0...v2.10.0) (2026-11-24)
 
 
