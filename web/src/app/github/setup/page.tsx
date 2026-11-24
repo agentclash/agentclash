@@ -135,14 +135,15 @@ async function GitHubSetupRecovery({ accessToken }: { accessToken: string }) {
         <h1 className="text-lg font-semibold">Finish connecting GitHub</h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           This installation started from GitHub, so AgentClash needs a workspace
-          to create a signed connection. Open a workspace to continue.
+          to create a signed connection. Open a workspace’s CI setup and select
+          Install GitHub App or Add repositories on GitHub.
         </p>
         {workspaces.length > 0 ? (
           <div className="mt-5 grid gap-2">
             {workspaces.map((workspace) => (
               <a
                 key={workspace.id}
-                href={`/workspaces/${workspace.id}`}
+                href={`/workspaces/${workspace.id}/ci-setup`}
                 className="rounded-lg border border-border px-4 py-3 text-sm font-medium hover:bg-muted"
               >
                 {workspace.name}
