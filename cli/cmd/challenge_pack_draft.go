@@ -5,12 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -507,14 +506,11 @@ func draftYAMLScalar(node *yaml.Node) (any, error) {
 		}
 		return json.Number(number.String()), nil
 	case "!!float":
-		if json.Valid([]byte(node.Value)) {
-			return json.Number(node.Value), nil
-		}
-		var value float64
-		if err := node.Decode(&value); err != nil || math.IsInf(value, 0) || math.IsNaN(value) {
+		number, ok := yamlFloatJSONNumber(node.Value)
+		if !ok {
 			return nil, fmt.Errorf("has a number that JSON cannot hold: %q", node.Value)
 		}
-		return json.Number(strconv.FormatFloat(value, 'g', -1, 64)), nil
+		return json.Number(number), nil
 	case "!!str", "!!timestamp":
 		return node.Value, nil
 	default:
@@ -525,6 +521,45 @@ func draftYAMLScalar(node *yaml.Node) (any, error) {
 		return value, nil
 	}
 }
+
+// yamlFloatJSONNumber changes the text of a YAML float into JSON number text.
+// It keeps all digits, so no precision is lost. A value with a decimal point
+// keeps the point, so a field of type int rejects "30." as it rejects 30.0.
+// YAML infinity and NaN values have no JSON form, so the function rejects them.
+func yamlFloatJSONNumber(text string) (string, bool) {
+	value := strings.ReplaceAll(text, "_", "")
+	sign := ""
+	switch {
+	case strings.HasPrefix(value, "+"):
+		value = value[1:]
+	case strings.HasPrefix(value, "-"):
+		sign, value = "-", value[1:]
+	}
+	mantissa, exponent := value, ""
+	if index := strings.IndexAny(value, "eE"); index >= 0 {
+		mantissa, exponent = value[:index], value[index:]
+	}
+	integer, fraction, hasPoint := strings.Cut(mantissa, ".")
+	integer = strings.TrimLeft(integer, "0")
+	if integer == "" {
+		integer = "0"
+	}
+	number := sign + integer
+	if hasPoint {
+		if fraction == "" {
+			fraction = "0"
+		}
+		number += "." + fraction
+	}
+	number += exponent
+	if !jsonNumberPattern.MatchString(number) {
+		return "", false
+	}
+	return number, true
+}
+
+// jsonNumberPattern is the number grammar of RFC 8259, section 6.
+var jsonNumberPattern = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)?$`)
 
 func decodeDraftJSONValue(decoder *json.Decoder) (any, error) {
 	token, err := decoder.Token()

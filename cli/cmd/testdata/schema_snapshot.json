@@ -1673,6 +1673,85 @@
       ]
     },
     {
+      "name": "connector",
+      "path": "agentclash connector",
+      "short": "Manage workspace connectors",
+      "runnable": false,
+      "example": "  agentclash connector list",
+      "subcommands": [
+        {
+          "name": "approve",
+          "path": "agentclash connector approve",
+          "short": "Approve a workspace connector snapshot",
+          "runnable": true,
+          "args": [
+            {
+              "name": "snapshot-id",
+              "required": true
+            }
+          ],
+          "example": "  agentclash connector approve \u003csnapshot-id\u003e",
+          "flags": [
+            {
+              "name": "yes",
+              "usage": "Approve the snapshot without a confirmation prompt",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        },
+        {
+          "name": "create",
+          "path": "agentclash connector create",
+          "short": "Create a workspace connector",
+          "runnable": true,
+          "example": "  agentclash connector create --name \"Support app\" --config-file connector.yaml",
+          "flags": [
+            {
+              "name": "config-file",
+              "usage": "Path to a JSON or YAML connector config file",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "name",
+              "usage": "Connector name",
+              "type": "string",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "path": "agentclash connector list",
+          "short": "List connector snapshots in the workspace",
+          "runnable": true,
+          "example": "  agentclash connector list --json"
+        },
+        {
+          "name": "revoke",
+          "path": "agentclash connector revoke",
+          "short": "Revoke approval for a workspace connector snapshot",
+          "runnable": true,
+          "args": [
+            {
+              "name": "snapshot-id",
+              "required": true
+            }
+          ],
+          "example": "  agentclash connector revoke \u003csnapshot-id\u003e",
+          "flags": [
+            {
+              "name": "yes",
+              "usage": "Revoke the snapshot without a confirmation prompt",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "dataset",
       "path": "agentclash dataset",
       "short": "Manage eval datasets",
@@ -5898,6 +5977,10 @@
     {
       "code": "aborted",
       "description": "The person at the terminal did not confirm the command. The command did not start its action."
+    },
+    {
+      "code": "connector_not_found",
+      "description": "The workspace has no connector snapshot with this ID."
     },
     {
       "code": "follow_timeout",
