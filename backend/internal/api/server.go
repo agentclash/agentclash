@@ -45,7 +45,7 @@ type routerOptions struct {
 	regressionService          RegressionService
 	datasetService             DatasetService
 	hostedRunIngestionService  HostedRunIngestionService
-	agentDeploymentReadService AgentDeploymentReadService
+	agentDeploymentService     AgentDeploymentService
 	agentHarnessService        AgentHarnessService
 	githubIntegrationService   GitHubIntegrationService
 	challengePackReadService   ChallengePackReadService
@@ -88,7 +88,7 @@ func NewServer(
 	regressionService RegressionService,
 	datasetService DatasetService,
 	hostedRunIngestionService HostedRunIngestionService,
-	agentDeploymentReadService AgentDeploymentReadService,
+	agentDeploymentService AgentDeploymentService,
 	agentHarnessService AgentHarnessService,
 	githubIntegrationService GitHubIntegrationService,
 	challengePackReadService ChallengePackReadService,
@@ -134,7 +134,7 @@ func NewServer(
 		regressionService:          regressionService,
 		datasetService:             datasetService,
 		hostedRunIngestionService:  hostedRunIngestionService,
-		agentDeploymentReadService: agentDeploymentReadService,
+		agentDeploymentService:     agentDeploymentService,
 		agentHarnessService:        agentHarnessService,
 		githubIntegrationService:   githubIntegrationService,
 		challengePackReadService:   challengePackReadService,
@@ -237,7 +237,7 @@ func newRouter(
 	replayReadService ReplayReadService,
 	hostedRunIngestionService HostedRunIngestionService,
 	compareReadService CompareReadService,
-	agentDeploymentReadService AgentDeploymentReadService,
+	agentDeploymentService AgentDeploymentService,
 	challengePackReadService ChallengePackReadService,
 	agentBuildService AgentBuildService,
 	releaseGateService ReleaseGateService,
@@ -267,7 +267,7 @@ func newRouter(
 		compareReadService:         compareReadService,
 		releaseGateService:         releaseGateService,
 		hostedRunIngestionService:  hostedRunIngestionService,
-		agentDeploymentReadService: agentDeploymentReadService,
+		agentDeploymentService:     agentDeploymentService,
 		challengePackReadService:   challengePackReadService,
 		challengePackAuthoringSvc:  challengePackAuthoringServiceArg,
 		agentBuildService:          agentBuildService,
@@ -300,7 +300,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	replayReadService := opts.replayReadService
 	hostedRunIngestionService := opts.hostedRunIngestionService
 	compareReadService := opts.compareReadService
-	agentDeploymentReadService := opts.agentDeploymentReadService
+	agentDeploymentService := opts.agentDeploymentService
 	agentHarnessService := opts.agentHarnessService
 	githubIntegrationService := opts.githubIntegrationService
 	challengePackReadService := opts.challengePackReadService
@@ -453,7 +453,7 @@ func buildRouter(opts routerOptions) http.Handler {
 			if opts.connectorRepository != nil {
 				MountConnectorRoutes(r, opts.connectorRepository, authorizer, opts.connectorResolver)
 			}
-			registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, challengePackBuilderService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, agentTryoutService, billingService, multiTurnService)
+			registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, challengePackBuilderService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, agentTryoutService, billingService, multiTurnService)
 		})
 	})
 

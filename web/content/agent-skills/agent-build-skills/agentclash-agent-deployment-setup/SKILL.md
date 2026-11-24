@@ -109,6 +109,7 @@ agentclash run create \
 ## Expected Output
 - `deployment list --json` returns `items` with deployment `id`, `name`, `status`, `current_build_version_id`, and timestamps.
 - `deployment create` returns a created deployment with `id`, `workspace_id`, `agent_build_id`, `current_build_version_id`, `name`, `slug`, `deployment_type`, `status`, `created_at`, and `updated_at`.
+- Archive a deployment with `agentclash deployment delete <deploymentId>`. Get explicit user approval before passing `--yes`.
 - Human output for deployment creation prints `Created deployment <name> (<id>)`.
 - The deployment ID can be passed to run creation as `agent_deployment_ids` through `agentclash run create --deployments <DEPLOYMENT_ID>`.
 

@@ -14,9 +14,11 @@ var largeEffectCommandPaths = []string{
 	"agentclash challenge-pack draft delete",
 	"agentclash connector approve",
 	"agentclash connector revoke",
+	"agentclash deployment delete",
 }
 
 func TestLargeEffectCommandsDeclareYesFlag(t *testing.T) {
+	isolateCLIEnv(t)
 	for _, path := range largeEffectCommandPaths {
 		t.Run(path, func(t *testing.T) {
 			args := strings.Fields(strings.TrimPrefix(path, "agentclash "))

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/connectors"
 	"github.com/go-chi/chi/v5"
@@ -16,16 +17,17 @@ import (
 )
 
 type connectorAPIFixture struct {
-	binding connectors.Binding
-	writes  int
-	reads   int
+	binding   connectors.Binding
+	createErr error
+	writes    int
+	reads     int
 }
 
 func (f *connectorAPIFixture) CreateConnector(_ context.Context, p repository.CreateConnectorParams) (connectors.Binding, error) {
 	f.writes++
 	f.binding.Config = p.Config
 	f.binding.WorkspaceID = p.WorkspaceID
-	return f.binding, nil
+	return f.binding, f.createErr
 }
 func (f *connectorAPIFixture) GetConnector(context.Context, uuid.UUID, uuid.UUID) (connectors.Binding, error) {
 	f.reads++
@@ -50,6 +52,46 @@ type connectorAPIResolver struct{}
 func (connectorAPIResolver) LookupNetIP(context.Context, string, string) ([]netip.Addr, error) {
 	return []netip.Addr{netip.MustParseAddr("93.184.216.34")}, nil
 }
+
+func TestConnectorDeploymentCreateRoute(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		err     error
+		status  int
+		code    string
+		message string
+	}{
+		{name: "success", status: http.StatusCreated},
+		{"deployment slug taken", fmt.Errorf("create connector: %w", repository.ErrAgentDeploymentSlugTaken), http.StatusConflict, "agent_deployment_slug_taken", "A deployment with this slug already exists in the workspace. It may be archived."},
+		{"secret unavailable", repository.ErrConnectorUnapproved, http.StatusConflict, "connector_unavailable", "connector could not be saved; check the workspace secret and configuration"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workspaceID := uuid.New()
+			fixture := &connectorAPIFixture{createErr: tc.err}
+			router := buildRouter(routerOptions{
+				authMode: "dev", logger: testLogger(t), authenticator: NewDevelopmentAuthenticator(),
+				authorizer: NewCallerWorkspaceAuthorizer(), connectorRepository: fixture, connectorResolver: connectorAPIResolver{},
+			})
+			body := strings.NewReader(`{"name":"Support Agent","config":{"adapter":"hosted","endpoint_url":"https://example.com","secret_key":"APP_TOKEN","auth":"bearer","timeout_seconds":60}}`)
+			req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/connectors", body)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set(headerUserID, uuid.NewString())
+			req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":"+RoleWorkspaceAdmin)
+			res := httptest.NewRecorder()
+			router.ServeHTTP(res, req)
+			if res.Code != tc.status || fixture.writes != 1 {
+				t.Fatalf("status = %d, writes = %d. Body: %s", res.Code, fixture.writes, res.Body)
+			}
+			if tc.code != "" {
+				var body errorEnvelope
+				if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil || body.Error.Code != tc.code || body.Error.Message != tc.message {
+					t.Fatalf("error envelope = %s, want %q and %q (decode error: %v)", res.Body, tc.code, tc.message, err)
+				}
+			}
+		})
+	}
+}
+
 func TestConnectorRoutesEnforceAdminApprovalAndWorkspaceRoles(t *testing.T) {
 	ws := uuid.New()
 	binding := connectors.Binding{SnapshotID: uuid.New(), WorkspaceID: ws, SecretID: uuid.New(), SecretRevision: 2, TargetOrigin: "https://example.com", Config: connectors.Config{Adapter: "hosted", EndpointURL: "https://example.com", SecretKey: "APP_TOKEN", Auth: "bearer", TimeoutSeconds: 60}}

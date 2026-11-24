@@ -2,21 +2,26 @@ package api
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
-type AgentDeploymentReadRepository interface {
+type AgentDeploymentRepository interface {
 	ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentDeploymentSummary, error)
 	CountActiveAgentDeploymentsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
+	AgentDeploymentIsConnector(ctx context.Context, workspaceID, deploymentID uuid.UUID) (bool, error)
+	ArchiveAgentDeployment(ctx context.Context, workspaceID, deploymentID uuid.UUID) error
 }
 
-type AgentDeploymentReadService interface {
+type AgentDeploymentService interface {
 	ListAgentDeployments(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) (ListAgentDeploymentsResult, error)
+	ArchiveAgentDeployment(ctx context.Context, caller Caller, workspaceID, deploymentID uuid.UUID) error
 }
 
 type ListAgentDeploymentsResult struct {
@@ -26,17 +31,36 @@ type ListAgentDeploymentsResult struct {
 	Offset      int32
 }
 
-type AgentDeploymentReadManager struct {
-	repo AgentDeploymentReadRepository
+type AgentDeploymentManager struct {
+	authorizer WorkspaceAuthorizer
+	repo       AgentDeploymentRepository
 }
 
-func NewAgentDeploymentReadManager(repo AgentDeploymentReadRepository) *AgentDeploymentReadManager {
-	return &AgentDeploymentReadManager{
-		repo: repo,
+func NewAgentDeploymentManager(authorizer WorkspaceAuthorizer, repo AgentDeploymentRepository) *AgentDeploymentManager {
+	return &AgentDeploymentManager{
+		authorizer: authorizer,
+		repo:       repo,
 	}
 }
 
-func (m *AgentDeploymentReadManager) ListAgentDeployments(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) (ListAgentDeploymentsResult, error) {
+func (m *AgentDeploymentManager) ArchiveAgentDeployment(ctx context.Context, caller Caller, workspaceID, deploymentID uuid.UUID) error {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionCreateAgentDeployment); err != nil {
+		return err
+	}
+	// A deployment's connector type is fixed at creation, so checking before the update is enough.
+	isConnector, err := m.repo.AgentDeploymentIsConnector(ctx, workspaceID, deploymentID)
+	if err != nil {
+		return err
+	}
+	if isConnector {
+		if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionManageInfrastructure); err != nil {
+			return err
+		}
+	}
+	return m.repo.ArchiveAgentDeployment(ctx, workspaceID, deploymentID)
+}
+
+func (m *AgentDeploymentManager) ListAgentDeployments(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) (ListAgentDeploymentsResult, error) {
 	deployments, err := m.repo.ListActiveAgentDeploymentsByWorkspaceID(ctx, workspaceID, limit, offset)
 	if err != nil {
 		return ListAgentDeploymentsResult{}, err
@@ -74,7 +98,7 @@ type listAgentDeploymentsResponse struct {
 	Offset int32                     `json:"offset"`
 }
 
-func listAgentDeploymentsHandler(logger *slog.Logger, service AgentDeploymentReadService) http.HandlerFunc {
+func listAgentDeploymentsHandler(logger *slog.Logger, service AgentDeploymentService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		workspaceID, err := WorkspaceIDFromContext(r.Context())
 		if err != nil {
@@ -118,6 +142,39 @@ func listAgentDeploymentsHandler(logger *slog.Logger, service AgentDeploymentRea
 			Offset: result.Offset,
 		})
 	}
+}
+
+func archiveAgentDeploymentHandler(logger *slog.Logger, service AgentDeploymentService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		deploymentID, err := uuid.Parse(chi.URLParam(r, "deploymentID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_deployment_id", "deployment ID is malformed")
+			return
+		}
+		if err := service.ArchiveAgentDeployment(r.Context(), caller, workspaceID, deploymentID); err != nil {
+			if errors.Is(err, repository.ErrAgentDeploymentNotFound) {
+				writeError(w, http.StatusNotFound, "not_found", "deployment not found")
+				return
+			}
+			handleServiceError(w, logger, r, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func writeAgentDeploymentSlugConflict(w http.ResponseWriter) {
+	writeError(w, http.StatusConflict, "agent_deployment_slug_taken", "A deployment with this slug already exists in the workspace. It may be archived.")
 }
 
 func deploymentAdapter(value string) string {

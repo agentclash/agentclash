@@ -6647,8 +6647,43 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/AgentDeploymentSlugConflict"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/workspaces/{workspaceID}/agent-deployments/{deploymentID}:
+    delete:
+      operationId: archiveAgentDeployment
+      tags: [AgentDeployments]
+      summary: Archive an agent deployment
+      description: Requires permission to create agent deployments. Archived deployments leave the active list and cannot be used in new runs. Existing run results remain available.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - name: deploymentID
+          in: path
+          required: true
+          description: Agent deployment ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deployment archived
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          description: Insufficient permissions. Archiving a connector deployment requires the workspace admin role.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
 
   /v1/workspaces/{workspaceID}/agent-builds/quick-create:
     post:
@@ -6684,8 +6719,52 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/AgentDeploymentSlugConflict"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/workspaces/{workspaceID}/connectors:
+    post:
+      operationId: createConnector
+      tags: [AgentDeployments]
+      summary: Create a connector deployment
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, config]
+              properties:
+                name:
+                  type: string
+                config:
+                  type: object
+                  description: Connector adapter, endpoint, authentication, and invocation settings.
+      responses:
+        "201":
+          description: Connector deployment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorBinding"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          description: The deployment slug is reserved by an existing deployment, which may be archived (`agent_deployment_slug_taken`), or the connector could not be saved (`connector_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/agent-tryout-templates:
     get:
@@ -7584,6 +7663,16 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
+    AgentDeploymentSlugConflict:
+      description: The deployment slug is reserved by an existing deployment in this workspace, which may be archived.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            error:
+              code: agent_deployment_slug_taken
+              message: A deployment with this slug already exists in the workspace. It may be archived.
     TooManyRequests:
       description: Rate or concurrency limit exceeded
       content:
@@ -15307,6 +15396,32 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    ConnectorBinding:
+      type: object
+      required: [snapshot_id, deployment_id, workspace_id, config, target_origin, secret_id, secret_revision, approved]
+      properties:
+        snapshot_id:
+          type: string
+          format: uuid
+        deployment_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        config:
+          type: object
+        target_origin:
+          type: string
+        secret_id:
+          type: string
+          format: uuid
+        secret_revision:
+          type: integer
+          format: int64
+        approved:
+          type: boolean
 
     QuickCreateAgentRequest:
       type: object

@@ -15,6 +15,8 @@ func init() {
 	deploymentCmd.AddCommand(deploymentListCmd)
 	registerListPaginationFlags(deploymentListCmd)
 	deploymentCmd.AddCommand(deploymentCreateCmd)
+	deploymentCmd.AddCommand(deploymentDeleteCmd)
+	deploymentDeleteCmd.Flags().Bool("yes", false, "Skip confirmation")
 
 	deploymentCreateCmd.Flags().String("from-file", "", "JSON file with deployment spec")
 	deploymentCreateCmd.Flags().String("name", "", "Deployment name")
@@ -132,6 +134,40 @@ var deploymentCreateCmd = &cobra.Command{
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Created deployment %s (%s)", str(deployment["name"]), str(deployment["id"])))
+		return nil
+	},
+}
+
+var deploymentDeleteCmd = &cobra.Command{
+	Use:   "delete <deploymentId>",
+	Short: "Archive a deployment",
+	Long:  "Archive a deployment. It disappears from deployment list and cannot be used in new runs. Old runs keep their results. Archiving a connector deployment requires the workspace admin role.",
+	Example: `  # Archive a deployment after a confirmation prompt
+  agentclash deployment delete <deploymentId>
+
+  # Archive a deployment in a script
+  agentclash deployment delete <deploymentId> --yes`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		deploymentID := args[0]
+		if err := requireUUID("deploymentId", deploymentID); err != nil {
+			return err
+		}
+		wsID := RequireWorkspace(cmd)
+		rc := GetRunContext(cmd)
+		if err := confirmLargeEffect(cmd, rc, fmt.Sprintf("Archive deployment %s?", deploymentID)); err != nil {
+			return err
+		}
+
+		resp, err := rc.Client.Delete(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-deployments/"+deploymentID)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		rc.Output.PrintSuccess(fmt.Sprintf("Deployment %s archived", deploymentID))
 		return nil
 	},
 }

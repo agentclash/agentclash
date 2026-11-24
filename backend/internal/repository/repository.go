@@ -3019,6 +3019,47 @@ type AgentDeploymentSummary struct {
 	LatestSnapshotID      *uuid.UUID
 }
 
+func (r *Repository) AgentDeploymentSlugExists(ctx context.Context, workspaceID uuid.UUID, slug string) (bool, error) {
+	exists, err := r.queries.AgentDeploymentSlugExists(ctx, repositorysqlc.AgentDeploymentSlugExistsParams{
+		WorkspaceID: workspaceID,
+		Slug:        slug,
+	})
+	if err != nil {
+		return false, fmt.Errorf("check agent deployment slug: %w", err)
+	}
+	return exists, nil
+}
+
+func isAgentDeploymentSlugConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "agent_deployments_workspace_id_slug_key"
+}
+
+func (r *Repository) AgentDeploymentIsConnector(ctx context.Context, workspaceID, deploymentID uuid.UUID) (bool, error) {
+	isConnector, err := r.queries.AgentDeploymentIsConnector(ctx, repositorysqlc.AgentDeploymentIsConnectorParams{
+		ID:          deploymentID,
+		WorkspaceID: workspaceID,
+	})
+	if err != nil {
+		return false, fmt.Errorf("check whether agent deployment is a connector: %w", err)
+	}
+	return isConnector, nil
+}
+
+func (r *Repository) ArchiveAgentDeployment(ctx context.Context, workspaceID, deploymentID uuid.UUID) error {
+	updated, err := r.queries.ArchiveAgentDeployment(ctx, repositorysqlc.ArchiveAgentDeploymentParams{
+		WorkspaceID: workspaceID,
+		ID:          deploymentID,
+	})
+	if err != nil {
+		return fmt.Errorf("archive agent deployment: %w", err)
+	}
+	if updated == 0 {
+		return ErrAgentDeploymentNotFound
+	}
+	return nil
+}
+
 func (r *Repository) ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]AgentDeploymentSummary, error) {
 	rows, err := r.queries.ListActiveAgentDeploymentsByWorkspaceID(ctx, repositorysqlc.ListActiveAgentDeploymentsByWorkspaceIDParams{
 		WorkspaceID: workspaceID,
@@ -3209,6 +3250,8 @@ func challengePackVersionMetadata(manifest json.RawMessage) (challengePackVersio
 var (
 	ErrAgentBuildNotFound        = errors.New("agent build not found")
 	ErrAgentBuildVersionNotFound = errors.New("agent build version not found")
+	ErrAgentDeploymentNotFound   = errors.New("agent deployment not found")
+	ErrAgentDeploymentSlugTaken  = errors.New("agent deployment slug taken")
 	ErrWorkspaceNotFound         = errors.New("workspace not found")
 	ErrUserNotFound              = errors.New("user not found")
 	ErrUserAlreadyExists         = errors.New("user already exists")
@@ -5370,6 +5413,9 @@ func (r *Repository) CreateAgentDeployment(ctx context.Context, params CreateAge
 		&dep.Name, &dep.Slug, &dep.DeploymentType, &dep.Status, &createdAt, &updatedAt,
 	)
 	if err != nil {
+		if isAgentDeploymentSlugConflict(err) {
+			return AgentDeploymentRow{}, ErrAgentDeploymentSlugTaken
+		}
 		return AgentDeploymentRow{}, fmt.Errorf("create agent deployment: %w", err)
 	}
 

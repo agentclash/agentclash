@@ -137,7 +137,7 @@ func mountBrowserConnectors(t *testing.T, router chi.Router, db *pgxpool.Pool, s
 			r.With(authorizeWorkspaceAccess(slog.Default(), authorizer, workspaceIDFromURLParam("workspaceID"))).Get("/workspaces/{workspaceID}/ci-profiles", listCIProfilesHandler(slog.Default(), ci))
 			r.With(authorizeWorkspaceAccess(slog.Default(), authorizer, workspaceIDFromURLParam("workspaceID"))).Post("/workspaces/{workspaceID}/ci-profiles", createCIProfileHandler(slog.Default(), ci))
 			r.With(authorizeWorkspaceAccess(slog.Default(), authorizer, workspaceIDFromURLParam("workspaceID"))).Patch("/workspaces/{workspaceID}/ci-profiles/{profileID}", updateCIProfileHandler(slog.Default(), ci))
-			r.With(authorizeWorkspaceAccess(slog.Default(), authorizer, workspaceIDFromURLParam("workspaceID"))).Get("/workspaces/{workspaceID}/agent-deployments", listAgentDeploymentsHandler(slog.Default(), NewAgentDeploymentReadManager(repo)))
+			r.With(authorizeWorkspaceAccess(slog.Default(), authorizer, workspaceIDFromURLParam("workspaceID"))).Get("/workspaces/{workspaceID}/agent-deployments", listAgentDeploymentsHandler(slog.Default(), NewAgentDeploymentManager(authorizer, repo)))
 			r.With(authorizeWorkspaceAccess(slog.Default(), authorizer, workspaceIDFromURLParam("workspaceID"))).Get("/workspaces/{workspaceID}/challenge-packs", listChallengePacksHandler(slog.Default(), NewChallengePackReadManager(repo)))
 
 			r.Post("/runs", createRunHandler(slog.Default(), manager))

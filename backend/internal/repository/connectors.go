@@ -130,6 +130,9 @@ func (r *Repository) CreateConnector(ctx context.Context, p CreateConnectorParam
 	raw, _ := json.Marshal(p.Config)
 	_, err = tx.Exec(ctx, `INSERT INTO agent_deployments(id,organization_id,workspace_id,agent_build_id,current_build_version_id,runtime_profile_id,name,slug,deployment_type,endpoint_url,deployment_config) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'hosted_external',$9,$10)`, b.DeploymentID, org, p.WorkspaceID, build, version, profile, p.Name, slug, p.Config.EndpointURL, raw)
 	if err != nil {
+		if isAgentDeploymentSlugConflict(err) {
+			return b, ErrAgentDeploymentSlugTaken
+		}
 		return b, err
 	}
 	frozen, _ := json.Marshal(struct {

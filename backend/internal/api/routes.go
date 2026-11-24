@@ -21,7 +21,7 @@ func registerProtectedRoutes(
 	releaseGateService ReleaseGateService,
 	regressionService RegressionService,
 	datasetService DatasetService,
-	agentDeploymentReadService AgentDeploymentReadService,
+	agentDeploymentService AgentDeploymentService,
 	agentHarnessService AgentHarnessService,
 	githubIntegrationService GitHubIntegrationService,
 	challengePackReadService ChallengePackReadService,
@@ -157,7 +157,7 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/runs", listRunsHandler(logger, runReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Get("/workspaces/{workspaceID}/agent-deployments", listAgentDeploymentsHandler(logger, agentDeploymentReadService))
+		Get("/workspaces/{workspaceID}/agent-deployments", listAgentDeploymentsHandler(logger, agentDeploymentService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/agent-harnesses", createAgentHarnessHandler(logger, agentHarnessService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
@@ -268,6 +268,8 @@ func registerProtectedRoutes(
 
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/agent-deployments", createAgentDeploymentHandler(logger, agentBuildService, authorizer))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Delete("/workspaces/{workspaceID}/agent-deployments/{deploymentID}", archiveAgentDeploymentHandler(logger, agentDeploymentService))
 
 	// Quick-create collapses build + version + ready + deployment into one call.
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).

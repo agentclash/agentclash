@@ -285,21 +285,21 @@ func TestTrackUsageAttribution(t *testing.T) {
 func TestTrackUsageDeviceFlowEmitsNoEvents(t *testing.T) {
 	spy := &recordingPostHog{}
 	handler := buildRouter(routerOptions{
-		authMode:                   "dev",
-		logger:                     slog.New(slog.NewTextHandler(io.Discard, nil)),
-		authenticator:              NewDevelopmentAuthenticator(),
-		authorizer:                 NewCallerWorkspaceAuthorizer(),
-		posthogClient:              spy,
-		runCreationService:         stubRunCreationService{},
-		runReadService:             stubRunReadService{},
-		replayReadService:          stubReplayReadService{},
-		hostedRunIngestionService:  stubHostedRunIngestionService{},
-		agentDeploymentReadService: stubAgentDeploymentReadService{},
-		challengePackReadService:   stubChallengePackReadService{},
-		agentBuildService:          stubAgentBuildService{},
-		releaseGateService:         noopReleaseGateService{},
-		challengePackAuthoringSvc:  stubChallengePackAuthoringService{},
-		cliAuthServices:            []CLIAuthService{stubCLIAuthService{}},
+		authMode:                  "dev",
+		logger:                    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		authenticator:             NewDevelopmentAuthenticator(),
+		authorizer:                NewCallerWorkspaceAuthorizer(),
+		posthogClient:             spy,
+		runCreationService:        stubRunCreationService{},
+		runReadService:            stubRunReadService{},
+		replayReadService:         stubReplayReadService{},
+		hostedRunIngestionService: stubHostedRunIngestionService{},
+		agentDeploymentService:    stubAgentDeploymentReadService{},
+		challengePackReadService:  stubChallengePackReadService{},
+		agentBuildService:         stubAgentBuildService{},
+		releaseGateService:        noopReleaseGateService{},
+		challengePackAuthoringSvc: stubChallengePackAuthoringService{},
+		cliAuthServices:           []CLIAuthService{stubCLIAuthService{}},
 	})
 
 	for _, path := range []string{"/v1/cli-auth/device", "/v1/cli-auth/device/token"} {

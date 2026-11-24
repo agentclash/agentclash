@@ -26,3 +26,30 @@ FROM agent_deployments
 WHERE workspace_id = @workspace_id
   AND status = 'active'
   AND archived_at IS NULL;
+
+-- name: AgentDeploymentSlugExists :one
+SELECT EXISTS (
+    SELECT 1
+    FROM agent_deployments
+    WHERE workspace_id = @workspace_id
+      AND slug = @slug
+);
+
+-- name: AgentDeploymentIsConnector :one
+SELECT EXISTS (
+    SELECT 1
+    FROM agent_deployment_snapshots s
+    JOIN connector_snapshots c ON c.snapshot_id = s.id
+    WHERE s.agent_deployment_id = @id
+      AND s.workspace_id = @workspace_id
+);
+
+-- name: ArchiveAgentDeployment :execrows
+UPDATE agent_deployments
+SET status = 'archived',
+    archived_at = now(),
+    updated_at = now()
+WHERE workspace_id = @workspace_id
+  AND id = @id
+  AND status IN ('active', 'paused')
+  AND archived_at IS NULL;
