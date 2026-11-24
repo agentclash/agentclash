@@ -88,6 +88,9 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash-compare-and-triage");
     expect(doc?.content).toContain("agentclash-dataset-workflows");
     expect(doc?.content).toContain("https://www.agentclash.dev/docs/agent-skills");
+    expect(doc?.content).toContain(
+      "Use `agentclash tryout` to start, inspect, and compare workspace tryouts.",
+    );
   });
 
   it("generates the agent harness setup skill", () => {
@@ -106,6 +109,13 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash run turn status");
     expect(doc?.content).toContain("agentclash run turn submit");
     expect(doc?.content).toContain("awaiting_human");
+    expect(doc?.content).toContain(
+      "agentclash calibration create --run-agent <RUN_AGENT_ID> --turn 0 --score 4.5",
+    );
+    expect(doc?.content).toContain("agentclash arena vote <TASK_ID> --winner left");
+    expect(doc?.content).toContain(
+      "If `calibration create` exits `75`, run `agentclash calibration list` before a retry.",
+    );
   });
 
   it("generates the dataset workflows skill", () => {
@@ -179,6 +189,22 @@ describe("agent skill docs", () => {
     expect(content).toContain(
       "`--yes` — Revoke the link with no confirmation prompt; necessary in non-interactive mode",
     );
+
+    expect(content).toContain("Record a calibration review for a run agent turn");
+    expect(content).toContain("`--run-agent` (required) — Run agent UUID for the review");
+    expect(content).toContain("`--turn` (required) — Turn index (0 or more)");
+    expect(content).toContain("`--score` (required) — Calibration score from 1 to 5");
+    expect(content).toContain("List recent calibration reviews");
+    expect(content).toContain("List pending arena tasks");
+    expect(content).toContain("Submit a vote for an arena task");
+    expect(content).toContain("Create an agent tryout from a template");
+    expect(content).toContain("Rerun an agent tryout with a model policy");
+    expect(content).toContain("Compare two to four agent tryouts");
+    expect(content).toContain("`--template` (required) — Template slug");
+    expect(content).toContain("Create a challenge pack draft");
+    expect(content).toContain("Compile and validate a challenge pack draft");
+    expect(content).toContain("Generate a challenge pack draft from a description");
+    expect(content).toContain("`--provider-account` (required) — Provider account ID for the draft model");
   });
 
   it("generates the security evaluation skill", () => {
@@ -601,6 +627,7 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("bundle_artifact_id");
     expect(doc?.content).toContain("challenge_pack_version_exists");
     expect(doc?.content).toContain("challenge_pack_metadata_conflict");
+    expect(doc?.content).toContain("After exit 75, run `agentclash challenge-pack draft list` before a retry.");
     expect(doc?.content).toContain("The API request body is capped at 1 MiB");
     expect(doc?.content).toContain("`publish` does not upload local files referenced by `path`");
     expect(doc?.content).toContain("agentclash eval start");
