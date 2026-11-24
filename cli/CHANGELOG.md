@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.6.0](https://github.com/agentclash/agentclash/compare/v2.5.0...v2.6.0) (2026-11-24)
+
+
+### Features
+
+* **cli:** add dataset baseline create and list commands ([f68948d](https://github.com/agentclash/agentclash/commit/f68948de83c390d4594fb40885e913ca8870b5b5)), closes [#1418](https://github.com/agentclash/agentclash/issues/1418)
+* **cli:** add run insights command for LLM ranking insights ([e56f5ca](https://github.com/agentclash/agentclash/commit/e56f5ca3a90b58443adc29afaca4e31548dfb9a5)), closes [#1418](https://github.com/agentclash/agentclash/issues/1418)
+
 ## [2.5.0](https://github.com/agentclash/agentclash/compare/v2.4.0...v2.5.0) (2026-11-10)
 
 
