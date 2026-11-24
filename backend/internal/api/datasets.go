@@ -18,6 +18,7 @@ import (
 )
 
 type DatasetRepository interface {
+	runnableChallengePackVersionRepository
 	CreateDataset(context.Context, repository.CreateDatasetParams) (repository.Dataset, error)
 	GetDatasetByID(context.Context, uuid.UUID) (repository.Dataset, error)
 	ListDatasetsByWorkspaceID(context.Context, uuid.UUID, int32, int32) ([]repository.Dataset, error)
@@ -435,12 +436,26 @@ func (m *DatasetManager) StartDatasetEval(ctx context.Context, caller Caller, in
 	if err != nil {
 		return StartDatasetEvalResult{}, err
 	}
+	// Check the run permission before the input set is written. CreateRun checks it again.
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionCreateRun); err != nil {
+		return StartDatasetEvalResult{}, err
+	}
 	version, err := m.repo.GetDatasetVersionByID(ctx, input.VersionID)
 	if err != nil {
 		return StartDatasetEvalResult{}, err
 	}
 	if version.DatasetID != dataset.ID {
 		return StartDatasetEvalResult{}, repository.ErrDatasetVersionNotFound
+	}
+	packVersion, err := m.repo.GetRunnableChallengePackVersionByID(ctx, input.ChallengePackVersionID)
+	if err != nil {
+		if errors.Is(err, repository.ErrChallengePackVersionNotFound) {
+			return StartDatasetEvalResult{}, invalidRunnableChallengePackVersion()
+		}
+		return StartDatasetEvalResult{}, err
+	}
+	if err := validateChallengePackVersionVisibility(ctx, m.repo, packVersion, input.WorkspaceID); err != nil {
+		return StartDatasetEvalResult{}, err
 	}
 	materialized, err := m.repo.MaterializeDatasetVersionInputSet(ctx, repository.MaterializeDatasetVersionInputSetParams{
 		DatasetID:              input.DatasetID,

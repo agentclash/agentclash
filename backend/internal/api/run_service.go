@@ -15,11 +15,16 @@ import (
 	"github.com/google/uuid"
 )
 
-type RunCreationRepository interface {
+type runnableChallengePackVersionRepository interface {
 	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
 	WorkspacePublicPacksEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error)
+}
+
+type RunCreationRepository interface {
+	runnableChallengePackVersionRepository
 	GetChallengeInputSetByID(ctx context.Context, id uuid.UUID) (repository.ChallengeInputSet, error)
 	ListDefaultChallengeInputSetIDsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error)
+	ChallengeInputSetVisibleToWorkspace(ctx context.Context, id, workspaceID uuid.UUID) (bool, error)
 	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error)
 	ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context, workspaceID uuid.UUID, deploymentIDs []uuid.UUID) ([]repository.RunnableDeployment, error)
 	ListRunnableDeploymentsByBuildVersionID(ctx context.Context, workspaceID uuid.UUID, buildVersionIDs []uuid.UUID) ([]repository.BuildVersionRunnableDeployment, error)
@@ -147,30 +152,12 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 	challengePackVersion, err := m.repo.GetRunnableChallengePackVersionByID(ctx, input.ChallengePackVersionID)
 	if err != nil {
 		if err == repository.ErrChallengePackVersionNotFound {
-			return CreateRunResult{}, RunCreationValidationError{
-				Code:    "invalid_challenge_pack_version_id",
-				Message: "challenge_pack_version_id must reference a runnable challenge pack version",
-			}
+			return CreateRunResult{}, invalidRunnableChallengePackVersion()
 		}
 		return CreateRunResult{}, fmt.Errorf("load runnable challenge pack version: %w", err)
 	}
-	if challengePackVersion.WorkspaceID != nil && *challengePackVersion.WorkspaceID != input.WorkspaceID {
-		return CreateRunResult{}, RunCreationValidationError{
-			Code:    "invalid_challenge_pack_version_id",
-			Message: "challenge_pack_version_id must be visible to the selected workspace",
-		}
-	}
-	if challengePackVersion.WorkspaceID == nil {
-		publicPacks, accessErr := m.repo.WorkspacePublicPacksEnabled(ctx, input.WorkspaceID)
-		if accessErr != nil {
-			return CreateRunResult{}, fmt.Errorf("load workspace public pack access: %w", accessErr)
-		}
-		if !publicPacks {
-			return CreateRunResult{}, RunCreationValidationError{
-				Code:    "invalid_challenge_pack_version_id",
-				Message: "challenge_pack_version_id must be visible to the selected workspace",
-			}
-		}
+	if err := validateChallengePackVersionVisibility(ctx, m.repo, challengePackVersion, input.WorkspaceID); err != nil {
+		return CreateRunResult{}, err
 	}
 	if input.MaxIterations == nil {
 		input.MaxIterations = challengePackDefaultMaxIterations(challengePackVersion.Manifest)
@@ -181,21 +168,8 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 	}
 
 	if input.ChallengeInputSetID != nil {
-		challengeInputSet, err := m.repo.GetChallengeInputSetByID(ctx, *input.ChallengeInputSetID)
-		if err != nil {
-			if err == repository.ErrChallengeInputSetNotFound {
-				return CreateRunResult{}, RunCreationValidationError{
-					Code:    "invalid_challenge_input_set_id",
-					Message: "challenge_input_set_id must reference an active challenge input set",
-				}
-			}
-			return CreateRunResult{}, fmt.Errorf("load challenge input set: %w", err)
-		}
-		if challengeInputSet.ChallengePackVersionID != input.ChallengePackVersionID {
-			return CreateRunResult{}, RunCreationValidationError{
-				Code:    "invalid_challenge_input_set_id",
-				Message: "challenge_input_set_id must belong to the selected challenge pack version",
-			}
+		if err := m.validateChallengeInputSet(ctx, *input.ChallengeInputSetID, input.ChallengePackVersionID, input.WorkspaceID); err != nil {
+			return CreateRunResult{}, err
 		}
 	} else {
 		inputSetIDs, err := m.repo.ListDefaultChallengeInputSetIDsByVersionID(ctx, input.ChallengePackVersionID)
@@ -360,6 +334,61 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 	}
 
 	return CreateRunResult{Run: result.Run}, nil
+}
+
+func invalidRunnableChallengePackVersion() RunCreationValidationError {
+	return RunCreationValidationError{
+		Code:    "invalid_challenge_pack_version_id",
+		Message: "challenge_pack_version_id must reference a runnable challenge pack version",
+	}
+}
+
+func validateChallengePackVersionVisibility(ctx context.Context, repo runnableChallengePackVersionRepository, version repository.RunnableChallengePackVersion, workspaceID uuid.UUID) error {
+	if version.WorkspaceID != nil {
+		if *version.WorkspaceID == workspaceID {
+			return nil
+		}
+	} else {
+		enabled, err := repo.WorkspacePublicPacksEnabled(ctx, workspaceID)
+		if err != nil {
+			return fmt.Errorf("load workspace public pack access: %w", err)
+		}
+		if enabled {
+			return nil
+		}
+	}
+	return RunCreationValidationError{
+		Code:    "invalid_challenge_pack_version_id",
+		Message: "challenge_pack_version_id must be visible to the selected workspace",
+	}
+}
+
+func (m *RunCreationManager) validateChallengeInputSet(ctx context.Context, id, versionID, workspaceID uuid.UUID) error {
+	unknownInputSet := RunCreationValidationError{
+		Code:    "invalid_challenge_input_set_id",
+		Message: "challenge_input_set_id must reference an active challenge input set",
+	}
+	inputSet, err := m.repo.GetChallengeInputSetByID(ctx, id)
+	if err != nil {
+		if err == repository.ErrChallengeInputSetNotFound {
+			return unknownInputSet
+		}
+		return fmt.Errorf("load challenge input set: %w", err)
+	}
+	visible, err := m.repo.ChallengeInputSetVisibleToWorkspace(ctx, id, workspaceID)
+	if err != nil {
+		return err
+	}
+	if !visible {
+		return unknownInputSet
+	}
+	if inputSet.ChallengePackVersionID != versionID {
+		return RunCreationValidationError{
+			Code:    "invalid_challenge_input_set_id",
+			Message: "challenge_input_set_id must belong to the selected challenge pack version",
+		}
+	}
+	return nil
 }
 
 func (m *RunCreationManager) resolveRunCaseSelections(

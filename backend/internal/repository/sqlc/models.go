@@ -211,6 +211,7 @@ type ChallengeInputSet struct {
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
 	ArchivedAt             pgtype.Timestamptz
+	OwnerWorkspaceID       *uuid.UUID
 }
 
 type ChallengePackDraft struct {

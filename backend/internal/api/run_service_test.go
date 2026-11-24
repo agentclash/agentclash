@@ -1539,6 +1539,96 @@ func TestRunCreationManagerAutoSelectsSingleInputSet(t *testing.T) {
 	}
 }
 
+func TestRunCreationManagerSelectsDatasetInputSetsByWorkspace(t *testing.T) {
+	ownerID, otherWorkspaceID := uuid.New(), uuid.New()
+	versionID, inputSetID, deploymentID := uuid.New(), uuid.New(), uuid.New()
+	unknownSet := RunCreationValidationError{
+		Code:    "invalid_challenge_input_set_id",
+		Message: "challenge_input_set_id must reference an active challenge input set",
+	}
+	tests := []struct {
+		name        string
+		workspaceID uuid.UUID
+		requested   *uuid.UUID
+		setVersion  uuid.UUID
+		want        *uuid.UUID
+		wantErr     error
+	}{
+		{name: "owner explicit", workspaceID: ownerID, requested: &inputSetID, want: &inputSetID},
+		// A dataset input set is never a default input set, also for the owner.
+		{name: "owner default", workspaceID: ownerID},
+		{name: "other workspace explicit", workspaceID: otherWorkspaceID, requested: &inputSetID, wantErr: unknownSet},
+		{name: "other workspace explicit on another version", workspaceID: otherWorkspaceID, requested: &inputSetID, setVersion: uuid.New(), wantErr: unknownSet},
+		{name: "other workspace default", workspaceID: otherWorkspaceID},
+	}
+
+	for _, tt := range tests {
+		newRepo := func() *fakeRunCreationRepository {
+			setVersion := tt.setVersion
+			if setVersion == uuid.Nil {
+				setVersion = versionID
+			}
+			return &fakeRunCreationRepository{
+				challengePackVersion:  repository.RunnableChallengePackVersion{ID: versionID},
+				challengeInputSet:     repository.ChallengeInputSet{ID: inputSetID, ChallengePackVersionID: setVersion},
+				datasetInputSetOwners: map[uuid.UUID]uuid.UUID{inputSetID: ownerID},
+				deployments: []repository.RunnableDeployment{{
+					ID: deploymentID, WorkspaceID: tt.workspaceID,
+					OrganizationID: uuid.New(), AgentDeploymentSnapshotID: uuid.New(),
+				}},
+			}
+		}
+		caller := datasetEvalCaller(tt.workspaceID)
+		check := func(t *testing.T, err error, queued *repository.CreateQueuedRunParams) {
+			t.Helper()
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("error = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr != nil {
+				if queued != nil {
+					t.Fatal("queued a run for an unavailable input set")
+				}
+				return
+			}
+			if queued == nil {
+				t.Fatal("expected a queued run")
+			}
+			got := queued.ChallengeInputSetID
+			if (got == nil) != (tt.want == nil) || (got != nil && *got != *tt.want) {
+				t.Fatalf("queued input set = %v, want %v", got, tt.want)
+			}
+		}
+
+		t.Run("run/"+tt.name, func(t *testing.T) {
+			repo := newRepo()
+			manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+			_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
+				WorkspaceID: tt.workspaceID, ChallengePackVersionID: versionID,
+				ChallengeInputSetID: tt.requested, AgentDeploymentIDs: []uuid.UUID{deploymentID},
+			})
+			check(t, err, repo.createParams)
+		})
+
+		t.Run("eval session/"+tt.name, func(t *testing.T) {
+			repo := newRepo()
+			manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+			_, err := manager.CreateEvalSession(context.Background(), caller, CreateEvalSessionInput{
+				WorkspaceID: tt.workspaceID, ChallengePackVersionID: versionID, ChallengeInputSetID: tt.requested,
+				Participants: []EvalSessionParticipantInput{{AgentDeploymentID: &deploymentID}},
+				EvalSession:  CreateEvalSessionConfigInput{Repetitions: 1, SchemaVersion: 1},
+			})
+			var queued *repository.CreateQueuedRunParams
+			if params := repo.createEvalSessionWithRunsParams; params != nil {
+				if len(params.Runs) != 1 {
+					t.Fatalf("queued %d runs, want 1", len(params.Runs))
+				}
+				queued = &params.Runs[0]
+			}
+			check(t, err, queued)
+		})
+	}
+}
+
 func TestRunCreationManagerRejectsAmbiguousInputSets(t *testing.T) {
 	workspaceID := uuid.New()
 	challengePackVersionID := uuid.New()
@@ -2303,6 +2393,7 @@ type fakeRunCreationRepository struct {
 	challengeInputSet               repository.ChallengeInputSet
 	challengeInputSetErr            error
 	defaultChallengeInputSetIDs     []uuid.UUID
+	datasetInputSetOwners           map[uuid.UUID]uuid.UUID
 	challengeIdentityIDs            []uuid.UUID
 	deployments                     []repository.RunnableDeployment
 	deploymentsByBuildVersion       []repository.BuildVersionRunnableDeployment
@@ -2380,6 +2471,11 @@ func (f *fakeRunCreationRepository) GetChallengeInputSetByID(_ context.Context, 
 
 func (f *fakeRunCreationRepository) ListDefaultChallengeInputSetIDsByVersionID(_ context.Context, _ uuid.UUID) ([]uuid.UUID, error) {
 	return f.defaultChallengeInputSetIDs, nil
+}
+
+func (f *fakeRunCreationRepository) ChallengeInputSetVisibleToWorkspace(_ context.Context, id, workspaceID uuid.UUID) (bool, error) {
+	owner, isDatasetSet := f.datasetInputSetOwners[id]
+	return !isDatasetSet || owner == workspaceID, nil
 }
 
 func (f *fakeRunCreationRepository) ListChallengeIdentityIDsByPackVersionID(_ context.Context, _ uuid.UUID) ([]uuid.UUID, error) {

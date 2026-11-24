@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -23,8 +25,9 @@ func TestStartDatasetEvalHandlerReturnsCreateRunResponse(t *testing.T) {
 	materializedID := uuid.New()
 	createdAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	repo := &datasetEvalFakeRepo{
-		dataset: repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
-		version: repository.DatasetVersion{ID: versionID, DatasetID: datasetID},
+		dataset:     repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
+		version:     repository.DatasetVersion{ID: versionID, DatasetID: datasetID},
+		packVersion: repository.RunnableChallengePackVersion{ID: packVersionID, WorkspaceID: &workspaceID},
 		materialized: repository.DatasetVersionInputSet{
 			ID: materializedID, DatasetID: datasetID, DatasetVersionID: versionID, ChallengeInputSetID: inputSetID,
 		},
@@ -125,8 +128,10 @@ func TestDatasetManagerStartDatasetEvalMaterializesAndCreatesRun(t *testing.T) {
 	runID := uuid.New()
 	caller := datasetEvalCaller(workspaceID)
 	repo := &datasetEvalFakeRepo{
-		dataset: repository.Dataset{ID: datasetID, WorkspaceID: workspaceID, Name: "Golden", CreatedAt: time.Now(), UpdatedAt: time.Now()},
-		version: repository.DatasetVersion{ID: versionID, DatasetID: datasetID, VersionNumber: 1, CreatedAt: time.Now()},
+		dataset:     repository.Dataset{ID: datasetID, WorkspaceID: workspaceID, Name: "Golden", CreatedAt: time.Now(), UpdatedAt: time.Now()},
+		version:     repository.DatasetVersion{ID: versionID, DatasetID: datasetID, VersionNumber: 1, CreatedAt: time.Now()},
+		packVersion: repository.RunnableChallengePackVersion{ID: packVersionID},
+		publicPacks: true,
 		materialized: repository.DatasetVersionInputSet{
 			ID: versionID, DatasetID: datasetID, DatasetVersionID: versionID, ChallengePackVersionID: packVersionID,
 			ChallengeInputSetID: inputSetID, ChallengeKey: "support", CreatedAt: time.Now(), UpdatedAt: time.Now(),
@@ -162,6 +167,115 @@ func TestDatasetManagerStartDatasetEvalMaterializesAndCreatesRun(t *testing.T) {
 		runCreator.input.DatasetEvalRun.DatasetVersionID != versionID ||
 		runCreator.input.DatasetEvalRun.DatasetVersionInputSetID != repo.materialized.ID {
 		t.Fatalf("dataset eval linkage = %+v", runCreator.input.DatasetEvalRun)
+	}
+}
+
+func TestDatasetManagerStartDatasetEvalChecksPackVersionBeforeMaterializing(t *testing.T) {
+	workspaceID, otherWorkspaceID := uuid.New(), uuid.New()
+	datasetID, versionID, packVersionID := uuid.New(), uuid.New(), uuid.New()
+	invisibleVersion := RunCreationValidationError{
+		Code:    "invalid_challenge_pack_version_id",
+		Message: "challenge_pack_version_id must be visible to the selected workspace",
+	}
+	for _, tt := range []struct {
+		name        string
+		packOwner   *uuid.UUID
+		publicPacks bool
+		wantErr     error
+	}{
+		{name: "workspace pack", packOwner: &workspaceID},
+		{name: "another workspace's pack", packOwner: &otherWorkspaceID, publicPacks: true, wantErr: invisibleVersion},
+		{name: "public packs disabled", wantErr: invisibleVersion},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &datasetEvalFakeRepo{
+				dataset:     repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
+				version:     repository.DatasetVersion{ID: versionID, DatasetID: datasetID},
+				packVersion: repository.RunnableChallengePackVersion{ID: packVersionID, WorkspaceID: tt.packOwner},
+				publicPacks: tt.publicPacks,
+			}
+			runCreator := &datasetEvalFakeRunCreator{}
+			manager := NewDatasetManager(datasetEvalAllowAuthorizer{}, repo).WithRunCreationService(runCreator)
+			_, err := manager.StartDatasetEval(context.Background(), datasetEvalCaller(workspaceID), StartDatasetEvalInput{
+				WorkspaceID: workspaceID, DatasetID: datasetID, VersionID: versionID, ChallengePackVersionID: packVersionID,
+				ChallengeID: "support", AgentDeploymentIDs: []uuid.UUID{uuid.New()},
+			})
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("StartDatasetEval error = %v, want %v", err, tt.wantErr)
+			}
+			wantCreated := tt.wantErr == nil
+			if repo.materializeCalled != wantCreated || (runCreator.input.ChallengeInputSetID != nil) != wantCreated {
+				t.Fatalf("materialized = %t, called run creation = %t, want %t for both",
+					repo.materializeCalled, runCreator.input.ChallengeInputSetID != nil, wantCreated)
+			}
+		})
+	}
+}
+
+func TestStartDatasetEvalHandlerRejectsUnknownPackVersion(t *testing.T) {
+	workspaceID, datasetID, versionID, packVersionID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	repo := &datasetEvalFakeRepo{
+		dataset: repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
+		version: repository.DatasetVersion{ID: versionID, DatasetID: datasetID},
+	}
+	runCreator := &datasetEvalFakeRunCreator{}
+	manager := NewDatasetManager(NewCallerWorkspaceAuthorizer(), repo).WithRunCreationService(runCreator)
+	router := chi.NewRouter()
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/evals", startDatasetEvalHandler(slog.Default(), manager))
+	body := fmt.Sprintf(`{"version_id":%q,"challenge_pack_version_id":%q,"challenge_id":"support","agent_deployment_ids":[%q]}`, versionID, packVersionID, uuid.New())
+	path := fmt.Sprintf("/workspaces/%s/datasets/%s/evals", workspaceID, datasetID)
+	ctx := context.WithValue(t.Context(), callerContextKey{}, datasetEvalCaller(workspaceID))
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body = %s", rec.Code, rec.Body.String())
+	}
+	var result errorEnvelope
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if result.Error.Code != "invalid_challenge_pack_version_id" ||
+		result.Error.Message != "challenge_pack_version_id must reference a runnable challenge pack version" {
+		t.Errorf("unexpected response: %s", rec.Body.String())
+	}
+	if repo.materializeCalled || runCreator.input.ChallengeInputSetID != nil {
+		t.Error("started a dataset eval for an unavailable pack version")
+	}
+}
+
+func TestStartDatasetEvalHandlerRejectsViewerBeforeMaterializing(t *testing.T) {
+	workspaceID, datasetID, versionID, packVersionID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	repo := &datasetEvalFakeRepo{
+		dataset:     repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
+		version:     repository.DatasetVersion{ID: versionID, DatasetID: datasetID},
+		packVersion: repository.RunnableChallengePackVersion{ID: packVersionID, WorkspaceID: &workspaceID},
+	}
+	runCreator := &datasetEvalFakeRunCreator{}
+	manager := NewDatasetManager(NewCallerWorkspaceAuthorizer(), repo).WithRunCreationService(runCreator)
+	router := chi.NewRouter()
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/evals", startDatasetEvalHandler(slog.Default(), manager))
+	body := fmt.Sprintf(`{"version_id":%q,"challenge_pack_version_id":%q,"challenge_id":"support","agent_deployment_ids":[%q]}`, versionID, packVersionID, uuid.New())
+	path := fmt.Sprintf("/workspaces/%s/datasets/%s/evals", workspaceID, datasetID)
+	viewer := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceViewer},
+		},
+	}
+	ctx := context.WithValue(t.Context(), callerContextKey{}, viewer)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403, body = %s", rec.Code, rec.Body.String())
+	}
+	if repo.materializeCalled || runCreator.input.ChallengeInputSetID != nil {
+		t.Error("a workspace viewer wrote a dataset input set")
 	}
 }
 
@@ -237,6 +351,8 @@ func (f *datasetEvalFakeRunCreator) CreateEvalSession(context.Context, Caller, C
 type datasetEvalFakeRepo struct {
 	dataset           repository.Dataset
 	version           repository.DatasetVersion
+	packVersion       repository.RunnableChallengePackVersion
+	publicPacks       bool
 	materialized      repository.DatasetVersionInputSet
 	results           repository.ListDatasetEvalResultsResult
 	materializeParams repository.MaterializeDatasetVersionInputSetParams
@@ -287,6 +403,15 @@ func (f *datasetEvalFakeRepo) GetDatasetVersionByID(context.Context, uuid.UUID) 
 }
 func (f *datasetEvalFakeRepo) ListDatasetVersionExamples(context.Context, uuid.UUID) ([]repository.DatasetExample, error) {
 	return nil, nil
+}
+func (f *datasetEvalFakeRepo) GetRunnableChallengePackVersionByID(_ context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error) {
+	if f.packVersion.ID != id {
+		return repository.RunnableChallengePackVersion{}, repository.ErrChallengePackVersionNotFound
+	}
+	return f.packVersion, nil
+}
+func (f *datasetEvalFakeRepo) WorkspacePublicPacksEnabled(_ context.Context, workspaceID uuid.UUID) (bool, error) {
+	return f.publicPacks && workspaceID == f.dataset.WorkspaceID, nil
 }
 func (f *datasetEvalFakeRepo) MaterializeDatasetVersionInputSet(_ context.Context, params repository.MaterializeDatasetVersionInputSetParams) (repository.DatasetVersionInputSet, error) {
 	f.materializeCalled = true

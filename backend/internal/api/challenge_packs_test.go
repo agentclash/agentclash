@@ -19,13 +19,14 @@ import (
 )
 
 type fakeChallengePackReadRepository struct {
-	lastWorkspaceID   uuid.UUID
-	runnableVersion   repository.RunnableChallengePackVersion
-	inputSets         []repository.ChallengeInputSetSummary
-	versionDefaults   json.RawMessage
-	versionModality   string
-	versionTransports []string
-	publicPacks       bool
+	lastWorkspaceID       uuid.UUID
+	runnableVersion       repository.RunnableChallengePackVersion
+	inputSets             []repository.ChallengeInputSetSummary
+	datasetInputSetOwners map[uuid.UUID]uuid.UUID
+	versionDefaults       json.RawMessage
+	versionModality       string
+	versionTransports     []string
+	publicPacks           bool
 }
 
 func (f *fakeChallengePackReadRepository) ListVisibleChallengePacks(_ context.Context, workspaceID uuid.UUID) ([]repository.ChallengePackSummary, error) {
@@ -69,11 +70,18 @@ func (f *fakeChallengePackReadRepository) GetRunnableChallengePackVersionByID(_ 
 	return f.runnableVersion, nil
 }
 
-func (f *fakeChallengePackReadRepository) ListChallengeInputSetsByVersionID(_ context.Context, challengePackVersionID uuid.UUID) ([]repository.ChallengeInputSetSummary, error) {
-	if f.runnableVersion.ID == uuid.Nil || f.runnableVersion.ID != challengePackVersionID {
+func (f *fakeChallengePackReadRepository) ListChallengeInputSetsVisibleToWorkspace(_ context.Context, versionID, workspaceID uuid.UUID) ([]repository.ChallengeInputSetSummary, error) {
+	if f.runnableVersion.ID == uuid.Nil || f.runnableVersion.ID != versionID {
 		return nil, repository.ErrChallengePackVersionNotFound
 	}
-	return f.inputSets, nil
+	var visible []repository.ChallengeInputSetSummary
+	for _, inputSet := range f.inputSets {
+		owner, isDatasetSet := f.datasetInputSetOwners[inputSet.ID]
+		if !isDatasetSet || owner == workspaceID {
+			visible = append(visible, inputSet)
+		}
+	}
+	return visible, nil
 }
 
 type fakeChallengePackAuthoringRepository struct {
@@ -393,6 +401,46 @@ func TestChallengePackReadManagerListsGlobalInputSetsWhenPublicPacksEnabled(t *t
 	}
 	if len(result.InputSets) != 1 || result.InputSets[0].InputKey != "public-default" {
 		t.Fatalf("input sets = %#v, want public-default", result.InputSets)
+	}
+}
+
+func TestChallengePackReadManagerListsDatasetInputSetForOwningWorkspace(t *testing.T) {
+	ownerID, otherWorkspaceID := uuid.New(), uuid.New()
+	versionID, publicSetID, datasetSetID := uuid.New(), uuid.New(), uuid.New()
+	repo := &fakeChallengePackReadRepository{
+		runnableVersion: repository.RunnableChallengePackVersion{ID: versionID},
+		publicPacks:     true,
+		inputSets: []repository.ChallengeInputSetSummary{
+			{ID: publicSetID, ChallengePackVersionID: versionID},
+			{ID: datasetSetID, ChallengePackVersionID: versionID},
+		},
+		datasetInputSetOwners: map[uuid.UUID]uuid.UUID{datasetSetID: ownerID},
+	}
+	manager := NewChallengePackReadManager(repo)
+
+	for _, tt := range []struct {
+		name        string
+		workspaceID uuid.UUID
+		want        []uuid.UUID
+	}{
+		{name: "owner", workspaceID: ownerID, want: []uuid.UUID{publicSetID, datasetSetID}},
+		{name: "other workspace", workspaceID: otherWorkspaceID, want: []uuid.UUID{publicSetID}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.WithValue(context.Background(), workspaceIDContextKey{}, tt.workspaceID)
+			result, err := manager.ListChallengeInputSets(ctx, versionID)
+			if err != nil {
+				t.Fatalf("ListChallengeInputSets: %v", err)
+			}
+			if len(result.InputSets) != len(tt.want) {
+				t.Fatalf("input sets = %+v, want IDs %v", result.InputSets, tt.want)
+			}
+			for i, id := range tt.want {
+				if result.InputSets[i].ID != id {
+					t.Fatalf("input set %d = %s, want %s", i, result.InputSets[i].ID, id)
+				}
+			}
+		})
 	}
 }
 

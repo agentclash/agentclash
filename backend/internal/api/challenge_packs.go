@@ -26,7 +26,7 @@ type ChallengePackReadRepository interface {
 	WorkspacePublicPacksEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error)
 	ListRunnableChallengePVersionsByPackID(ctx context.Context, challengePackID uuid.UUID) ([]repository.ChallengePackVersionSummary, error)
 	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
-	ListChallengeInputSetsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]repository.ChallengeInputSetSummary, error)
+	ListChallengeInputSetsVisibleToWorkspace(ctx context.Context, challengePackVersionID, workspaceID uuid.UUID) ([]repository.ChallengeInputSetSummary, error)
 }
 
 type ChallengePackReadService interface {
@@ -109,7 +109,7 @@ func (m *ChallengePackReadManager) ListChallengeInputSets(ctx context.Context, c
 		}
 	}
 
-	inputSets, err := m.repo.ListChallengeInputSetsByVersionID(ctx, challengePackVersionID)
+	inputSets, err := m.repo.ListChallengeInputSetsVisibleToWorkspace(ctx, challengePackVersionID, workspaceID)
 	if err != nil {
 		return ListChallengeInputSetsResult{}, fmt.Errorf("list challenge input sets for version %s: %w", challengePackVersionID, err)
 	}

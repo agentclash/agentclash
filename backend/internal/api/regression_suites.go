@@ -36,6 +36,7 @@ type RegressionRepository interface {
 	PatchRegressionCase(ctx context.Context, params repository.PatchRegressionCaseParams) (repository.RegressionCase, error)
 	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
 	GetChallengeInputSetByID(ctx context.Context, id uuid.UUID) (repository.ChallengeInputSet, error)
+	ChallengeInputSetVisibleToWorkspace(ctx context.Context, id, workspaceID uuid.UUID) (bool, error)
 	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error)
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
 	ListRunFailureReviewItems(ctx context.Context, runID uuid.UUID, agentID *uuid.UUID) ([]failurereview.Item, error)
@@ -476,6 +477,13 @@ func (m *RegressionManager) CaptureProductionFailure(ctx context.Context, caller
 		inputSet, err := m.repo.GetChallengeInputSetByID(ctx, *input.SourceChallengeInputSetID)
 		if err != nil {
 			return repository.RegressionCase{}, err
+		}
+		visible, err := m.repo.ChallengeInputSetVisibleToWorkspace(ctx, *input.SourceChallengeInputSetID, input.WorkspaceID)
+		if err != nil {
+			return repository.RegressionCase{}, err
+		}
+		if !visible {
+			return repository.RegressionCase{}, repository.ErrChallengeInputSetNotFound
 		}
 		if inputSet.ChallengePackVersionID != input.SourceChallengePackVersionID {
 			return repository.RegressionCase{}, ErrRegressionInputSetMismatch
