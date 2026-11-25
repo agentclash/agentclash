@@ -13,11 +13,12 @@ WHERE id = @id
   AND archived_at IS NULL
 LIMIT 1;
 
--- name: ListChallengeInputSetsByVersionID :many
+-- name: ListPackDefinedChallengeInputSetsByVersionID :many
 SELECT id, challenge_pack_version_id, input_key, name
 FROM challenge_input_sets
 WHERE challenge_pack_version_id = @challenge_pack_version_id
   AND archived_at IS NULL
+  AND owner_workspace_id IS NULL
 ORDER BY created_at ASC;
 
 -- name: ListDefaultChallengeInputSetIDsByVersionID :many
@@ -25,11 +26,29 @@ SELECT cis.id
 FROM challenge_input_sets AS cis
 WHERE cis.challenge_pack_version_id = @challenge_pack_version_id
   AND cis.archived_at IS NULL
+  -- Only dataset input sets have an owner. They are never a default, in any workspace.
+  AND cis.owner_workspace_id IS NULL
   AND NOT EXISTS (
       SELECT 1
       FROM dataset_version_input_sets AS dvis
       WHERE dvis.challenge_input_set_id = cis.id
   );
+
+-- name: ListChallengeInputSetsVisibleToWorkspace :many
+SELECT cis.id, cis.challenge_pack_version_id, cis.input_key, cis.name
+FROM challenge_input_sets cis
+WHERE cis.challenge_pack_version_id = @challenge_pack_version_id
+  AND cis.archived_at IS NULL
+  AND (cis.owner_workspace_id IS NULL OR cis.owner_workspace_id = @workspace_id::uuid)
+ORDER BY cis.created_at ASC;
+
+-- name: ChallengeInputSetVisibleToWorkspace :one
+SELECT EXISTS (
+    SELECT 1
+    FROM challenge_input_sets cis
+    WHERE cis.id = @id
+      AND (cis.owner_workspace_id IS NULL OR cis.owner_workspace_id = @workspace_id::uuid)
+) AS visible;
 
 -- name: ListChallengeIdentityIDsByPackVersionID :many
 SELECT challenge_identity_id

@@ -189,21 +189,8 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 	}
 
 	if input.ChallengeInputSetID != nil {
-		challengeInputSet, err := m.repo.GetChallengeInputSetByID(ctx, *input.ChallengeInputSetID)
-		if err != nil {
-			if err == repository.ErrChallengeInputSetNotFound {
-				return CreateEvalSessionResult{}, RunCreationValidationError{
-					Code:    "invalid_challenge_input_set_id",
-					Message: "challenge_input_set_id must reference an active challenge input set",
-				}
-			}
-			return CreateEvalSessionResult{}, fmt.Errorf("load challenge input set: %w", err)
-		}
-		if challengeInputSet.ChallengePackVersionID != input.ChallengePackVersionID {
-			return CreateEvalSessionResult{}, RunCreationValidationError{
-				Code:    "invalid_challenge_input_set_id",
-				Message: "challenge_input_set_id must belong to the selected challenge pack version",
-			}
+		if err := m.validateChallengeInputSet(ctx, *input.ChallengeInputSetID, input.ChallengePackVersionID, input.WorkspaceID); err != nil {
+			return CreateEvalSessionResult{}, err
 		}
 	} else {
 		inputSetIDs, err := m.repo.ListDefaultChallengeInputSetIDsByVersionID(ctx, input.ChallengePackVersionID)

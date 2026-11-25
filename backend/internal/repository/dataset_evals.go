@@ -117,6 +117,7 @@ func (r *Repository) MaterializeDatasetVersionInputSet(ctx context.Context, para
 	q := r.queries.WithTx(tx)
 
 	inputSet, err := q.CreateDatasetEvalChallengeInputSet(ctx, repositorysqlc.CreateDatasetEvalChallengeInputSetParams{
+		DatasetID:              params.DatasetID,
 		ChallengePackVersionID: params.ChallengePackVersionID,
 		InputKey:               inputKey,
 		Name:                   "Dataset " + version.VersionNumberLabel(),
@@ -124,6 +125,9 @@ func (r *Repository) MaterializeDatasetVersionInputSet(ctx context.Context, para
 		InputChecksum:          inputChecksum,
 	})
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return DatasetVersionInputSet{}, fmt.Errorf("%w: dataset eval input key is already in use", ErrInvalidDatasetEvalInput)
+		}
 		return DatasetVersionInputSet{}, fmt.Errorf("create dataset eval challenge input set: %w", err)
 	}
 	versionInputSet, err := q.CreateDatasetVersionInputSet(ctx, repositorysqlc.CreateDatasetVersionInputSetParams{

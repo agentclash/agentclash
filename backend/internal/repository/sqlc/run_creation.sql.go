@@ -11,8 +11,29 @@ import (
 	"github.com/google/uuid"
 )
 
+const challengeInputSetVisibleToWorkspace = `-- name: ChallengeInputSetVisibleToWorkspace :one
+SELECT EXISTS (
+    SELECT 1
+    FROM challenge_input_sets cis
+    WHERE cis.id = $1
+      AND (cis.owner_workspace_id IS NULL OR cis.owner_workspace_id = $2::uuid)
+) AS visible
+`
+
+type ChallengeInputSetVisibleToWorkspaceParams struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+}
+
+func (q *Queries) ChallengeInputSetVisibleToWorkspace(ctx context.Context, arg ChallengeInputSetVisibleToWorkspaceParams) (bool, error) {
+	row := q.db.QueryRow(ctx, challengeInputSetVisibleToWorkspace, arg.ID, arg.WorkspaceID)
+	var visible bool
+	err := row.Scan(&visible)
+	return visible, err
+}
+
 const getChallengeInputSetByID = `-- name: GetChallengeInputSetByID :one
-SELECT id, challenge_pack_version_id, input_key, name, description, input_checksum, generated_at, created_at, updated_at, archived_at
+SELECT id, challenge_pack_version_id, input_key, name, description, input_checksum, generated_at, created_at, updated_at, archived_at, owner_workspace_id
 FROM challenge_input_sets
 WHERE id = $1
   AND archived_at IS NULL
@@ -37,6 +58,7 @@ func (q *Queries) GetChallengeInputSetByID(ctx context.Context, arg GetChallenge
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ArchivedAt,
+		&i.OwnerWorkspaceID,
 	)
 	return i, err
 }
@@ -103,34 +125,36 @@ func (q *Queries) ListChallengeIdentityIDsByPackVersionID(ctx context.Context, a
 	return items, nil
 }
 
-const listChallengeInputSetsByVersionID = `-- name: ListChallengeInputSetsByVersionID :many
-SELECT id, challenge_pack_version_id, input_key, name
-FROM challenge_input_sets
-WHERE challenge_pack_version_id = $1
-  AND archived_at IS NULL
-ORDER BY created_at ASC
+const listChallengeInputSetsVisibleToWorkspace = `-- name: ListChallengeInputSetsVisibleToWorkspace :many
+SELECT cis.id, cis.challenge_pack_version_id, cis.input_key, cis.name
+FROM challenge_input_sets cis
+WHERE cis.challenge_pack_version_id = $1
+  AND cis.archived_at IS NULL
+  AND (cis.owner_workspace_id IS NULL OR cis.owner_workspace_id = $2::uuid)
+ORDER BY cis.created_at ASC
 `
 
-type ListChallengeInputSetsByVersionIDParams struct {
+type ListChallengeInputSetsVisibleToWorkspaceParams struct {
 	ChallengePackVersionID uuid.UUID
+	WorkspaceID            uuid.UUID
 }
 
-type ListChallengeInputSetsByVersionIDRow struct {
+type ListChallengeInputSetsVisibleToWorkspaceRow struct {
 	ID                     uuid.UUID
 	ChallengePackVersionID uuid.UUID
 	InputKey               string
 	Name                   string
 }
 
-func (q *Queries) ListChallengeInputSetsByVersionID(ctx context.Context, arg ListChallengeInputSetsByVersionIDParams) ([]ListChallengeInputSetsByVersionIDRow, error) {
-	rows, err := q.db.Query(ctx, listChallengeInputSetsByVersionID, arg.ChallengePackVersionID)
+func (q *Queries) ListChallengeInputSetsVisibleToWorkspace(ctx context.Context, arg ListChallengeInputSetsVisibleToWorkspaceParams) ([]ListChallengeInputSetsVisibleToWorkspaceRow, error) {
+	rows, err := q.db.Query(ctx, listChallengeInputSetsVisibleToWorkspace, arg.ChallengePackVersionID, arg.WorkspaceID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListChallengeInputSetsByVersionIDRow
+	var items []ListChallengeInputSetsVisibleToWorkspaceRow
 	for rows.Next() {
-		var i ListChallengeInputSetsByVersionIDRow
+		var i ListChallengeInputSetsVisibleToWorkspaceRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ChallengePackVersionID,
@@ -152,6 +176,8 @@ SELECT cis.id
 FROM challenge_input_sets AS cis
 WHERE cis.challenge_pack_version_id = $1
   AND cis.archived_at IS NULL
+  -- Only dataset input sets have an owner. They are never a default, in any workspace.
+  AND cis.owner_workspace_id IS NULL
   AND NOT EXISTS (
       SELECT 1
       FROM dataset_version_input_sets AS dvis
@@ -176,6 +202,51 @@ func (q *Queries) ListDefaultChallengeInputSetIDsByVersionID(ctx context.Context
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPackDefinedChallengeInputSetsByVersionID = `-- name: ListPackDefinedChallengeInputSetsByVersionID :many
+SELECT id, challenge_pack_version_id, input_key, name
+FROM challenge_input_sets
+WHERE challenge_pack_version_id = $1
+  AND archived_at IS NULL
+  AND owner_workspace_id IS NULL
+ORDER BY created_at ASC
+`
+
+type ListPackDefinedChallengeInputSetsByVersionIDParams struct {
+	ChallengePackVersionID uuid.UUID
+}
+
+type ListPackDefinedChallengeInputSetsByVersionIDRow struct {
+	ID                     uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	InputKey               string
+	Name                   string
+}
+
+func (q *Queries) ListPackDefinedChallengeInputSetsByVersionID(ctx context.Context, arg ListPackDefinedChallengeInputSetsByVersionIDParams) ([]ListPackDefinedChallengeInputSetsByVersionIDRow, error) {
+	rows, err := q.db.Query(ctx, listPackDefinedChallengeInputSetsByVersionID, arg.ChallengePackVersionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPackDefinedChallengeInputSetsByVersionIDRow
+	for rows.Next() {
+		var i ListPackDefinedChallengeInputSetsByVersionIDRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ChallengePackVersionID,
+			&i.InputKey,
+			&i.Name,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

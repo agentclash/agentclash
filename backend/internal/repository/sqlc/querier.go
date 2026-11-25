@@ -20,6 +20,7 @@ type Querier interface {
 	AttachEvalSessionToEvalSet(ctx context.Context, arg AttachEvalSessionToEvalSetParams) error
 	AttachRunToEvalSession(ctx context.Context, arg AttachRunToEvalSessionParams) (Run, error)
 	BeginBillingWebhookEvent(ctx context.Context, arg BeginBillingWebhookEventParams) (string, error)
+	ChallengeInputSetVisibleToWorkspace(ctx context.Context, arg ChallengeInputSetVisibleToWorkspaceParams) (bool, error)
 	ClaimAgentTryout(ctx context.Context, arg ClaimAgentTryoutParams) (AgentTryout, error)
 	// Claims the oldest pending turn, or a processing turn whose lease ran out
 	// because the session that claimed it is gone. A processing turn without a
@@ -169,7 +170,7 @@ type Querier interface {
 	ListCaseResultsByEvalSetID(ctx context.Context, arg ListCaseResultsByEvalSetIDParams) ([]CaseResult, error)
 	ListCaseResultsForExport(ctx context.Context, arg ListCaseResultsForExportParams) ([]CaseResult, error)
 	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, arg ListChallengeIdentityIDsByPackVersionIDParams) ([]uuid.UUID, error)
-	ListChallengeInputSetsByVersionID(ctx context.Context, arg ListChallengeInputSetsByVersionIDParams) ([]ListChallengeInputSetsByVersionIDRow, error)
+	ListChallengeInputSetsVisibleToWorkspace(ctx context.Context, arg ListChallengeInputSetsVisibleToWorkspaceParams) ([]ListChallengeInputSetsVisibleToWorkspaceRow, error)
 	ListChallengePackDraftsByWorkspace(ctx context.Context, arg ListChallengePackDraftsByWorkspaceParams) ([]ChallengePackDraft, error)
 	ListChallengePacks(ctx context.Context) ([]ListChallengePacksRow, error)
 	ListChallengePiecesByIDs(ctx context.Context, arg ListChallengePiecesByIDsParams) ([]ChallengePiece, error)
@@ -194,6 +195,7 @@ type Querier interface {
 	ListLatestDatasetExampleRevisions(ctx context.Context, arg ListLatestDatasetExampleRevisionsParams) ([]DatasetExampleRevision, error)
 	ListLatestRegressionPromotionsByCaseIDs(ctx context.Context, arg ListLatestRegressionPromotionsByCaseIDsParams) ([]WorkspaceRegressionPromotion, error)
 	ListMetricResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListMetricResultsByRunAgentAndEvaluationSpecParams) ([]ListMetricResultsByRunAgentAndEvaluationSpecRow, error)
+	ListPackDefinedChallengeInputSetsByVersionID(ctx context.Context, arg ListPackDefinedChallengeInputSetsByVersionIDParams) ([]ListPackDefinedChallengeInputSetsByVersionIDRow, error)
 	ListRecentComparableScoredRunsBeforeRunID(ctx context.Context, arg ListRecentComparableScoredRunsBeforeRunIDParams) ([]Run, error)
 	ListRegressionCaseValidationStatsByCaseIDs(ctx context.Context, arg ListRegressionCaseValidationStatsByCaseIDsParams) ([]ListRegressionCaseValidationStatsByCaseIDsRow, error)
 	ListRegressionCaseValidationStatsBySuiteID(ctx context.Context, arg ListRegressionCaseValidationStatsBySuiteIDParams) ([]ListRegressionCaseValidationStatsBySuiteIDRow, error)

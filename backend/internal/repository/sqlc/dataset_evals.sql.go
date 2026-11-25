@@ -47,20 +47,23 @@ INSERT INTO challenge_input_sets (
     name,
     description,
     input_checksum,
-    generated_at
+    generated_at,
+    owner_workspace_id
 ) VALUES (
     $1,
     $2,
     $3,
     $4,
     $5,
-    now()
+    now(),
+    (SELECT d.workspace_id FROM datasets d WHERE d.id = $6)
 )
 ON CONFLICT (challenge_pack_version_id, input_key) DO UPDATE
 SET name = EXCLUDED.name,
     description = EXCLUDED.description,
     input_checksum = EXCLUDED.input_checksum
-RETURNING id, challenge_pack_version_id, input_key, name, description, input_checksum, generated_at, created_at, updated_at, archived_at
+WHERE challenge_input_sets.owner_workspace_id IS NOT DISTINCT FROM EXCLUDED.owner_workspace_id
+RETURNING id, challenge_pack_version_id, input_key, name, description, input_checksum, generated_at, created_at, updated_at, archived_at, owner_workspace_id
 `
 
 type CreateDatasetEvalChallengeInputSetParams struct {
@@ -69,6 +72,7 @@ type CreateDatasetEvalChallengeInputSetParams struct {
 	Name                   string
 	Description            *string
 	InputChecksum          string
+	DatasetID              uuid.UUID
 }
 
 func (q *Queries) CreateDatasetEvalChallengeInputSet(ctx context.Context, arg CreateDatasetEvalChallengeInputSetParams) (ChallengeInputSet, error) {
@@ -78,6 +82,7 @@ func (q *Queries) CreateDatasetEvalChallengeInputSet(ctx context.Context, arg Cr
 		arg.Name,
 		arg.Description,
 		arg.InputChecksum,
+		arg.DatasetID,
 	)
 	var i ChallengeInputSet
 	err := row.Scan(
@@ -91,6 +96,7 @@ func (q *Queries) CreateDatasetEvalChallengeInputSet(ctx context.Context, arg Cr
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ArchivedAt,
+		&i.OwnerWorkspaceID,
 	)
 	return i, err
 }

@@ -258,6 +258,12 @@ func (r *datasetGateFakeRepo) GetDatasetVersionByID(context.Context, uuid.UUID) 
 func (r *datasetGateFakeRepo) ListDatasetVersionExamples(context.Context, uuid.UUID) ([]repository.DatasetExample, error) {
 	return nil, nil
 }
+func (r *datasetGateFakeRepo) GetRunnableChallengePackVersionByID(context.Context, uuid.UUID) (repository.RunnableChallengePackVersion, error) {
+	return repository.RunnableChallengePackVersion{}, repository.ErrChallengePackVersionNotFound
+}
+func (r *datasetGateFakeRepo) WorkspacePublicPacksEnabled(context.Context, uuid.UUID) (bool, error) {
+	return false, nil
+}
 func (r *datasetGateFakeRepo) MaterializeDatasetVersionInputSet(context.Context, repository.MaterializeDatasetVersionInputSetParams) (repository.DatasetVersionInputSet, error) {
 	return repository.DatasetVersionInputSet{}, nil
 }

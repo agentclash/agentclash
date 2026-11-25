@@ -568,12 +568,12 @@ func TestRegressionManagerCaptureProductionFailureCreatesProposedCase(t *testing
 		challengePackVersion: repository.RunnableChallengePackVersion{
 			ID:              versionID,
 			ChallengePackID: challengePackID,
-			WorkspaceID:     &workspaceID,
 		},
 		challengeInputSet: repository.ChallengeInputSet{
 			ID:                     inputSetID,
 			ChallengePackVersionID: versionID,
 		},
+		datasetInputSetOwner: &workspaceID,
 		challengeIdentityIDs: []uuid.UUID{challengeIdentityID},
 		createCaseResult:     repository.RegressionCase{WorkspaceID: workspaceID},
 	}
@@ -609,6 +609,9 @@ func TestRegressionManagerCaptureProductionFailureCreatesProposedCase(t *testing
 	}
 	if repo.createCaseInput == nil {
 		t.Fatal("expected create case input")
+	}
+	if sourceID := repo.createCaseInput.SourceChallengeInputSetID; sourceID == nil || *sourceID != inputSetID {
+		t.Fatalf("source input set = %v, want %s", sourceID, inputSetID)
 	}
 	if repo.createCaseInput.Status != domain.RegressionCaseStatusProposed {
 		t.Fatalf("status = %s, want proposed", repo.createCaseInput.Status)
@@ -739,6 +742,24 @@ func TestRegressionManagerCaptureProductionFailureRejectsInvalidSources(t *testi
 			wantErr: ErrRegressionInputSetMismatch,
 		},
 		{
+			name: "dataset input set owned by another workspace",
+			mutate: func(repo *fakeRegressionRepository, _ *CaptureProductionFailureInput) {
+				otherWorkspaceID := uuid.New()
+				repo.challengePackVersion.WorkspaceID = nil
+				repo.datasetInputSetOwner = &otherWorkspaceID
+			},
+			wantErr: repository.ErrChallengeInputSetNotFound,
+		},
+		{
+			name: "dataset input set owned by another workspace on another version",
+			mutate: func(repo *fakeRegressionRepository, _ *CaptureProductionFailureInput) {
+				otherWorkspaceID := uuid.New()
+				repo.datasetInputSetOwner = &otherWorkspaceID
+				repo.challengeInputSet.ChallengePackVersionID = uuid.New()
+			},
+			wantErr: repository.ErrChallengeInputSetNotFound,
+		},
+		{
 			name: "missing identity",
 			mutate: func(repo *fakeRegressionRepository, _ *CaptureProductionFailureInput) {
 				repo.challengeIdentityIDs = []uuid.UUID{uuid.New()}
@@ -761,6 +782,9 @@ func TestRegressionManagerCaptureProductionFailureRejectsInvalidSources(t *testi
 			}, input)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("CaptureProductionFailure error = %v, want %v", err, tc.wantErr)
+			}
+			if repo.createCaseInput != nil {
+				t.Fatal("created a regression case with an invalid source")
 			}
 		})
 	}
@@ -1412,6 +1436,7 @@ type fakeRegressionRepository struct {
 	challengePackVersionErr error
 	challengeInputSet       repository.ChallengeInputSet
 	challengeInputSetErr    error
+	datasetInputSetOwner    *uuid.UUID
 	challengeIdentityIDs    []uuid.UUID
 	challengeIdentityIDsErr error
 	run                     domain.Run
@@ -1536,6 +1561,10 @@ func (f *fakeRegressionRepository) GetChallengeInputSetByID(_ context.Context, _
 		return repository.ChallengeInputSet{}, f.challengeInputSetErr
 	}
 	return f.challengeInputSet, nil
+}
+
+func (f *fakeRegressionRepository) ChallengeInputSetVisibleToWorkspace(_ context.Context, id, workspaceID uuid.UUID) (bool, error) {
+	return f.challengeInputSet.ID == id && (f.datasetInputSetOwner == nil || *f.datasetInputSetOwner == workspaceID), nil
 }
 
 func (f *fakeRegressionRepository) ListChallengeIdentityIDsByPackVersionID(_ context.Context, _ uuid.UUID) ([]uuid.UUID, error) {

@@ -344,7 +344,7 @@ func (r *Repository) GetPublicChallengePackVersionSnapshot(ctx context.Context, 
 		return PublicChallengePackVersionSnapshot{}, fmt.Errorf("get public challenge pack version snapshot: %w", err)
 	}
 
-	inputSets, err := r.ListChallengeInputSetsByVersionID(ctx, versionID)
+	inputSets, err := r.listPackDefinedChallengeInputSetsByVersionID(ctx, versionID)
 	if err != nil {
 		return PublicChallengePackVersionSnapshot{}, err
 	}

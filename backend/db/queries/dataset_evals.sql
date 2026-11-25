@@ -24,19 +24,22 @@ INSERT INTO challenge_input_sets (
     name,
     description,
     input_checksum,
-    generated_at
+    generated_at,
+    owner_workspace_id
 ) VALUES (
     @challenge_pack_version_id,
     @input_key,
     @name,
     @description,
     @input_checksum,
-    now()
+    now(),
+    (SELECT d.workspace_id FROM datasets d WHERE d.id = @dataset_id)
 )
 ON CONFLICT (challenge_pack_version_id, input_key) DO UPDATE
 SET name = EXCLUDED.name,
     description = EXCLUDED.description,
     input_checksum = EXCLUDED.input_checksum
+WHERE challenge_input_sets.owner_workspace_id IS NOT DISTINCT FROM EXCLUDED.owner_workspace_id
 RETURNING *;
 
 -- name: CreateDatasetVersionInputSet :one

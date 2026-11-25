@@ -4771,6 +4771,8 @@ paths:
                 $ref: "#/components/schemas/StartDatasetEvalResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
 
@@ -5781,6 +5783,7 @@ paths:
       operationId: listChallengeInputSets
       tags: [ChallengePacks]
       summary: List published input sets for a challenge-pack version
+      description: Input sets made by a dataset eval are listed only for the workspace that owns the dataset.
       security:
         - bearerJWT: []
       parameters:
@@ -11482,8 +11485,11 @@ components:
             sets. If one remains, it is selected automatically. If none
             remain, the run is created without an input set. If multiple
             remain, the request is rejected with code
-            missing_challenge_input_set_id. An explicit ID can select any
-            active input set for the version, including a dataset input set.
+            missing_challenge_input_set_id. An explicit ID can select an
+            active input set for the version. A dataset input set can be
+            selected only by the workspace that owns the dataset. For other
+            workspaces the request is rejected with code
+            invalid_challenge_input_set_id, the same as for an unknown ID.
         name:
           type: string
         agent_deployment_ids:
@@ -11565,8 +11571,11 @@ components:
             sets. If one remains, it is selected automatically. If none
             remain, the session's runs are created without an input set. If
             multiple remain, the request is rejected with code
-            missing_challenge_input_set_id. An explicit ID can select any
-            active input set for the version, including a dataset input set.
+            missing_challenge_input_set_id. An explicit ID can select an
+            active input set for the version. A dataset input set can be
+            selected only by the workspace that owns the dataset. For other
+            workspaces the request is rejected with the same error as for an
+            unknown ID.
         participants:
           type: array
           minItems: 1
@@ -13246,6 +13255,10 @@ components:
         source_challenge_input_set_id:
           type: string
           format: uuid
+          description: >
+            Optional. A dataset input set can be used only by the workspace
+            that owns the dataset. For other workspaces the request fails
+            the same way as for an unknown ID.
         source_challenge_identity_id:
           type: string
           format: uuid

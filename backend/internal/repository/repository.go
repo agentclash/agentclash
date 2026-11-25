@@ -443,12 +443,12 @@ func (r *Repository) GetChallengeInputSetByID(ctx context.Context, id uuid.UUID)
 	}, nil
 }
 
-func (r *Repository) ListChallengeInputSetsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]ChallengeInputSetSummary, error) {
-	rows, err := r.queries.ListChallengeInputSetsByVersionID(ctx, repositorysqlc.ListChallengeInputSetsByVersionIDParams{
+func (r *Repository) listPackDefinedChallengeInputSetsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]ChallengeInputSetSummary, error) {
+	rows, err := r.queries.ListPackDefinedChallengeInputSetsByVersionID(ctx, repositorysqlc.ListPackDefinedChallengeInputSetsByVersionIDParams{
 		ChallengePackVersionID: challengePackVersionID,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list challenge input sets by version id: %w", err)
+		return nil, fmt.Errorf("list pack-defined challenge input sets by version id: %w", err)
 	}
 
 	results := make([]ChallengeInputSetSummary, 0, len(rows))
@@ -467,6 +467,38 @@ func (r *Repository) ListDefaultChallengeInputSetIDsByVersionID(ctx context.Cont
 	return r.queries.ListDefaultChallengeInputSetIDsByVersionID(ctx, repositorysqlc.ListDefaultChallengeInputSetIDsByVersionIDParams{
 		ChallengePackVersionID: challengePackVersionID,
 	})
+}
+
+func (r *Repository) ListChallengeInputSetsVisibleToWorkspace(ctx context.Context, challengePackVersionID, workspaceID uuid.UUID) ([]ChallengeInputSetSummary, error) {
+	rows, err := r.queries.ListChallengeInputSetsVisibleToWorkspace(ctx, repositorysqlc.ListChallengeInputSetsVisibleToWorkspaceParams{
+		ChallengePackVersionID: challengePackVersionID,
+		WorkspaceID:            workspaceID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list challenge input sets visible to workspace: %w", err)
+	}
+
+	results := make([]ChallengeInputSetSummary, 0, len(rows))
+	for _, row := range rows {
+		results = append(results, ChallengeInputSetSummary{
+			ID:                     row.ID,
+			ChallengePackVersionID: row.ChallengePackVersionID,
+			InputKey:               row.InputKey,
+			Name:                   row.Name,
+		})
+	}
+	return results, nil
+}
+
+func (r *Repository) ChallengeInputSetVisibleToWorkspace(ctx context.Context, id, workspaceID uuid.UUID) (bool, error) {
+	visible, err := r.queries.ChallengeInputSetVisibleToWorkspace(ctx, repositorysqlc.ChallengeInputSetVisibleToWorkspaceParams{
+		ID:          id,
+		WorkspaceID: workspaceID,
+	})
+	if err != nil {
+		return false, fmt.Errorf("check challenge input set visibility: %w", err)
+	}
+	return visible, nil
 }
 
 func (r *Repository) ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error) {
