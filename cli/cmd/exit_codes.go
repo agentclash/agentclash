@@ -37,7 +37,7 @@ var documentedExitCodes = []ExitCode{
 
 	// Global failure-class band (sysexits-aligned). Applies to every command
 	// unless a command-specific code below overrides it.
-	{Code: exitValidationError, Name: "validation_error", Description: "Invalid arguments, flags, input files, or configuration (sysexits EX_USAGE)."},
+	{Code: exitValidationError, Name: "validation_error", Description: "Invalid command usage, including unknown top-level commands, invalid arguments, missing required flags, or invalid flag values. Also used for input file or configuration validation errors (sysexits EX_USAGE). Command groups without a run handler print help and exit 0 for unknown subcommands."},
 	{Code: exitNotFound, Name: "not_found", Description: "The referenced resource or file does not exist (HTTP 404 or a missing local file; sysexits EX_NOINPUT)."},
 	{Code: exitRetryableFailure, Name: "retryable_failure", Description: "Transient failure — rate limiting (429), server errors (5xx), a network/transport error, or an incomplete response body. Mirrors `error.retryable: true` in the JSON envelope. Retry a read, honoring details.retry_after_seconds when present; before you repeat a write, check whether the first attempt changed server state (sysexits EX_TEMPFAIL)."},
 	{Code: exitAuthDenied, Name: "auth_denied", Description: "Authentication or permission failure (HTTP 401/403 or a local permission error; sysexits EX_NOPERM)."},

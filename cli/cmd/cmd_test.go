@@ -43,8 +43,7 @@ func executeCommandWithQuiet(t *testing.T, args []string, apiURL string, quiet b
 	flagNonInteractive = false
 	runtimeOutputJSON = false
 
-	rootCmd.SetArgs(args)
-	return rootCmd.Execute()
+	return executeCLI(args)
 }
 
 var cmdMu sync.Mutex

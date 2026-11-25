@@ -207,6 +207,9 @@ Get started:
 }
 
 func init() {
+	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return wrapCobraUsageError(err)
+	})
 	rootCmd.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output in JSON format")
 	rootCmd.PersistentFlags().StringVarP(&flagOutput, "output", "o", "", "Output format: table, json, yaml")
 	rootCmd.PersistentFlags().BoolVarP(&flagQuiet, "quiet", "q", false, "Suppress non-essential output")
@@ -237,5 +240,5 @@ func init() {
 
 // Execute runs the root command.
 func Execute() error {
-	return rootCmd.Execute()
+	return executeCLI(os.Args[1:])
 }
