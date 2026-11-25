@@ -25,10 +25,10 @@ describe("sanitizeReturnTo", () => {
   it("preserves a sanitized GitHub setup callback", () => {
     expect(
       sanitizeReturnTo(
-        "/github/setup?installation_id=42&state=abc_DEF-123.sig_456&setup_action=install&evil=https://example.com",
+        "/github/setup?installation_id=42&state=abc_DEF-123.sig_456&setup_action=install&code=oauth_Code-123&evil=https://example.com",
       ),
     ).toBe(
-      "/github/setup?installation_id=42&state=abc_DEF-123.sig_456&setup_action=install",
+      "/github/setup?installation_id=42&state=abc_DEF-123.sig_456&setup_action=install&code=oauth_Code-123",
     );
   });
 
@@ -64,6 +64,19 @@ describe("sanitizeReturnTo", () => {
 });
 
 describe("github setup return-to helpers", () => {
+  const callback = "/github/setup?installation_id=42&state=abc.def";
+
+  it.each(["a", "a".repeat(256)])("keeps a valid authorization code (%s)", (code) => {
+    expect(sanitizeReturnTo(`${callback}&code=${code}`)).toBe(`${callback}&code=${code}`);
+  });
+
+  it.each(["", "a".repeat(257), "abc%0A", "bad%20code", "bad%2Fcode"])(
+    "drops an invalid authorization code (%s)",
+    (code) => {
+      expect(sanitizeReturnTo(`${callback}&code=${code}`)).toBe(callback);
+    },
+  );
+
   it("requires installation id and signed state", () => {
     expect(buildGitHubSetupReturnTo(new URLSearchParams("installation_id=x"))).toBe(
       "/github/setup",

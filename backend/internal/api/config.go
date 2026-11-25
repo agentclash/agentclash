@@ -89,6 +89,8 @@ type Config struct {
 	FrontendURL                          string
 	GitHubAppSlug                        string
 	GitHubAppID                          int64
+	GitHubAppClientID                    string
+	GitHubAppClientSecret                string
 	GitHubAppPrivateKey                  string
 	GitHubAppStateSecret                 string
 	GitHubWebhookSecret                  string
@@ -308,6 +310,8 @@ func LoadConfigFromEnv() (Config, error) {
 		FrontendURL:                          frontendURL,
 		GitHubAppSlug:                        os.Getenv("GITHUB_APP_SLUG"),
 		GitHubAppID:                          githubAppID,
+		GitHubAppClientID:                    os.Getenv("GITHUB_APP_CLIENT_ID"),
+		GitHubAppClientSecret:                os.Getenv("GITHUB_APP_CLIENT_SECRET"),
 		GitHubAppPrivateKey:                  normalizePEMEnv(os.Getenv("GITHUB_APP_PRIVATE_KEY")),
 		GitHubAppStateSecret:                 os.Getenv("GITHUB_APP_STATE_SECRET"),
 		GitHubWebhookSecret:                  os.Getenv("GITHUB_WEBHOOK_SECRET"),

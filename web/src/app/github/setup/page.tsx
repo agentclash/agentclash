@@ -15,14 +15,17 @@ interface GitHubSetupState {
   return_path?: string;
 }
 
+interface GitHubSetupParams {
+  installation_id?: string;
+  setup_action?: string;
+  state?: string;
+  code?: string | string[];
+}
+
 export default async function GitHubSetupPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    installation_id?: string;
-    setup_action?: string;
-    state?: string;
-  }>;
+  searchParams: Promise<GitHubSetupParams>;
 }) {
   const params = await searchParams;
   const callbackPath = sanitizeReturnTo(buildCallbackPath(params));
@@ -52,6 +55,7 @@ export default async function GitHubSetupPage({
       {
         installation_id: installationID,
         state,
+        code: typeof params.code === "string" ? params.code : "",
       } satisfies CompleteGitHubInstallationRequest,
     );
   } catch (err) {
@@ -69,17 +73,14 @@ export default async function GitHubSetupPage({
   redirect(safeWorkspaceReturnPath(decoded?.return_path, workspaceID));
 }
 
-function buildCallbackPath(params: {
-  installation_id?: string;
-  setup_action?: string;
-  state?: string;
-}): string {
+function buildCallbackPath(params: GitHubSetupParams): string {
   const query = new URLSearchParams();
   if (params.installation_id) {
     query.set("installation_id", params.installation_id);
   }
   if (params.setup_action) query.set("setup_action", params.setup_action);
   if (params.state) query.set("state", params.state);
+  if (typeof params.code === "string") query.set("code", params.code);
   const encoded = query.toString();
   return encoded ? `/github/setup?${encoded}` : "/github/setup";
 }

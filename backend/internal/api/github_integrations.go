@@ -56,23 +56,27 @@ type GitHubIntegrationService interface {
 }
 
 type GitHubIntegrationConfig struct {
-	AppSlug       string
-	AppID         int64
-	PrivateKeyPEM string
-	StateSecret   string
-	WebhookSecret string
-	FrontendURL   string
-	StateTTL      time.Duration
-	InstallBase   string
-	APIBaseURL    string
-	HTTPClient    *http.Client
+	AppSlug         string
+	AppID           int64
+	AppClientID     string
+	AppClientSecret string
+	PrivateKeyPEM   string
+	StateSecret     string
+	WebhookSecret   string
+	FrontendURL     string
+	StateTTL        time.Duration
+	InstallBase     string
+	APIBaseURL      string
+	OAuthBaseURL    string
+	HTTPClient      *http.Client
 }
 
 type GitHubIntegrationManager struct {
-	authorizer WorkspaceAuthorizer
-	repo       GitHubIntegrationRepository
-	config     GitHubIntegrationConfig
-	client     GitHubAppClient
+	authorizer         WorkspaceAuthorizer
+	repo               GitHubIntegrationRepository
+	config             GitHubIntegrationConfig
+	client             GitHubAppClient
+	userRequestTimeout time.Duration
 }
 
 type StartGitHubInstallationInput struct {
@@ -88,6 +92,7 @@ type StartGitHubInstallationResult struct {
 type CompleteGitHubInstallationInput struct {
 	InstallationID int64  `json:"installation_id"`
 	State          string `json:"state"`
+	Code           string `json:"code"`
 }
 
 type CompleteGitHubInstallationResult struct {
@@ -220,10 +225,18 @@ func NewGitHubIntegrationManager(authorizer WorkspaceAuthorizer, repo GitHubInte
 	if config.APIBaseURL == "" {
 		config.APIBaseURL = "https://api.github.com"
 	}
+	if config.OAuthBaseURL == "" {
+		config.OAuthBaseURL = "https://github.com"
+	}
 	if config.HTTPClient == nil {
 		config.HTTPClient = http.DefaultClient
 	}
-	manager := &GitHubIntegrationManager{authorizer: authorizer, repo: repo, config: config}
+	manager := &GitHubIntegrationManager{
+		authorizer:         authorizer,
+		repo:               repo,
+		config:             config,
+		userRequestTimeout: 15 * time.Second,
+	}
 	if config.AppID > 0 && strings.TrimSpace(config.PrivateKeyPEM) != "" {
 		manager.client = newGitHubAppHTTPClient(config)
 	}
@@ -268,6 +281,11 @@ func (m *GitHubIntegrationManager) CompleteGitHubInstallation(ctx context.Contex
 	if input.InstallationID <= 0 {
 		return CompleteGitHubInstallationResult{}, GitHubIntegrationValidationError{Code: "invalid_installation_id", Message: "installation_id is required"}
 	}
+	if strings.TrimSpace(input.Code) == "" {
+		return CompleteGitHubInstallationResult{}, GitHubIntegrationValidationError{
+			Code: "github_authorization_required", Message: "GitHub authorization code is required",
+		}
+	}
 	state, err := m.verifyState(input.State)
 	if err != nil {
 		return CompleteGitHubInstallationResult{}, err
@@ -278,9 +296,8 @@ func (m *GitHubIntegrationManager) CompleteGitHubInstallation(ctx context.Contex
 	if m.client == nil {
 		return CompleteGitHubInstallationResult{}, GitHubIntegrationConfigError("github app credentials are not configured")
 	}
-	orgID, err := m.repo.GetOrganizationIDByWorkspaceID(ctx, workspaceID)
-	if err != nil {
-		return CompleteGitHubInstallationResult{}, err
+	if strings.TrimSpace(m.config.AppClientID) == "" || strings.TrimSpace(m.config.AppClientSecret) == "" {
+		return CompleteGitHubInstallationResult{}, GitHubIntegrationConfigError("github app OAuth credentials are not configured")
 	}
 	installation, err := m.client.GetInstallation(ctx, input.InstallationID)
 	if err != nil {
@@ -288,6 +305,13 @@ func (m *GitHubIntegrationManager) CompleteGitHubInstallation(ctx context.Contex
 	}
 	if installation.ID != input.InstallationID {
 		return CompleteGitHubInstallationResult{}, GitHubIntegrationValidationError{Code: "installation_mismatch", Message: "github installation response did not match requested installation"}
+	}
+	if err := m.verifyGitHubInstallationAuthority(ctx, installation.Account, input.Code); err != nil {
+		return CompleteGitHubInstallationResult{}, err
+	}
+	orgID, err := m.repo.GetOrganizationIDByWorkspaceID(ctx, workspaceID)
+	if err != nil {
+		return CompleteGitHubInstallationResult{}, err
 	}
 	installedBy := caller.UserID
 	record, err := m.repo.UpsertGitHubInstallation(ctx, repository.UpsertGitHubInstallationParams{
@@ -656,6 +680,115 @@ type GitHubIntegrationValidationError struct {
 
 func (e GitHubIntegrationValidationError) Error() string {
 	return e.Message
+}
+
+var errGitHubInstallationNotAccessible = errors.New("the GitHub user cannot access this installation")
+
+func (m *GitHubIntegrationManager) verifyGitHubInstallationAuthority(ctx context.Context, account githubAPIAccount, code string) error {
+	var path string
+	switch account.Type {
+	case "User":
+		path = "/user"
+	case "Organization":
+		path = "/user/memberships/orgs/" + url.PathEscape(account.Login)
+	default:
+		return errGitHubInstallationNotAccessible
+	}
+
+	client := *m.config.HTTPClient
+	// Keep credentials on the configured GitHub endpoints.
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	token, err := m.exchangeGitHubAuthorizationCode(ctx, &client, code)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, m.userRequestTimeout)
+	defer cancel()
+	endpoint := strings.TrimRight(m.config.APIBaseURL, "/") + path
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return errors.New("could not create GitHub installation access request")
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	resp, err := client.Do(req)
+	if err != nil {
+		return errors.New("GitHub installation access request failed")
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
+		return errGitHubInstallationNotAccessible
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("GitHub installation access request returned HTTP %d", resp.StatusCode)
+	}
+
+	const maxResponseSize = 64 << 10
+	var response struct {
+		ID           int64  `json:"id"`
+		State        string `json:"state"`
+		Role         string `json:"role"`
+		Organization struct {
+			ID int64 `json:"id"`
+		} `json:"organization"`
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize+1))
+	if err != nil || len(body) > maxResponseSize || json.Unmarshal(body, &response) != nil {
+		return errors.New("invalid GitHub installation access response")
+	}
+	if account.Type == "User" {
+		if response.ID > 0 && response.ID == account.ID {
+			return nil
+		}
+	} else if response.State == "active" && response.Role == "admin" &&
+		response.Organization.ID > 0 && response.Organization.ID == account.ID {
+		return nil
+	}
+	return errGitHubInstallationNotAccessible
+}
+
+func (m *GitHubIntegrationManager) exchangeGitHubAuthorizationCode(ctx context.Context, client *http.Client, code string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, m.userRequestTimeout)
+	defer cancel()
+
+	endpoint := strings.TrimRight(m.config.OAuthBaseURL, "/") + "/login/oauth/access_token"
+	form := url.Values{
+		"client_id":     {m.config.AppClientID},
+		"client_secret": {m.config.AppClientSecret},
+		"code":          {code},
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", errors.New("could not create GitHub authorization request")
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", errors.New("GitHub authorization request failed")
+	}
+	defer resp.Body.Close()
+
+	var response struct {
+		AccessToken string `json:"access_token"`
+		Error       string `json:"error"`
+	}
+	decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 16<<10)).Decode(&response)
+	if decodeErr == nil && response.Error != "" {
+		return "", GitHubIntegrationValidationError{
+			Code: "invalid_github_authorization", Message: "GitHub rejected the authorization code",
+		}
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub authorization request returned HTTP %d", resp.StatusCode)
+	}
+	if decodeErr != nil || strings.TrimSpace(response.AccessToken) == "" {
+		return "", errors.New("GitHub authorization response did not contain a user access token")
+	}
+	return response.AccessToken, nil
 }
 
 func safeReturnPath(raw string) string {
@@ -1447,6 +1580,8 @@ func writeGitHubIntegrationError(w http.ResponseWriter, logger *slog.Logger, r *
 		writeError(w, http.StatusServiceUnavailable, "github_app_not_configured", configErr.Error())
 	case errors.As(err, &validationErr):
 		writeError(w, http.StatusBadRequest, validationErr.Code, validationErr.Message)
+	case errors.Is(err, errGitHubInstallationNotAccessible):
+		writeError(w, http.StatusForbidden, "github_installation_not_accessible", errGitHubInstallationNotAccessible.Error())
 	case errors.Is(err, repository.ErrWorkspaceCIProfileNotFound):
 		writeError(w, http.StatusNotFound, "ci_profile_not_found", "ci profile not found")
 	case errors.Is(err, repository.ErrWorkspaceCIProfileNameConflict):

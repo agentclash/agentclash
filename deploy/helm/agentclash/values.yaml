@@ -116,6 +116,10 @@ secrets:
     TEMPORAL_HOST_PORT: ""
     # AUTH_MODE=dev for kind rehearsal
     AUTH_MODE: "dev"
+    # Enable "Request user authorization (OAuth) during installation" on the
+    # GitHub App and set the Callback URL to <web origin>/github/setup.
+    GITHUB_APP_CLIENT_ID: ""
+    GITHUB_APP_CLIENT_SECRET: ""
 
 sandbox:
   # e2b | kubernetes | unconfigured

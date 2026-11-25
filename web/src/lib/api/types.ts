@@ -378,6 +378,7 @@ export interface StartGitHubInstallationResponse {
 export interface CompleteGitHubInstallationRequest {
   installation_id: number;
   state: string;
+  code: string;
 }
 
 export interface CompleteGitHubInstallationResponse {
