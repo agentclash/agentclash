@@ -4,15 +4,15 @@ go 1.26.10
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
-	github.com/bmatcuk/doublestar/v4 v4.10.4
+	github.com/bmatcuk/doublestar/v4 v4.10.7
 	github.com/briandowns/spinner v1.23.2
 	github.com/fatih/color v1.19.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/itchyny/gojq v0.12.20
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.1.0
-	golang.org/x/term v0.47.0
-	golang.org/x/text v0.43.0
+	golang.org/x/term v0.48.0
+	golang.org/x/text v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -35,7 +35,7 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
-	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
 )
 
 replace github.com/agentclash/agentclash/runtime => ../runtime
